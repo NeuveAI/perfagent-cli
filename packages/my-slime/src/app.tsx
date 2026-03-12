@@ -94,15 +94,19 @@ export const App = () => {
     >
       <ColoredLogo />
 
-      <box
-        border
-        borderStyle="rounded"
-        borderColor={COLORS.BORDER}
-        marginTop={2}
-        paddingX={2}
-        width={40}
-      >
-        <text fg={COLORS.TEXT}>{PROMPT_TEXT}</text>
+      <box flexDirection="row" marginTop={2} alignItems="flex-end">
+        <text fg={COLORS.ORANGE}>{"(•‿•)"}</text>
+        <box flexDirection="column" marginLeft={1}>
+          <box
+            border
+            borderStyle="rounded"
+            borderColor={COLORS.ORANGE}
+            paddingX={1}
+          >
+            <text fg={COLORS.TEXT}>{PROMPT_TEXT}</text>
+          </box>
+          <text fg={COLORS.ORANGE}>{"──╯"}</text>
+        </box>
       </box>
 
       <box flexDirection="column" marginTop={2} gap={1}>
@@ -115,7 +119,7 @@ export const App = () => {
             detail = `(${selectedRemoteBranch})`;
           }
           return (
-            <box key={index} flexDirection="column" gap={1}>
+            <box key={index} flexDirection="column" gap={"separated" in option ? 0 : 1}>
               {"separated" in option && option.separated && (
                 <box
                   height={1}
@@ -151,8 +155,10 @@ export const App = () => {
                   {index === CURRENT_BRANCH_INDEX && index === selectedIndex && (
                     <text fg={COLORS.DIM} marginLeft={5}>
                       <span fg={includeUnstaged ? COLORS.GREEN : COLORS.DIM}>
-                        {includeUnstaged ? "[x]" : "[ ]"}
+                        {includeUnstaged ? "[" : "[ ]"}
                       </span>
+                      {includeUnstaged && <span fg={COLORS.WHITE}>{"x"}</span>}
+                      {includeUnstaged && <span fg={COLORS.GREEN}>{"]"}</span>}
                       <span> include unstaged changes </span>
                       <span fg={COLORS.DIM}>(space to toggle)</span>
                     </text>

@@ -61,4 +61,5 @@ export const COLORS = {
   DIVIDER: "#444444",
   YELLOW: "#e5c07b",
   PURPLE: "#c678dd",
+  ORANGE: "#ff8833",
 } as const;

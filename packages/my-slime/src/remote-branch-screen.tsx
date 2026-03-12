@@ -64,6 +64,16 @@ export const RemoteBranchScreen = ({ onSelect }: RemoteBranchScreenProps) => {
     return result;
   }, [branches, searchQuery, activeFilter]);
 
+  const maxBranchWidth = useMemo(
+    () => Math.max(...filteredBranches.map((branch) => branch.name.length), 0),
+    [filteredBranches],
+  );
+
+  const maxAuthorWidth = useMemo(
+    () => Math.max(...filteredBranches.map((branch) => branch.author.length), 0),
+    [filteredBranches],
+  );
+
   const handleInput = useCallback((value: string) => {
     setSearchQuery(value);
     setHighlightedIndex(0);
@@ -138,7 +148,8 @@ export const RemoteBranchScreen = ({ onSelect }: RemoteBranchScreenProps) => {
             {filteredBranches.map((branch, index) => (
               <text key={index} fg={index === highlightedIndex ? COLORS.SELECTION : COLORS.TEXT}>
                 {index === highlightedIndex ? "➤ " : "  "}
-                {branch.name}
+                {branch.name.padEnd(maxBranchWidth + 2)}
+                <span fg={COLORS.YELLOW}>{branch.author.padEnd(maxAuthorWidth + 2)}</span>
                 <PrBadge branch={branch} />
               </text>
             ))}
