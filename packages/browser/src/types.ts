@@ -1,6 +1,6 @@
 import type { Browser } from "@browser-tester/extract-cookie";
 import type { ElementInfo as BaseElementInfo } from "element-source";
-import type { Locator, Page } from "playwright";
+import type { Browser as PlaywrightBrowser, BrowserContext, Locator, Page } from "playwright";
 
 export interface ElementInfo extends BaseElementInfo {
   selector: string;
@@ -38,4 +38,18 @@ export interface InjectCookiesOptions {
   url: string;
   browsers?: Browser[];
   names?: string[];
+}
+
+export interface CreatePageOptions {
+  headed?: boolean;
+  executablePath?: string;
+  cookies?: boolean;
+  cookieBrowsers?: Browser[];
+  cookiesFile?: string;
+}
+
+export interface CreatePageResult {
+  browser: PlaywrightBrowser;
+  context: BrowserContext;
+  page: Page;
 }

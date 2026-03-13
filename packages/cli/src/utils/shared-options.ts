@@ -1,14 +1,9 @@
-import type { Browser } from "@browser-tester/browser";
+import type { CreatePageOptions } from "@browser-tester/browser";
 import type { Command } from "commander";
 import { parseBrowsers } from "./parse-browsers";
 
-export interface SharedOptions {
+export interface SharedOptions extends CreatePageOptions {
   timeout?: number;
-  headed?: boolean;
-  cookies?: boolean;
-  cookieBrowsers?: Browser[];
-  cookiesFile?: string;
-  executablePath?: string;
 }
 
 export const addSharedOptions = <T extends Command>(command: T): T =>
