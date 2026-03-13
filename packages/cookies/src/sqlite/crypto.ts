@@ -61,7 +61,7 @@ export const decryptAes256Gcm = (
   );
 
   try {
-    const decipher = createDecipheriv("aes-256-gcm", key, nonce);
+    const decipher = createDecipheriv("aes-256-gcm", masterKey, nonce);
     decipher.setAuthTag(authTag);
     const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
     return decodeCookieBytes(plaintext, stripHashPrefix);
@@ -82,27 +82,27 @@ const tryAes128Cbc = (ciphertext: Buffer, key: Buffer): Buffer | null => {
   }
 };
 
-const removePkcs7Padding = (value: Buffer): Buffer => {
-  if (!value.length) return value;
-  const padding = value[value.length - 1];
-  if (!padding || padding > PBKDF2_KEY_LENGTH_BYTES) return value;
-  return value.subarray(0, value.length - padding);
+const removePkcs7Padding = (paddedBuffer: Buffer): Buffer => {
+  if (!paddedBuffer.length) return paddedBuffer;
+  const padding = paddedBuffer[paddedBuffer.length - 1];
+  if (!padding || padding > PBKDF2_KEY_LENGTH_BYTES) return paddedBuffer;
+  return paddedBuffer.subarray(0, paddedBuffer.length - padding);
 };
 
 const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
 
-const decodeCookieBytes = (value: Buffer, stripHashPrefix: boolean): string | null => {
+const decodeCookieBytes = (plaintextBytes: Buffer, stripHashPrefix: boolean): string | null => {
   const bytes =
-    stripHashPrefix && value.length >= AES_HASH_PREFIX_LENGTH_BYTES
-      ? value.subarray(AES_HASH_PREFIX_LENGTH_BYTES)
-      : value;
+    stripHashPrefix && plaintextBytes.length >= AES_HASH_PREFIX_LENGTH_BYTES
+      ? plaintextBytes.subarray(AES_HASH_PREFIX_LENGTH_BYTES)
+      : plaintextBytes;
   try {
-    const result = UTF8_DECODER.decode(bytes);
+    const decoded = UTF8_DECODER.decode(bytes);
     let index = 0;
-    while (index < result.length && result.charCodeAt(index) < PBKDF2_IV_FILL) {
+    while (index < decoded.length && decoded.charCodeAt(index) < PBKDF2_IV_FILL) {
       index += 1;
     }
-    return result.slice(index);
+    return decoded.slice(index);
   } catch {
     return null;
   }
