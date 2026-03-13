@@ -46,7 +46,14 @@ export const snapshot = async (
 
   const locator = (ref: string) => {
     const entry = refs[ref];
-    if (!entry) throw new Error(`Unknown ref: ${ref}`);
+    if (!entry) {
+      const available = Object.keys(refs);
+      const detail =
+        available.length === 0
+          ? "no refs available (page may be empty)"
+          : `available refs: ${available.join(", ")}`;
+      throw new Error(`Unknown ref "${ref}" (${detail})`);
+    }
     return resolveLocator(page, entry);
   };
 

@@ -1,6 +1,6 @@
 export { createPage } from "./create-page";
 export { injectCookies } from "./inject-cookies";
-export { act } from "./interact";
+export { act } from "./act";
 export { snapshot } from "./snapshot";
 export type { Browser } from "@browser-tester/cookies";
 export type {

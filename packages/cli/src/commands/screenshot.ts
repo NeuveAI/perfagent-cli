@@ -15,9 +15,7 @@ export const screenshot = addSharedOptions(
 ).action(async (url: string, outputPath: string, options) => {
   const extension = path.extname(outputPath).toLowerCase();
   if (!SUPPORTED_EXTENSIONS.has(extension)) {
-    logger.error(
-      `Unsupported file extension "${extension || "(none)"}". Use .png, .jpg, or .jpeg`,
-    );
+    logger.error(`Unsupported file extension "${extension || "(none)"}". Use .png, .jpg, or .jpeg`);
     process.exit(1);
   }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { CdpRawCookie, Cookie } from "../src/types.js";
+import type { BrowserProfile, CdpRawCookie, Cookie } from "../src/types.js";
+import { browserDisplayNameToKey } from "../src/utils/browser-name-map.js";
 import { normalizeSameSite } from "../src/utils/normalize-same-site.js";
 
 const RAW_COOKIE: CdpRawCookie = {
@@ -75,5 +76,59 @@ describe("CDP cookie to Cookie mapping", () => {
     const cookie = toCookie({ ...RAW_COOKIE, secure: false, httpOnly: false });
     expect(cookie.secure).toBe(false);
     expect(cookie.httpOnly).toBe(false);
+  });
+});
+
+describe("browser field mapping via browserDisplayNameToKey", () => {
+  const makeProfile = (displayName: string): BrowserProfile => ({
+    profileName: "Default",
+    profilePath: "/tmp/test",
+    displayName: "Test",
+    browser: { name: displayName, executablePath: "/usr/bin/test" },
+  });
+
+  const toCookieWithBrowserMapping = (
+    rawCookie: CdpRawCookie,
+    profile: BrowserProfile,
+  ): Cookie => ({
+    name: rawCookie.name,
+    value: rawCookie.value,
+    domain: rawCookie.domain,
+    path: rawCookie.path,
+    expires: rawCookie.expires > 0 ? rawCookie.expires : undefined,
+    secure: rawCookie.secure,
+    httpOnly: rawCookie.httpOnly,
+    sameSite: normalizeSameSite(rawCookie.sameSite),
+    browser: browserDisplayNameToKey(profile.browser.name) ?? "chrome",
+  });
+
+  it("maps Google Chrome to chrome", () => {
+    const cookie = toCookieWithBrowserMapping(RAW_COOKIE, makeProfile("Google Chrome"));
+    expect(cookie.browser).toBe("chrome");
+  });
+
+  it("maps Arc to arc", () => {
+    const cookie = toCookieWithBrowserMapping(RAW_COOKIE, makeProfile("Arc"));
+    expect(cookie.browser).toBe("arc");
+  });
+
+  it("maps Brave Browser to brave", () => {
+    const cookie = toCookieWithBrowserMapping(RAW_COOKIE, makeProfile("Brave Browser"));
+    expect(cookie.browser).toBe("brave");
+  });
+
+  it("maps Microsoft Edge to edge", () => {
+    const cookie = toCookieWithBrowserMapping(RAW_COOKIE, makeProfile("Microsoft Edge"));
+    expect(cookie.browser).toBe("edge");
+  });
+
+  it("falls back to chrome for unknown browser names", () => {
+    const cookie = toCookieWithBrowserMapping(RAW_COOKIE, makeProfile("Unknown Browser"));
+    expect(cookie.browser).toBe("chrome");
+  });
+
+  it("falls back to chrome for empty browser name", () => {
+    const cookie = toCookieWithBrowserMapping(RAW_COOKIE, makeProfile(""));
+    expect(cookie.browser).toBe("chrome");
   });
 });

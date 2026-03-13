@@ -37,4 +37,19 @@ describe("parseAriaLine", () => {
     const result = parseAriaLine('- button ""');
     expect(result).toEqual({ role: "button", name: "" });
   });
+
+  it("should handle escaped quotes in name", () => {
+    const result = parseAriaLine('- button "Say \\"hello\\""');
+    expect(result).toEqual({ role: "button", name: 'Say "hello"' });
+  });
+
+  it("should handle escaped backslash in name", () => {
+    const result = parseAriaLine('- button "path\\\\to\\\\file"');
+    expect(result).toEqual({ role: "button", name: "path\\to\\file" });
+  });
+
+  it("should handle name with mixed escapes", () => {
+    const result = parseAriaLine('- link "Click \\"here\\" for C:\\\\docs"');
+    expect(result).toEqual({ role: "link", name: 'Click "here" for C:\\docs' });
+  });
 });

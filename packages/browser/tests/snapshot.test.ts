@@ -130,10 +130,20 @@ describe("snapshot", () => {
       expect(text).toBe("Click Me");
     });
 
-    it("should throw on unknown ref", async () => {
+    it("should throw on unknown ref with available refs", async () => {
+      await page.setContent(`
+        <html><body>
+          <button>OK</button>
+        </body></html>
+      `);
+      const result = await snapshot(page);
+      expect(() => result.locator("nonexistent")).toThrow("available refs: e1");
+    });
+
+    it("should throw on unknown ref with empty page hint", async () => {
       await page.setContent("<html><body></body></html>");
       const result = await snapshot(page);
-      expect(() => result.locator("nonexistent")).toThrow("Unknown ref");
+      expect(() => result.locator("e1")).toThrow("no refs available");
     });
 
     it("should click the correct element via ref", async () => {
@@ -228,46 +238,6 @@ describe("snapshot", () => {
       await result.locator(selectRefKey!).selectOption("blue");
       const value = await page.locator("#color").inputValue();
       expect(value).toBe("blue");
-    });
-  });
-
-  describe("inspect", () => {
-    it("should return element info for a ref", async () => {
-      await page.setContent(`
-        <html><body>
-          <button data-testid="submit-btn">Submit</button>
-        </body></html>
-      `);
-
-      const result = await snapshot(page);
-      const buttonRefKey = Object.keys(result.refs).find(
-        (key) => result.refs[key].name === "Submit",
-      );
-      expect(buttonRefKey).toBeDefined();
-
-      const info = await result.inspect(buttonRefKey!);
-      expect(info.tagName).toBe("button");
-      expect(info.selector).toBe('[data-testid="submit-btn"]');
-    });
-
-    it("should return element info for a locator", async () => {
-      await page.setContent(`
-        <html><body>
-          <a href="/about" id="about-link">About</a>
-        </body></html>
-      `);
-
-      const result = await snapshot(page);
-      const locator = page.locator("#about-link");
-      const info = await result.inspect(locator);
-      expect(info.tagName).toBe("a");
-      expect(info.selector).toBe("#about-link");
-    });
-
-    it("should throw on unknown ref", async () => {
-      await page.setContent("<html><body></body></html>");
-      const result = await snapshot(page);
-      await expect(result.inspect("nonexistent")).rejects.toThrow("Unknown ref");
     });
   });
 

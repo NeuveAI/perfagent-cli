@@ -17,10 +17,10 @@ import { extractCookies } from "@browser-tester/cookies";
 
 const { cookies, warnings } = await extractCookies({
   url: "https://github.com",
-  browsers: ["chrome", "firefox"],  // optional, defaults to chrome/brave/edge/arc/firefox/safari
-  names: ["session"],               // optional, filter by cookie name
-  includeExpired: false,            // optional, default false
-  timeoutMs: 5000,                  // optional, keychain command timeout
+  browsers: ["chrome", "firefox"], // optional, defaults to chrome/brave/edge/arc/firefox/safari
+  names: ["session"], // optional, filter by cookie name
+  includeExpired: false, // optional, default false
+  timeoutMs: 5000, // optional, keychain command timeout
 });
 ```
 
@@ -31,7 +31,11 @@ const { cookies, warnings } = await extractCookies({
 ### Per-browser extraction
 
 ```ts
-import { extractChromiumCookies, extractFirefoxCookies, extractSafariCookies } from "@browser-tester/cookies";
+import {
+  extractChromiumCookies,
+  extractFirefoxCookies,
+  extractSafariCookies,
+} from "@browser-tester/cookies";
 
 const result = await extractChromiumCookies("chrome", ["github.com"], { names: ["session"] });
 const firefox = await extractFirefoxCookies(["github.com"]);
@@ -50,7 +54,7 @@ const profiles = detectBrowserProfiles();
 
 const { cookies, warnings } = await extractProfileCookies({
   profile: profiles[0],
-  port: 9222,  // optional, CDP debugging port
+  port: 9222, // optional, CDP debugging port
 });
 ```
 
@@ -72,12 +76,12 @@ import { CookieJar } from "@browser-tester/cookies";
 
 const jar = new CookieJar(cookies);
 
-jar.match("https://github.com/settings");  // Cookie[] matching domain/path/secure/expiry
-jar.toCookieHeader("https://github.com");   // "name=value; name2=value2"
-jar.toPlaywright();                          // PlaywrightCookie[] (sameSite defaults to "Lax")
-jar.toPuppeteer();                           // PuppeteerCookie[]
-jar.toJSON();                                // serialized string
-CookieJar.fromJSON(json);                    // deserialize
+jar.match("https://github.com/settings"); // Cookie[] matching domain/path/secure/expiry
+jar.toCookieHeader("https://github.com"); // "name=value; name2=value2"
+jar.toPlaywright(); // PlaywrightCookie[] (sameSite defaults to "Lax")
+jar.toPuppeteer(); // PuppeteerCookie[]
+jar.toJSON(); // serialized string
+CookieJar.fromJSON(json); // deserialize
 ```
 
 ## `toCookieHeader`
@@ -87,7 +91,7 @@ Format a cookie array as a `Cookie` header string without URL matching.
 ```ts
 import { toCookieHeader } from "@browser-tester/cookies";
 
-toCookieHeader(cookies);  // "name=value; name2=value2"
+toCookieHeader(cookies); // "name=value; name2=value2"
 ```
 
 ## Types
@@ -98,7 +102,7 @@ interface Cookie {
   value: string;
   domain: string;
   path: string;
-  expires?: number;      // unix seconds, undefined = session
+  expires?: number; // unix seconds, undefined = session
   secure: boolean;
   httpOnly: boolean;
   sameSite?: "Strict" | "Lax" | "None";
@@ -119,30 +123,30 @@ interface ExtractResult {
 }
 
 interface BrowserProfile {
-  profileName: string;   // directory name ("Default", "Profile 1")
-  profilePath: string;   // absolute path to profile directory
-  displayName: string;   // human-readable name from Local State
+  profileName: string; // directory name ("Default", "Profile 1")
+  profilePath: string; // absolute path to profile directory
+  displayName: string; // human-readable name from Local State
   browser: BrowserInfo;
 }
 
 interface BrowserInfo {
-  name: string;          // display name ("Google Chrome", "Arc")
+  name: string; // display name ("Google Chrome", "Arc")
   executablePath: string;
 }
 
 interface ExtractProfileOptions {
   profile: BrowserProfile;
-  port?: number;         // CDP port, default 9222
+  port?: number; // CDP port, default 9222
 }
 ```
 
 ## SQLite vs CDP
 
-| | SQLite | CDP |
-|---|---|---|
-| Speed | Fast (no browser launch) | ~3s startup |
-| Keychain popup (macOS) | Yes | No |
-| Firewall popup (macOS) | No | Once (remembered) |
-| Firefox/Safari | Yes | No (Chromium only) |
-| Requires browser installed | No (reads DB files) | Yes (launches executable) |
-| Cookie decryption | Manual (keychain/DPAPI) | Chrome handles it |
+|                            | SQLite                   | CDP                       |
+| -------------------------- | ------------------------ | ------------------------- |
+| Speed                      | Fast (no browser launch) | ~3s startup               |
+| Keychain popup (macOS)     | Yes                      | No                        |
+| Firewall popup (macOS)     | No                       | Once (remembered)         |
+| Firefox/Safari             | Yes                      | No (Chromium only)        |
+| Requires browser installed | No (reads DB files)      | Yes (launches executable) |
+| Cookie decryption          | Manual (keychain/DPAPI)  | Chrome handles it         |

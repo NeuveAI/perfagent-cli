@@ -2,7 +2,6 @@ import { Command } from "commander";
 import { click } from "./commands/click";
 import { fill } from "./commands/fill";
 import { hover } from "./commands/hover";
-import { inspect } from "./commands/inspect";
 import { screenshot } from "./commands/screenshot";
 import { select } from "./commands/select";
 import { snapshot } from "./commands/snapshot";
@@ -17,7 +16,6 @@ const program = new Command()
   .version("0.0.0", "-v, --version");
 
 program.addCommand(snapshot);
-program.addCommand(inspect);
 program.addCommand(click);
 program.addCommand(fill);
 program.addCommand(type);

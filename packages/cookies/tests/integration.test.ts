@@ -7,6 +7,21 @@ import { formatCookieHeader } from "../src/utils/format-cookie-header.js";
 const GOOGLE_URL = "https://google.com";
 
 describe("extractCookies", () => {
+  it("handles bare hostname without protocol", async () => {
+    const result = await extractCookies({ url: "google.com" });
+    expect(Array.isArray(result.cookies)).toBe(true);
+    expect(Array.isArray(result.warnings)).toBe(true);
+  });
+
+  it("handles unknown browser names gracefully", async () => {
+    const result = await extractCookies({
+      url: GOOGLE_URL,
+      browsers: ["nonexistent" as "chrome"],
+    });
+    expect(result.cookies).toHaveLength(0);
+    expect(result.warnings.length).toBeGreaterThan(0);
+  });
+
   it("returns cookies and warnings arrays", async () => {
     const result = await extractCookies({ url: GOOGLE_URL });
     expect(Array.isArray(result.cookies)).toBe(true);
