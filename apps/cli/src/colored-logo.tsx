@@ -7,11 +7,15 @@ const SHIMMER_INTERVAL_MS = 25;
 const THINKING_CHARS = ["◇", "◆", "◇", "◆"];
 
 type Result = "pass" | "fail" | "skip";
-type Cell = Result | null;
+type Cell = Result | null | "empty";
 type SlotState = "idle" | "thinking" | "resolved";
 
 const GRID_COLUMNS = 4;
-const GRID: Cell[] = ["pass", null, "fail", "pass", "skip", "pass", null, "fail"];
+const GRID: Cell[] = [
+  "empty", null,   "fail", "empty",
+  "skip",  "pass", null,   "fail",
+  "empty", "fail", "pass", "empty",
+];
 
 const THINK_DURATION_MS: Record<Result, number> = {
   pass: 60,
@@ -33,7 +37,7 @@ const RESULT_COLOR: Record<Result, string> = {
 
 const findNextResultIndex = (from: number): number => {
   for (let index = from; index < GRID.length; index++) {
-    if (GRID[index] !== null) return index;
+    if (GRID[index] !== null && GRID[index] !== "empty") return index;
   }
   return GRID.length;
 };
@@ -57,7 +61,7 @@ export const ColoredLogo = () => {
   useEffect(() => {
     if (activeIndex >= GRID.length) return;
     const cell = GRID[activeIndex];
-    if (cell === null) return;
+    if (cell === null || cell === "empty") return;
 
     if (slotState === "thinking") {
       const base = THINK_DURATION_MS[cell];
@@ -86,6 +90,10 @@ export const ColoredLogo = () => {
         <Box key={rowIndex} flexDirection="row" gap={1}>
           {row.map((cell, colIndex) => {
             const index = rowIndex * GRID_COLUMNS + colIndex;
+
+            if (cell === "empty") {
+              return <Text key={index}> </Text>;
+            }
 
             if (cell === null) {
               return (
