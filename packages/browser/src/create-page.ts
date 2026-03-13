@@ -17,7 +17,9 @@ export const createPage = async (
     const context = await browser.newContext();
 
     if (options.cookies) {
-      await injectCookies(context, { url });
+      const cookieOptions =
+        options.cookies === true ? { url } : { url, ...options.cookies };
+      await injectCookies(context, cookieOptions);
     }
 
     const page = await context.newPage();
