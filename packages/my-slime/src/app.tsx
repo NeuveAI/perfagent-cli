@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { COLORS } from "./constants.js";
 import { MenuItem } from "./menu-item.js";
-import { LocalBranchScreen } from "./local-branch-screen.js";
+import { BranchSwitcherScreen } from "./branch-switcher-screen.js";
 import { ColoredLogo } from "./colored-logo.js";
 import { Spinner } from "./spinner.js";
 import {
@@ -110,7 +110,7 @@ export const App = () => {
   }
 
   if (screen === "switch-branch") {
-    return <LocalBranchScreen onSelect={handleBranchSwitch} />;
+    return <BranchSwitcherScreen onSelect={handleBranchSwitch} />;
   }
 
   return (

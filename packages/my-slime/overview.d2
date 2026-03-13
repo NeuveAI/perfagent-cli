@@ -1,0 +1,34 @@
+direction: down
+
+what-to-test: What would you like to test?
+plan-note: Review plan determined at this phase
+
+plan-note -> what-to-test
+
+what-to-test -> surfaces-states: Claude surfaces states
+
+surfaces-states -> review-plan
+
+review-plan: Review plan? {
+  shape: diamond
+}
+
+review-plan -> review: y
+review-plan -> tests: n
+
+review: Review plan
+review -> tests
+
+tests: Tests {
+  claude-note: Claude surfaces states
+}
+
+tests -> results: complete
+
+results: {
+  status-table: CLI shows status table
+  video: Watch video
+
+  back: back
+  forward: forward
+}
