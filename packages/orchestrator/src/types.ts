@@ -79,6 +79,7 @@ export interface BrowserEnvironmentHints {
   headed?: boolean;
   cookies?: boolean;
   liveChrome?: boolean;
+  liveChromeConnectionMode?: "prompt" | "cdp";
   liveChromeCdpEndpoint?: string;
   liveChromeTabMode?: "attach" | "new";
   liveChromeTabUrlMatch?: string;

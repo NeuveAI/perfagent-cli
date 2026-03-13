@@ -102,7 +102,7 @@ describe("planBrowserFlow", () => {
         cookies: true,
         headed: true,
         liveChrome: true,
-        liveChromeCdpEndpoint: "http://127.0.0.1:9222",
+        liveChromeConnectionMode: "prompt",
         liveChromeTabMode: "attach",
         liveChromeTabUrlMatch: "/onboarding",
       },
@@ -119,7 +119,9 @@ describe("planBrowserFlow", () => {
     expect(promptText).toContain("src/onboarding.tsx");
     expect(promptText).toContain("Base URL: http://localhost:3000");
     expect(promptText).toContain("Live Chrome mode: yes");
+    expect(promptText).toContain("Live Chrome connection mode: prompt");
     expect(promptText).toContain("Live Chrome tab mode: attach");
+    expect(promptText).toContain("Chrome shows a permission prompt");
     expect(promptText).toContain("continuing the relevant in-progress user workflow");
     expect(promptText).toContain("...truncated...");
     expect(promptText).toContain("cookieSync.required");

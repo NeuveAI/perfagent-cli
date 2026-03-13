@@ -84,6 +84,46 @@ const createExecutionModel = (
   },
 });
 
+const createExecutionModelWithParts = (
+  parts: LanguageModelV3StreamPart[],
+  callback: (options: LanguageModelV3CallOptions) => void = () => undefined,
+): LanguageModelV3 => ({
+  specificationVersion: "v3",
+  provider: "test",
+  modelId: "executor",
+  supportedUrls: {},
+  async doGenerate() {
+    throw new Error("doGenerate not implemented for execution tests");
+  },
+  async doStream(options) {
+    callback(options);
+
+    return {
+      stream: new ReadableStream<LanguageModelV3StreamPart>({
+        start(controller) {
+          for (const part of parts) controller.enqueue(part);
+          controller.close();
+        },
+      }),
+      request: {
+        body: "",
+      },
+    };
+  },
+});
+
+const collectEvents = async (
+  iterator: AsyncIterable<BrowserRunEvent>,
+): Promise<BrowserRunEvent[]> => {
+  const events: BrowserRunEvent[] = [];
+
+  for await (const event of iterator) {
+    events.push(event);
+  }
+
+  return events;
+};
+
 const testTarget: TestTarget = {
   scope: "unstaged",
   cwd: "/tmp/repo",
@@ -175,6 +215,7 @@ describe("executeBrowserFlow", () => {
       environment: {
         baseUrl: "http://localhost:3000",
         liveChrome: true,
+        liveChromeConnectionMode: "cdp",
         liveChromeCdpEndpoint: "http://127.0.0.1:9222",
         liveChromeTabMode: "attach",
         liveChromeTabUrlMatch: "/onboarding",
@@ -199,5 +240,106 @@ describe("executeBrowserFlow", () => {
       status: "passed",
       videoPath: undefined,
     });
+  });
+
+  it("instructs the agent to use Chrome's permission prompt flow when configured", async () => {
+    let promptText = "";
+
+    await collectEvents(
+      executeBrowserFlow({
+        target: testTarget,
+        plan: testPlan,
+        environment: {
+          baseUrl: "http://localhost:3000",
+          liveChrome: true,
+          liveChromeConnectionMode: "prompt",
+          liveChromeTabMode: "attach",
+          liveChromeTabUrlMatch: "/onboarding",
+        },
+        model: createExecutionModel((options) => {
+          promptText =
+            options.prompt[0].role === "user" && options.prompt[0].content[0].type === "text"
+              ? options.prompt[0].content[0].text
+              : "";
+        }),
+      }),
+    );
+
+    expect(promptText).toContain("Chrome's permission-prompt flow");
+    expect(promptText).toContain("Chrome may ask the user to allow access");
+    expect(promptText).toContain("Start with list_pages, then use select_page");
+    expect(promptText).toContain("Live Chrome connection mode: prompt");
+    expect(promptText).not.toContain("call the close tool exactly once so the live Chrome session disconnects cleanly");
+  });
+
+  it("throws when live Chrome cannot connect instead of continuing the run", async () => {
+    await expect(
+      collectEvents(
+        executeBrowserFlow({
+          target: testTarget,
+          plan: testPlan,
+          environment: {
+            baseUrl: "http://localhost:3000",
+            liveChrome: true,
+            liveChromeConnectionMode: "cdp",
+            liveChromeCdpEndpoint: "http://127.0.0.1:54495",
+            liveChromeTabMode: "new",
+          },
+          model: createExecutionModelWithParts([
+            { type: "stream-start", warnings: [] },
+            {
+              type: "tool-call",
+              toolCallId: "tool-1",
+              toolName: "mcp__browser__open",
+              input: '{"url":"http://localhost:3000/onboarding"}',
+              providerExecuted: true,
+            },
+            {
+              type: "tool-result",
+              toolCallId: "tool-1",
+              toolName: "mcp__browser__open",
+              result:
+                "Could not connect to live Chrome at http://127.0.0.1:54495. Enable remote debugging and try again.",
+              isError: true,
+            },
+          ]),
+        }),
+      ),
+    ).rejects.toThrow("Could not connect to live Chrome at http://127.0.0.1:54495");
+  });
+
+  it("throws when prompt-based live Chrome cannot connect instead of continuing the run", async () => {
+    await expect(
+      collectEvents(
+        executeBrowserFlow({
+          target: testTarget,
+          plan: testPlan,
+          environment: {
+            baseUrl: "http://localhost:3000",
+            liveChrome: true,
+            liveChromeConnectionMode: "prompt",
+            liveChromeTabMode: "new",
+          },
+          model: createExecutionModelWithParts([
+            { type: "stream-start", warnings: [] },
+            {
+              type: "tool-call",
+              toolCallId: "tool-1",
+              toolName: "mcp__browser__list_pages",
+              input: "{}",
+              providerExecuted: true,
+            },
+            {
+              type: "tool-result",
+              toolCallId: "tool-1",
+              toolName: "mcp__browser__list_pages",
+              result:
+                "Could not connect to Chrome. Check if Chrome is running and remote debugging is enabled by going to chrome://inspect/#remote-debugging.",
+              isError: true,
+            },
+          ]),
+        }),
+      ),
+    ).rejects.toThrow("Could not connect to Chrome.");
   });
 });

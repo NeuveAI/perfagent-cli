@@ -17,9 +17,18 @@ const DEFAULT_INSTRUCTIONS: Record<TestAction, string> = {
     "Test the selected commit's changes in the browser and verify they work correctly.",
 };
 
+const resolveLiveChromeConnectionMode = (
+  environment: BrowserEnvironmentHints,
+): "prompt" | "cdp" | undefined => {
+  if (environment.liveChrome !== true) return undefined;
+  if (environment.liveChromeConnectionMode) return environment.liveChromeConnectionMode;
+  return environment.liveChromeCdpEndpoint ? "cdp" : "prompt";
+};
+
 const formatLiveChromeMode = (environment: BrowserEnvironmentHints): string | null => {
   if (environment.liveChrome !== true) return null;
 
+  const liveChromeConnectionMode = resolveLiveChromeConnectionMode(environment);
   const tabMode =
     environment.liveChromeTabMode === "attach" ? "attach existing tab" : "open new tab";
   const selectionHints = [
@@ -33,6 +42,10 @@ const formatLiveChromeMode = (environment: BrowserEnvironmentHints): string | nu
       ? `tab index ${environment.liveChromeTabIndex}`
       : null,
   ].filter((value): value is string => value !== null);
+
+  if (liveChromeConnectionMode === "prompt") {
+    return `Live Chrome mode: ${tabMode} by requesting access to your existing Chrome session${selectionHints.length > 0 ? ` (${selectionHints.join(", ")})` : ""}`;
+  }
 
   return `Live Chrome mode: ${tabMode} via ${environment.liveChromeCdpEndpoint ?? "auto-detect from your Chrome profile"}${selectionHints.length > 0 ? ` (${selectionHints.join(", ")})` : ""}`;
 };
@@ -59,6 +72,9 @@ const formatRunEvent = (event: BrowserRunEvent): string | null => {
       return null;
   }
 };
+
+const formatErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
 
 interface RunTestOptions {
   environmentOverrides?: BrowserEnvironmentHints;
@@ -88,29 +104,40 @@ export const runTest = async (
   console.error(`testie v${VERSION}`);
   console.error(`Testing ${ACTION_LABELS[action]} on ${gitState.currentBranch}\n`);
 
-  console.error("Planning browser flow...");
-  const { target, plan, environment } = await generateBrowserPlan({
-    action,
-    commit,
-    userInstruction: DEFAULT_INSTRUCTIONS[action],
-    environmentOverrides: options.environmentOverrides,
-  });
+  try {
+    console.error("Planning browser flow...");
+    const { target, plan, environment } = await generateBrowserPlan({
+      action,
+      commit,
+      userInstruction: DEFAULT_INSTRUCTIONS[action],
+      environmentOverrides: options.environmentOverrides,
+    });
 
-  const liveChromeMode = formatLiveChromeMode(environment);
-  if (liveChromeMode) {
-    console.error(`${liveChromeMode}`);
-    console.error(
-      "Chrome remote debugging must already be enabled in chrome://inspect/#remote-debugging.\n",
-    );
-  }
-
-  console.error(`Plan: ${plan.title} (${plan.steps.length} steps)\n`);
-
-  for await (const event of executeApprovedPlan({ target, plan, environment })) {
-    const line = formatRunEvent(event);
-    if (line) {
-      process.stdout.write(line + "\n");
+    const liveChromeMode = formatLiveChromeMode(environment);
+    if (liveChromeMode) {
+      console.error(`${liveChromeMode}`);
+      if (resolveLiveChromeConnectionMode(environment) === "prompt") {
+        console.error(
+          "Enable remote debugging in chrome://inspect/#remote-debugging and allow Chrome's permission prompt when it appears.\n",
+        );
+      } else {
+        console.error(
+          "Chrome remote debugging must already be enabled in chrome://inspect/#remote-debugging.\n",
+        );
+      }
     }
+
+    console.error(`Plan: ${plan.title} (${plan.steps.length} steps)\n`);
+
+    for await (const event of executeApprovedPlan({ target, plan, environment })) {
+      const line = formatRunEvent(event);
+      if (line) {
+        process.stdout.write(line + "\n");
+      }
+    }
+  } catch (error) {
+    console.error(`Error: ${formatErrorMessage(error)}`);
+    process.exit(1);
   }
 };
 

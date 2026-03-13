@@ -27,8 +27,11 @@ const hasAttachSelection = (options: LiveChromeCliOptions): boolean =>
 
 export const addLiveChromeOptions = (command: Command): Command =>
   command
-    .option("--live-chrome", "Connect to an existing Chrome session over CDP")
-    .option("--cdp-endpoint <url>", "Chrome DevTools Protocol endpoint")
+    .option("--live-chrome", "Connect to your existing Chrome session")
+    .option(
+      "--cdp-endpoint <url>",
+      "Use a manual Chrome DevTools Protocol endpoint instead of Chrome's permission prompt flow",
+    )
     .option("--attach-tab", "Attach to an existing tab in live Chrome")
     .option("--new-tab", "Open a fresh tab in live Chrome")
     .option("--tab-url <match>", "Attach to a live Chrome tab whose URL includes this text")
@@ -61,6 +64,7 @@ export const resolveLiveChromeEnvironment = (
 
   return {
     liveChrome: true,
+    liveChromeConnectionMode: options.cdpEndpoint ? "cdp" : "prompt",
     liveChromeCdpEndpoint: options.cdpEndpoint,
     liveChromeTabMode,
     liveChromeTabUrlMatch: liveChromeTabMode === "attach" ? options.tabUrl : undefined,
