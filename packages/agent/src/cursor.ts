@@ -21,10 +21,9 @@ import {
 } from "./provider-shared.js";
 import type { AgentProviderSettings, McpServerConfig } from "./types.js";
 
-const CHILD_KILL_TIMEOUT_MS = 5000;
-
 interface CursorSettings extends AgentProviderSettings {
   model?: string;
+  executable?: string;
 }
 
 export const createCursorModel = (settings: CursorSettings = {}): LanguageModelV3 => ({
@@ -141,6 +140,7 @@ const convertMessageBlocks = (event: Record<string, unknown>): LanguageModelV3Co
 const createWorkspaceOverlay = (
   realWorkspace: string,
   mcpServers: Record<string, McpServerConfig>,
+  executable: string,
 ): string => {
   const overlayDir = join(tmpdir(), `cursor-overlay-${crypto.randomUUID()}`);
   mkdirSync(overlayDir);
@@ -156,34 +156,13 @@ const createWorkspaceOverlay = (
 
   for (const name of Object.keys(mcpServers)) {
     try {
-      execFileSync("agent", ["mcp", "enable", name], { stdio: "ignore" });
+      execFileSync(executable, ["mcp", "enable", name], { stdio: "ignore" });
     } catch {
       /* ignore */
     }
   }
 
   return overlayDir;
-};
-
-const waitForExit = (child: ReturnType<typeof spawn>): Promise<void> =>
-  new Promise((resolve) => {
-    if (child.exitCode !== null) {
-      resolve();
-      return;
-    }
-    child.on("exit", resolve);
-  });
-
-const ensureChildDead = async (child: ReturnType<typeof spawn>): Promise<void> => {
-  if (child.exitCode !== null) return;
-  child.kill("SIGTERM");
-
-  const exited = await Promise.race([
-    waitForExit(child),
-    new Promise((resolve) => setTimeout(resolve, CHILD_KILL_TIMEOUT_MS)),
-  ]);
-
-  if (exited === undefined && child.exitCode === null) child.kill("SIGKILL");
 };
 
 const spawnCursorAgent = async function* (
@@ -195,7 +174,7 @@ const spawnCursorAgent = async function* (
 
   const realWorkspace = settings.cwd ?? process.cwd();
   const overlayDir = settings.mcpServers
-    ? createWorkspaceOverlay(realWorkspace, settings.mcpServers)
+    ? createWorkspaceOverlay(realWorkspace, settings.mcpServers, settings.executable ?? "cursor-agent")
     : undefined;
   const workspace = overlayDir ?? realWorkspace;
 
@@ -212,7 +191,8 @@ const spawnCursorAgent = async function* (
   if (settings.mcpServers) args.push("--approve-mcps");
   args.push(prompt);
 
-  const child = spawn("agent", args, {
+  const executable = settings.executable ?? "cursor-agent";
+  const child = spawn(executable, args, {
     stdio: ["ignore", "pipe", "ignore"],
     env: { ...process.env, ...settings.env },
   });
@@ -242,9 +222,7 @@ const spawnCursorAgent = async function* (
         }
       }
     }
-
     if (spawnError) throw spawnError;
-
     if (buffer.trim()) {
       try {
         yield JSON.parse(buffer.trim());
@@ -253,7 +231,7 @@ const spawnCursorAgent = async function* (
       }
     }
   } finally {
-    await ensureChildDead(child);
+    if (!child.killed) child.kill();
     signal?.removeEventListener("abort", onAbort);
     if (overlayDir) rmSync(overlayDir, { recursive: true, force: true });
   }
