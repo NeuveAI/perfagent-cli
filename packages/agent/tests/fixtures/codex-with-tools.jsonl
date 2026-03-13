@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"019cd796-2a55-7a60-b18f-965566dbff85"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"I’ll read `packages/ai-sdk/src/types.ts` and summarize the exported symbols directly."}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc \"sed -n '1,260p' packages/ai-sdk/src/types.ts\"","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc \"sed -n '1,260p' packages/ai-sdk/src/types.ts\"","aggregated_output":"import type { ModelMessage } from \"ai\";\n\nexport type { ModelMessage } from \"ai\";\n\nexport interface ParsedOutput {\n  messages: ModelMessage[];\n  sessionId?: string;\n  usage?: {\n    inputTokens: number;\n    outputTokens: number;\n    cachedInputTokens?: number;\n  };\n  cost?: {\n    usd: number;\n    durationMs: number;\n  };\n}\n\nexport type AgentFormat = \"claude\" | \"codex\";\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"`packages/ai-sdk/src/types.ts` exports:\n\n1. Type re-export from `ai`:\n   - `ModelMessage` (via `export type { ModelMessage } from \"ai\"`)\n\n2. Interfaces/types declared locally:\n   - `ParsedOutput`\n   - `AgentFormat` (`\"claude\" | \"codex\"`)"}}
+{"type":"turn.completed","usage":{"input_tokens":18510,"cached_input_tokens":16000,"output_tokens":353}}

@@ -1,0 +1,3 @@
+export const AGENT_COMMAND_TIMEOUT_MS = 1_800_000;
+export const CLAUDE_MAX_TURNS = 200;
+export const LOG_PREVIEW_LENGTH = 200;
