@@ -326,9 +326,9 @@ export const App = () => {
             </Text>
             <Text color={COLORS.DIM}>
               {"│ "}
-              <Text color={COLORS.ORANGE}>{"● "}</Text>
-              <Text color={COLORS.PURPLE}>{"● "}</Text>
-              <Text color={COLORS.DIM}>{"●"}</Text>
+              <Text color="#ff5f57">{"● "}</Text>
+              <Text color="#febc2e">{"● "}</Text>
+              <Text color="#28c840">{"●"}</Text>
               {" ".repeat(inner - dots.length - 1)}
               {"│"}
             </Text>
