@@ -1,12 +1,11 @@
 import type { BrowserRunEvent } from "@browser-tester/supervisor";
 import {
+  BROWSER_TOOL_PREFIX,
   TESTING_SELECT_TRUNCATION_LIMIT,
   TESTING_TOOL_INPUT_CHAR_LIMIT,
   TESTING_TOOL_TEXT_CHAR_LIMIT,
 } from "../constants.js";
 import { truncateText } from "./truncate-text.js";
-
-const BROWSER_TOOL_PREFIX = "mcp__browser__";
 
 interface BrowserToolCallFormatOptions {
   includeRelevantInputs?: boolean;

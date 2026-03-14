@@ -17,6 +17,8 @@ import {
   formatBrowserToolCall,
   formatBrowserToolResult,
 } from "../utils/format-browser-tool-call.js";
+import { extractScreenshotPath } from "../utils/extract-screenshot-path.js";
+import { Image } from "./ui/image.js";
 
 interface TestingLine {
   text: string;
@@ -120,6 +122,7 @@ export const TestingScreen = () => {
   const [error, setError] = useState<string | null>(null);
   const [videoPath, setVideoPath] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<string | null>(null);
+  const [screenshotPaths, setScreenshotPaths] = useState<string[]>([]);
   const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
   const [elapsedTimeMs, setElapsedTimeMs] = useState(0);
   const [toolCallDisplayMode, setToolCallDisplayMode] = useState(TOOL_CALL_DISPLAY_MODE_COMPACT);
@@ -162,6 +165,7 @@ export const TestingScreen = () => {
     setError(null);
     setVideoPath(null);
     setCurrentStep(null);
+    setScreenshotPaths([]);
     setRunStartedAt(startedAt);
     setElapsedTimeMs(0);
 
@@ -179,6 +183,12 @@ export const TestingScreen = () => {
           }
           if (event.type === "step-started") {
             setCurrentStep(`${event.stepId} ${event.title}`);
+          }
+          if (event.type === "tool-result") {
+            const screenshotPath = extractScreenshotPath(event);
+            if (screenshotPath) {
+              setScreenshotPaths((previous) => [...previous, screenshotPath]);
+            }
           }
           setEvents((previous) => [...previous, event]);
           if (abortController.signal.aborted) {
@@ -268,6 +278,10 @@ export const TestingScreen = () => {
           </Box>
         </Box>
       )}
+
+      {screenshotPaths.map((screenshotPath) => (
+        <Image key={screenshotPath} src={screenshotPath} alt={`Screenshot: ${screenshotPath}`} />
+      ))}
 
       {error && (
         <Box marginTop={1}>

@@ -10,6 +10,7 @@ import { useAppStore } from "../store.js";
 import { truncateText } from "../utils/truncate-text.js";
 import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
 import { ScreenHeading } from "./ui/screen-heading.js";
+import type { BrowserFlowPlan } from "@browser-tester/supervisor";
 import {
   COMMIT_SELECTOR_WIDTH,
   SECTION_INDENT,
@@ -30,6 +31,49 @@ interface StepItem {
 }
 
 type NavigableItem = SectionItem | StepItem;
+
+interface PlanStepRowProps {
+  step: BrowserFlowPlan["steps"][number];
+  selected: boolean;
+  titleColumnWidth: number;
+  onClick: () => void;
+}
+
+const PlanStepRow = ({ step, selected, titleColumnWidth, onClick }: PlanStepRowProps) => {
+  const COLORS = useColors();
+  return (
+    <Clickable onClick={onClick}>
+      <Box flexDirection="column" marginTop={0}>
+        <Text>
+          <Text color={selected ? COLORS.ORANGE : COLORS.DIM}>{selected ? "  ❯ " : "    "}</Text>
+          <Text color={COLORS.PURPLE} bold={selected}>
+            {step.id.padEnd(STEP_ID_COLUMN_WIDTH)}
+          </Text>
+          <Text color={selected ? COLORS.TEXT : COLORS.DIM} bold={selected}>
+            {truncateText(step.title, titleColumnWidth - 1).padEnd(titleColumnWidth)}
+          </Text>
+          <Text color={COLORS.CYAN}>
+            {truncateText(step.routeHint || "—", STEP_ROUTE_COLUMN_WIDTH)}
+          </Text>
+        </Text>
+        {selected ? (
+          <>
+            <Text color={COLORS.DIM}>
+              {"".padEnd(SECTION_INDENT + STEP_ID_COLUMN_WIDTH)}
+              {"instruction  "}
+              <Text color={COLORS.TEXT}>{step.instruction}</Text>
+            </Text>
+            <Text color={COLORS.DIM}>
+              {"".padEnd(SECTION_INDENT + STEP_ID_COLUMN_WIDTH)}
+              {"expected     "}
+              <Text color={COLORS.TEXT}>{step.expectedOutcome}</Text>
+            </Text>
+          </>
+        ) : null}
+      </Box>
+    </Clickable>
+  );
+};
 
 export const PlanReviewScreen = () => {
   const [columns] = useStdoutDimensions();
@@ -55,7 +99,11 @@ export const PlanReviewScreen = () => {
   const cookiesEnabled = (environment ?? {}).cookies === true;
 
   const titleColumnWidth =
-    columns - COMMIT_SELECTOR_WIDTH - STEP_ID_COLUMN_WIDTH - STEP_ROUTE_COLUMN_WIDTH - SECTION_INDENT;
+    columns -
+    COMMIT_SELECTOR_WIDTH -
+    STEP_ID_COLUMN_WIDTH -
+    STEP_ROUTE_COLUMN_WIDTH -
+    SECTION_INDENT;
 
   const items: NavigableItem[] = useMemo(() => {
     const result: NavigableItem[] = [];
@@ -147,17 +195,6 @@ export const PlanReviewScreen = () => {
       approvePlan(plan);
     }
   });
-
-  const isItemSelected = (item: NavigableItem) => {
-    if (!currentItem) return false;
-    if (item.kind === "section" && currentItem.kind === "section") {
-      return item.section === currentItem.section;
-    }
-    if (item.kind === "step" && currentItem.kind === "step") {
-      return item.stepIndex === currentItem.stepIndex;
-    }
-    return false;
-  };
 
   const sectionLabel = (section: Section, label: string, count?: number) => {
     const isSelected = currentItem?.kind === "section" && currentItem.section === section;
@@ -260,48 +297,20 @@ export const PlanReviewScreen = () => {
               {"Route"}
             </Text>
             {plan.steps.map((step, index) => {
-              const selected = isItemSelected({ kind: "step", stepIndex: index });
+              const selected = currentItem?.kind === "step" && currentItem.stepIndex === index;
               return (
-                <Clickable
+                <PlanStepRow
                   key={step.id}
+                  step={step}
+                  selected={selected}
+                  titleColumnWidth={titleColumnWidth}
                   onClick={() => {
                     const itemIndex = items.findIndex(
                       (item) => item.kind === "step" && item.stepIndex === index,
                     );
                     if (itemIndex >= 0) setSelectedIndex(itemIndex);
                   }}
-                >
-                  <Box flexDirection="column" marginTop={0}>
-                    <Text>
-                      <Text color={selected ? COLORS.ORANGE : COLORS.DIM}>
-                        {selected ? "  ❯ " : "    "}
-                      </Text>
-                      <Text color={COLORS.PURPLE} bold={selected}>
-                        {step.id.padEnd(STEP_ID_COLUMN_WIDTH)}
-                      </Text>
-                      <Text color={selected ? COLORS.TEXT : COLORS.DIM} bold={selected}>
-                        {truncateText(step.title, titleColumnWidth - 1).padEnd(titleColumnWidth)}
-                      </Text>
-                      <Text color={COLORS.CYAN}>
-                        {truncateText(step.routeHint || "—", STEP_ROUTE_COLUMN_WIDTH)}
-                      </Text>
-                    </Text>
-                    {selected ? (
-                      <>
-                        <Text color={COLORS.DIM}>
-                          {"".padEnd(SECTION_INDENT + STEP_ID_COLUMN_WIDTH)}
-                          {"instruction  "}
-                          <Text color={COLORS.TEXT}>{step.instruction}</Text>
-                        </Text>
-                        <Text color={COLORS.DIM}>
-                          {"".padEnd(SECTION_INDENT + STEP_ID_COLUMN_WIDTH)}
-                          {"expected     "}
-                          <Text color={COLORS.TEXT}>{step.expectedOutcome}</Text>
-                        </Text>
-                      </>
-                    ) : null}
-                  </Box>
-                </Clickable>
+                />
               );
             })}
           </>

@@ -67,6 +67,23 @@ interface AppStore {
   switchBranch: (branch: string) => void;
 }
 
+const RESET_PLAN_STATE = {
+  generatedPlan: null,
+  resolvedTarget: null,
+  browserEnvironment: null,
+  pendingSavedFlow: null,
+};
+
+const RESET_FLOW_STATE = {
+  ...RESET_PLAN_STATE,
+  testAction: null,
+  selectedCommit: null,
+  flowInstruction: "",
+  environmentOverrides: undefined,
+  planningError: null,
+  planOrigin: null,
+};
+
 export const useAppStore = create<AppStore>((set) => ({
   screen: "main",
   previousScreen: "main",
@@ -101,13 +118,10 @@ export const useAppStore = create<AppStore>((set) => ({
       }
       if (state.screen === "saved-flow-picker") {
         return {
+          ...RESET_PLAN_STATE,
           screen: "main",
           testAction: null,
           selectedCommit: null,
-          generatedPlan: null,
-          resolvedTarget: null,
-          browserEnvironment: null,
-          pendingSavedFlow: null,
           planOrigin: null,
         };
       }
@@ -127,12 +141,9 @@ export const useAppStore = create<AppStore>((set) => ({
 
   selectAction: (action) =>
     set({
+      ...RESET_PLAN_STATE,
       testAction: action,
       selectedCommit: null,
-      generatedPlan: null,
-      resolvedTarget: null,
-      browserEnvironment: null,
-      pendingSavedFlow: null,
       planOrigin: null,
       screen: "flow-input",
     }),
@@ -155,12 +166,9 @@ export const useAppStore = create<AppStore>((set) => ({
       }
 
       return {
+        ...RESET_PLAN_STATE,
         testAction: "select-commit",
         selectedCommit: commit,
-        generatedPlan: null,
-        resolvedTarget: null,
-        browserEnvironment: null,
-        pendingSavedFlow: null,
         planOrigin: null,
         screen: "flow-input",
       };
@@ -168,13 +176,10 @@ export const useAppStore = create<AppStore>((set) => ({
 
   beginSavedFlowReuse: (action) =>
     set({
+      ...RESET_PLAN_STATE,
       testAction: action,
       selectedCommit: null,
-      generatedPlan: null,
-      resolvedTarget: null,
-      browserEnvironment: null,
       planningError: null,
-      pendingSavedFlow: null,
       planOrigin: "saved",
       screen: "saved-flow-picker",
     }),
@@ -187,11 +192,9 @@ export const useAppStore = create<AppStore>((set) => ({
 
       if (state.testAction === "select-commit") {
         return {
+          ...RESET_PLAN_STATE,
           pendingSavedFlow: savedFlow,
           selectedCommit: null,
-          generatedPlan: null,
-          resolvedTarget: null,
-          browserEnvironment: null,
           screen: "select-commit",
         };
       }
@@ -211,12 +214,9 @@ export const useAppStore = create<AppStore>((set) => ({
 
   submitFlowInstruction: (instruction) =>
     set({
+      ...RESET_PLAN_STATE,
       flowInstruction: instruction,
       planningError: null,
-      generatedPlan: null,
-      resolvedTarget: null,
-      browserEnvironment: null,
-      pendingSavedFlow: null,
       planOrigin: "generated",
       screen: "planning",
     }),
@@ -242,16 +242,7 @@ export const useAppStore = create<AppStore>((set) => ({
 
   exitTesting: () =>
     set({
-      testAction: null,
-      selectedCommit: null,
-      flowInstruction: "",
-      generatedPlan: null,
-      resolvedTarget: null,
-      browserEnvironment: null,
-      environmentOverrides: undefined,
-      planningError: null,
-      planOrigin: null,
-      pendingSavedFlow: null,
+      ...RESET_FLOW_STATE,
       screen: "main",
     }),
 
