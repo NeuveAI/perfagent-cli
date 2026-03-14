@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
+import figures from "figures";
 import {
   BRANCH_NAME_COLUMN_WIDTH,
   BRANCH_AUTHOR_COLUMN_WIDTH,
@@ -11,7 +12,6 @@ import {
 import { useColors } from "./theme-context.js";
 import { stripMouseSequences } from "../hooks/mouse-context.js";
 import { Clickable } from "./ui/clickable.js";
-import { ListItem } from "./ui/list-item.js";
 import { SearchBar } from "./ui/search-bar.js";
 import { getLocalBranches } from "@browser-tester/supervisor";
 import { fetchRemoteBranches, type RemoteBranch } from "../utils/fetch-remote-branches.js";
@@ -231,14 +231,16 @@ export const BranchSwitcherScreen = () => {
               const remoteBranch = typeof item === "string" ? null : item;
 
               return (
-                <ListItem
+                <Clickable
                   key={branchName}
-                  isSelected={isSelected}
                   onClick={() => {
                     setHighlightedIndex(actualIndex);
                     storeSwitchBranch(branchName);
                   }}
                 >
+                  <Text color={isSelected ? COLORS.ORANGE : COLORS.DIM}>
+                    {isSelected ? `${figures.pointer} ` : "  "}
+                  </Text>
                   <Text color={isSelected ? COLORS.TEXT : COLORS.DIM} bold={isSelected}>
                     {visualPadEnd(
                       truncateText(branchName, BRANCH_NAME_COLUMN_WIDTH - 1),
@@ -273,7 +275,7 @@ export const BranchSwitcherScreen = () => {
                       )}
                     </>
                   )}
-                </ListItem>
+                </Clickable>
               );
             })}
             {currentList.length === 0 && <Text color={COLORS.DIM}>No matching branches</Text>}

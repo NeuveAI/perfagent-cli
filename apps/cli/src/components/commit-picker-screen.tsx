@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
+import figures from "figures";
 import { execSync } from "child_process";
 import { GIT_TIMEOUT_MS, type CommitSummary } from "@browser-tester/supervisor";
 import {
@@ -14,7 +15,7 @@ import {
 } from "../constants.js";
 import { useColors } from "./theme-context.js";
 import { stripMouseSequences } from "../hooks/mouse-context.js";
-import { ListItem } from "./ui/list-item.js";
+import { Clickable } from "./ui/clickable.js";
 import { SearchBar } from "./ui/search-bar.js";
 import { truncateText } from "../utils/truncate-text.js";
 import { visualPadEnd } from "../utils/visual-pad-end.js";
@@ -135,11 +136,10 @@ export const CommitPickerScreen = () => {
           const actualIndex = index + scrollOffset;
           const isSelected = actualIndex === highlightedIndex;
           return (
-            <ListItem
-              key={commit.hash}
-              isSelected={isSelected}
-              onClick={() => selectCommit(commit)}
-            >
+            <Clickable key={commit.hash} onClick={() => selectCommit(commit)}>
+              <Text color={isSelected ? COLORS.ORANGE : COLORS.DIM}>
+                {isSelected ? `${figures.pointer} ` : "  "}
+              </Text>
               <Text color={COLORS.PURPLE}>
                 {visualPadEnd(commit.shortHash, COMMIT_HASH_COLUMN_WIDTH)}
               </Text>
@@ -158,7 +158,7 @@ export const CommitPickerScreen = () => {
               <Text color={COLORS.DIM}>
                 {truncateText(commit.relativeDate, COMMIT_DATE_COLUMN_WIDTH)}
               </Text>
-            </ListItem>
+            </Clickable>
           );
         })}
         {filteredCommits.length === 0 && <Text color={COLORS.DIM}>No matching commits</Text>}
