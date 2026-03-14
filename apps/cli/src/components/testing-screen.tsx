@@ -21,6 +21,7 @@ import { extractScreenshotPath } from "../utils/extract-screenshot-path.js";
 import { Image } from "./ui/image.js";
 import { FileLink } from "./ui/file-link.js";
 import { ErrorMessage } from "./ui/error-message.js";
+import { Clickable } from "./ui/clickable.js";
 
 interface TestingLine {
   text: string;
@@ -269,10 +270,16 @@ export const TestingScreen = () => {
         <Text color={currentStep ? COLORS.SELECTION : COLORS.DIM}>
           {currentStep ? `Current step: ${currentStep}` : "Waiting for first step..."}
         </Text>
-        <Text color={COLORS.DIM}>
-          Trace: {toolCallDisplayMode}. Press {TRACE_DISPLAY_SHORTCUT_KEY} to cycle compact,
-          detailed, hidden.
-        </Text>
+        <Clickable
+          onClick={() =>
+            setToolCallDisplayMode((previous) => getNextToolCallDisplayMode(previous))
+          }
+        >
+          <Text color={COLORS.DIM}>
+            Trace: {toolCallDisplayMode}. Press {TRACE_DISPLAY_SHORTCUT_KEY} to cycle compact,
+            detailed, hidden.
+          </Text>
+        </Clickable>
       </Box>
 
       <Box

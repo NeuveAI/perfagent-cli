@@ -4,6 +4,7 @@ import stringWidth from "string-width";
 import { useColors, useThemeContext } from "./theme-context.js";
 import { HintBar, HINT_SEPARATOR, type HintSegment } from "./ui/hint-bar.js";
 import { useAppStore, type Screen } from "../store.js";
+import { Clickable } from "./ui/clickable.js";
 
 const useHintSegments = (screen: Screen): HintSegment[] => {
   const COLORS = useColors();
@@ -136,24 +137,32 @@ export const Modeline = () => {
     <Box flexDirection="column">
       <Text color={theme.border}>{"─".repeat(columns)}</Text>
       <Box paddingX={1}>
-        {actions.map((action, index) => (
-          <Text key={action.key + action.label}>
-            {index > 0 ? "   " : ""}
-            {action.color ? (
-              <Text backgroundColor={action.color} color="#000000">
-                {" "}
-                <Text bold>{action.label}</Text> │ {action.key}{" "}
-              </Text>
-            ) : (
-              <Text>
-                <Text color={theme.textMuted}>{action.label} </Text>
-                <Text color={theme.primary} bold>
-                  {action.key}
+        {actions.map((action, index) => {
+          const pill = (
+            <Text key={action.key + action.label}>
+              {index > 0 ? "   " : ""}
+              {action.color ? (
+                <Text backgroundColor={action.color} color="#000000">
+                  {" "}
+                  <Text bold>{action.label}</Text> │ {action.key}{" "}
                 </Text>
-              </Text>
-            )}
-          </Text>
-        ))}
+              ) : (
+                <Text>
+                  <Text color={theme.textMuted}>{action.label} </Text>
+                  <Text color={theme.primary} bold>
+                    {action.key}
+                  </Text>
+                </Text>
+              )}
+            </Text>
+          );
+
+          return action.onClick ? (
+            <Clickable key={action.key + action.label} onClick={action.onClick} fullWidth={false}>
+              {pill}
+            </Clickable>
+          ) : pill;
+        })}
         <Text>{" ".repeat(gap)}</Text>
         {keybinds.length > 0 ? (
           <HintBar

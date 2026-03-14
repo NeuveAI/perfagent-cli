@@ -7,6 +7,7 @@ import { useAppStore } from "../store.js";
 import { loadSavedFlow } from "../utils/load-saved-flow.js";
 import { ScreenHeading } from "./ui/screen-heading.js";
 import { ErrorMessage } from "./ui/error-message.js";
+import { Clickable } from "./ui/clickable.js";
 
 const ACTION_LABELS = {
   "test-unstaged": "Test unstaged changes",
@@ -35,6 +36,25 @@ export const SavedFlowPickerScreen = () => {
     scrollOffset + SAVED_FLOW_PICKER_VISIBLE_COUNT,
   );
 
+  const selectFlow = (index: number) => {
+    if (loadingFilePath) return;
+    const flow = savedFlowSummaries[index];
+    if (!flow) return;
+
+    setSelectedIndex(index);
+    setLoadingError(null);
+    setLoadingFilePath(flow.filePath);
+
+    void loadSavedFlow(flow.filePath)
+      .then((loaded) => applySavedFlow(loaded))
+      .catch((caughtError) => {
+        setLoadingError(
+          caughtError instanceof Error ? caughtError.message : "Failed to load flow.",
+        );
+        setLoadingFilePath(null);
+      });
+  };
+
   useInput((input, key) => {
     if (loadingFilePath) return;
     if (savedFlowSummaries.length === 0) return;
@@ -47,24 +67,7 @@ export const SavedFlowPickerScreen = () => {
       setSelectedIndex((previous) => Math.max(0, previous - 1));
     }
 
-    if (!key.return || savedFlowSummaries.length === 0) return;
-
-    const selectedSavedFlow = savedFlowSummaries[selectedIndex];
-    if (!selectedSavedFlow) return;
-
-    setLoadingError(null);
-    setLoadingFilePath(selectedSavedFlow.filePath);
-
-    void loadSavedFlow(selectedSavedFlow.filePath)
-      .then((savedFlow) => {
-        applySavedFlow(savedFlow);
-      })
-      .catch((caughtError) => {
-        setLoadingError(
-          caughtError instanceof Error ? caughtError.message : "Failed to load flow.",
-        );
-        setLoadingFilePath(null);
-      });
+    if (key.return) selectFlow(selectedIndex);
   });
 
   if (!testAction) return null;
@@ -85,29 +88,31 @@ export const SavedFlowPickerScreen = () => {
           const isLoading = loadingFilePath === savedFlow.filePath;
 
           return (
-            <Box key={savedFlow.filePath} flexDirection="column" marginBottom={1}>
-              <Text>
-                <Text color={isSelected ? COLORS.PRIMARY : COLORS.DIM}>
-                  {isSelected ? `${figures.pointer} ` : "  "}
+            <Clickable key={savedFlow.filePath} onClick={() => selectFlow(actualIndex)}>
+              <Box flexDirection="column" marginBottom={1}>
+                <Text>
+                  <Text color={isSelected ? COLORS.PRIMARY : COLORS.DIM}>
+                    {isSelected ? `${figures.pointer} ` : "  "}
+                  </Text>
+                  {isSelected ? (
+                    <Text backgroundColor={COLORS.PRIMARY} color="#000000" bold>
+                      {" "}{savedFlow.title}{isLoading ? " (loading...)" : ""}{" "}
+                    </Text>
+                  ) : (
+                    <Text color={COLORS.TEXT}>
+                      {savedFlow.title}
+                      {isLoading ? " (loading...)" : ""}
+                    </Text>
+                  )}
                 </Text>
-                {isSelected ? (
-                  <Text backgroundColor={COLORS.PRIMARY} color="#000000" bold>
-                    {" "}{savedFlow.title}{isLoading ? " (loading...)" : ""}{" "}
-                  </Text>
-                ) : (
-                  <Text color={COLORS.TEXT}>
-                    {savedFlow.title}
-                    {isLoading ? " (loading...)" : ""}
-                  </Text>
-                )}
-              </Text>
-              <Text color={COLORS.DIM}>
-                {"  "}{savedFlow.description}
-                {savedFlow.savedTargetDisplayName
-                  ? ` · saved for ${savedFlow.savedTargetDisplayName}`
-                  : ""}
-              </Text>
-            </Box>
+                <Text color={COLORS.DIM}>
+                  {"  "}{savedFlow.description}
+                  {savedFlow.savedTargetDisplayName
+                    ? ` · saved for ${savedFlow.savedTargetDisplayName}`
+                    : ""}
+                </Text>
+              </Box>
+            </Clickable>
           );
         })}
         {savedFlowSummaries.length === 0 ? (
