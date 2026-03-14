@@ -1,6 +1,6 @@
 import { Text } from "ink";
 import figures from "figures";
-import { useColors } from "../theme-context.js";
+import { useColors } from "../../theme-context.js";
 import type { DiffStats } from "@browser-tester/supervisor";
 
 interface MenuItemProps {

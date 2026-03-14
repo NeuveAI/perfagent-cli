@@ -1,16 +1,16 @@
 import { useMemo, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { Input } from "../ui/input.js";
-import { useColors } from "../theme-context.js";
-import { stripMouseSequences } from "../hooks/mouse-context.js";
+import { useColors } from "../../theme-context.js";
+import { stripMouseSequences } from "../../hooks/mouse-context.js";
 import { Clickable } from "../ui/clickable.js";
 import { Collapsible } from "../ui/collapsible.js";
-import { saveFlow } from "../utils/save-flow.js";
-import { useAppStore } from "../store.js";
+import { saveFlow } from "../../utils/save-flow.js";
+import { useAppStore } from "../../store.js";
 import { ScreenHeading } from "../ui/screen-heading.js";
 import { ErrorMessage } from "../ui/error-message.js";
 import type { BrowserFlowPlan } from "@browser-tester/supervisor";
-import { SECTION_INDENT } from "../constants.js";
+import { SECTION_INDENT } from "../../constants.js";
 
 type Section = "details" | "assumptions" | "cookies" | "steps";
 

@@ -1,11 +1,11 @@
 import { resolve } from "node:path";
 import { useEffect, useRef } from "react";
 import { useStdout } from "ink";
-import { buildImageSequence } from "../utils/build-image-sequence.js";
+import { buildImageSequence } from "../../utils/build-image-sequence.js";
 import {
   supportsKittyImages,
   supportsItermImages,
-} from "../utils/supports-inline-images.js";
+} from "../../utils/supports-inline-images.js";
 import { FileLink } from "./file-link.js";
 
 interface ImageProps {

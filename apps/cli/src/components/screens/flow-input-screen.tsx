@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { Input } from "../ui/input.js";
-import { useColors } from "../theme-context.js";
-import { stripMouseSequences } from "../hooks/mouse-context.js";
-import type { TestAction } from "../utils/browser-agent.js";
-import { useAppStore } from "../store.js";
+import { useColors } from "../../theme-context.js";
+import { stripMouseSequences } from "../../hooks/mouse-context.js";
+import type { TestAction } from "../../utils/browser-agent.js";
+import { useAppStore } from "../../store.js";
 import { ScreenHeading } from "../ui/screen-heading.js";
 import { ErrorMessage } from "../ui/error-message.js";
 

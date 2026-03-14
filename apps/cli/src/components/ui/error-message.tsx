@@ -1,5 +1,5 @@
 import { Box, Text } from "ink";
-import { useColors } from "../theme-context.js";
+import { useColors } from "../../theme-context.js";
 
 interface ErrorMessageProps {
   message: string | null | undefined;

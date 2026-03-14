@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { Box, Text, useInput } from "ink";
-import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
+import { useStdoutDimensions } from "../../hooks/use-stdout-dimensions.js";
 import figures from "figures";
 import { execSync } from "child_process";
 import { GIT_TIMEOUT_MS, type CommitSummary } from "@browser-tester/supervisor";
@@ -12,15 +12,15 @@ import {
   COMMIT_SELECTOR_WIDTH,
   TABLE_COLUMN_GAP,
   VISIBLE_COMMIT_COUNT,
-} from "../constants.js";
-import { useColors } from "../theme-context.js";
-import { stripMouseSequences } from "../hooks/mouse-context.js";
+} from "../../constants.js";
+import { useColors } from "../../theme-context.js";
+import { stripMouseSequences } from "../../hooks/mouse-context.js";
 import { Clickable } from "../ui/clickable.js";
 import { SearchBar } from "../ui/search-bar.js";
-import { truncateText } from "../utils/truncate-text.js";
-import { visualPadEnd } from "../utils/visual-pad-end.js";
-import { useScrollableList } from "../hooks/use-scrollable-list.js";
-import { useAppStore } from "../store.js";
+import { truncateText } from "../../utils/truncate-text.js";
+import { visualPadEnd } from "../../utils/visual-pad-end.js";
+import { useScrollableList } from "../../hooks/use-scrollable-list.js";
+import { useAppStore } from "../../store.js";
 import { ScreenHeading } from "../ui/screen-heading.js";
 
 interface CommitWithMeta extends CommitSummary {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Box, Text, useInput } from "ink";
-import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
+import { useStdoutDimensions } from "../../hooks/use-stdout-dimensions.js";
 import figures from "figures";
 import {
   BRANCH_NAME_COLUMN_WIDTH,
@@ -8,21 +8,21 @@ import {
   BRANCH_VISIBLE_COUNT,
   COMMIT_SELECTOR_WIDTH,
   TABLE_COLUMN_GAP,
-} from "../constants.js";
-import { useColors } from "../theme-context.js";
-import { stripMouseSequences } from "../hooks/mouse-context.js";
+} from "../../constants.js";
+import { useColors } from "../../theme-context.js";
+import { stripMouseSequences } from "../../hooks/mouse-context.js";
 import { Clickable } from "../ui/clickable.js";
 import { SearchBar } from "../ui/search-bar.js";
 import { getLocalBranches } from "@browser-tester/supervisor";
 import {
   fetchRemoteBranches,
   type RemoteBranch,
-} from "../utils/fetch-remote-branches.js";
+} from "../../utils/fetch-remote-branches.js";
 import { Spinner } from "../ui/spinner.js";
-import { truncateText } from "../utils/truncate-text.js";
-import { visualPadEnd } from "../utils/visual-pad-end.js";
-import { useScrollableList } from "../hooks/use-scrollable-list.js";
-import { useAppStore } from "../store.js";
+import { truncateText } from "../../utils/truncate-text.js";
+import { visualPadEnd } from "../../utils/visual-pad-end.js";
+import { useScrollableList } from "../../hooks/use-scrollable-list.js";
+import { useAppStore } from "../../store.js";
 import { ScreenHeading } from "../ui/screen-heading.js";
 
 type PrFilter = "all" | "open" | "draft" | "merged" | "no-pr";

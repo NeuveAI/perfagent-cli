@@ -1,6 +1,6 @@
 import { Box, Text } from "ink";
 import figures from "figures";
-import { useColors } from "../theme-context.js";
+import { useColors } from "../../theme-context.js";
 import { Clickable } from "./clickable.js";
 import type { ReactNode } from "react";
 

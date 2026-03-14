@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import figures from "figures";
-import { THEMES, type ThemeDefinition } from "../themes.js";
-import { useColors, useThemeContext } from "../theme-context.js";
+import { THEMES, type ThemeDefinition } from "../../themes.js";
+import { useColors, useThemeContext } from "../../theme-context.js";
 import { Clickable } from "../ui/clickable.js";
-import { THEME_PICKER_VISIBLE_COUNT } from "../constants.js";
-import { saveThemeName } from "../utils/load-theme.js";
-import { useScrollableList } from "../hooks/use-scrollable-list.js";
-import { useAppStore } from "../store.js";
+import { THEME_PICKER_VISIBLE_COUNT } from "../../constants.js";
+import { saveThemeName } from "../../utils/load-theme.js";
+import { useScrollableList } from "../../hooks/use-scrollable-list.js";
+import { useAppStore } from "../../store.js";
 import { ScreenHeading } from "../ui/screen-heading.js";
 
 type VariantFilter = "light" | "dark";
