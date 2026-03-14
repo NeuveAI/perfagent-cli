@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Box, Text, useInput, useStdout } from "ink";
-import { useColors, useThemeContext } from "./theme-context.js";
+import { Box, Text, useInput } from "ink";
+import { useColors } from "./theme-context.js";
 import { MenuItem } from "./menu-item.js";
 import type { DiffStats } from "@browser-tester/supervisor";
 import { getRecommendedScope, type GitState, type TestScope } from "./utils/get-git-state.js";
@@ -8,8 +8,6 @@ import {
   FRAME_CONTENT_PADDING,
   FRAME_TITLE_DECORATION_WIDTH,
   MENU_ITEM_PREFIX_WIDTH,
-  STATUSBAR_BRANCH_PADDING,
-  STATUSBAR_TRAILING_PADDING,
 } from "./constants.js";
 import { useAppStore } from "./store.js";
 
@@ -61,9 +59,7 @@ const buildMenuOptions = (scope: TestScope, gitState: GitState): ScopeMenuOption
 };
 
 export const MainMenu = () => {
-  const { stdout } = useStdout();
   const COLORS = useColors();
-  const { theme } = useThemeContext();
   const gitState = useAppStore((state) => state.gitState);
   const autoRunAfterPlanning = useAppStore((state) => state.autoRunAfterPlanning);
   const selectAction = useAppStore((state) => state.selectAction);
@@ -234,9 +230,12 @@ export const MainMenu = () => {
       </Text>
       <Text color={COLORS.DIM}>
         {"│  "}
-        <Text color={COLORS.DIM}>
+        <Text color={autoRunAfterPlanning ? COLORS.TEXT : COLORS.DIM} bold={autoRunAfterPlanning}>
           auto-run after planning (<Text color={COLORS.TEXT || undefined}>⇥ tab</Text>):{" "}
-          <Text color={autoRunAfterPlanning ? COLORS.ORANGE : COLORS.DIM}>
+          <Text
+            color={autoRunAfterPlanning ? COLORS.GREEN : COLORS.DIM}
+            bold={autoRunAfterPlanning}
+          >
             {autoRunAfterPlanning ? "yes" : "no"}
           </Text>
         </Text>
@@ -250,20 +249,6 @@ export const MainMenu = () => {
         {"╯"}
       </Text>
 
-      <Box marginTop={1}>
-        <Text backgroundColor={theme.primary} color="#000000" bold>
-          {" "}
-          {gitState.currentBranch}{" "}
-        </Text>
-        <Text backgroundColor={theme.border} color={theme.text}>
-          {` t theme · b branch · ↑↓ nav`.padEnd(
-            stdout.columns -
-              STATUSBAR_BRANCH_PADDING -
-              gitState.currentBranch.length -
-              STATUSBAR_TRAILING_PADDING,
-          )}
-        </Text>
-      </Box>
     </Box>
   );
 };

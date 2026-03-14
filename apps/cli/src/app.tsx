@@ -10,6 +10,7 @@ import { Spinner } from "./spinner.js";
 import { TestingScreen } from "./testing-screen.js";
 import { ThemePickerScreen } from "./theme-picker-screen.js";
 import { MainMenu } from "./main-menu.js";
+import { Modeline } from "./modeline.js";
 import { generateBrowserPlan } from "./utils/browser-agent.js";
 import { useAppStore } from "./store.js";
 
@@ -83,31 +84,42 @@ export const App = () => {
     );
   }
 
-  switch (screen) {
-    case "testing":
-      return <TestingScreen />;
-    case "select-commit":
-      return <CommitPickerScreen />;
-    case "theme":
-      return <ThemePickerScreen />;
-    case "switch-branch":
-      return <BranchSwitcherScreen />;
-    case "flow-input":
-      return <FlowInputScreen />;
-    case "planning":
-      return (
-        <Box flexDirection="column" width="100%">
-          <PlanningScreen />
-          {planningError ? (
-            <Box paddingX={2}>
-              <Text color={COLORS.RED}>Planning failed: {planningError}</Text>
-            </Box>
-          ) : null}
-        </Box>
-      );
-    case "review-plan":
-      return <PlanReviewScreen />;
-    default:
-      return <MainMenu />;
-  }
+  const renderScreen = () => {
+    switch (screen) {
+      case "testing":
+        return <TestingScreen />;
+      case "select-commit":
+        return <CommitPickerScreen />;
+      case "theme":
+        return <ThemePickerScreen />;
+      case "switch-branch":
+        return <BranchSwitcherScreen />;
+      case "flow-input":
+        return <FlowInputScreen />;
+      case "planning":
+        return (
+          <Box flexDirection="column" width="100%">
+            <PlanningScreen />
+            {planningError ? (
+              <Box paddingX={2}>
+                <Text color={COLORS.RED}>Planning failed: {planningError}</Text>
+              </Box>
+            ) : null}
+          </Box>
+        );
+      case "review-plan":
+        return <PlanReviewScreen />;
+      default:
+        return <MainMenu />;
+    }
+  };
+
+  return (
+    <Box flexDirection="column" width="100%">
+      <Box flexGrow={1}>{renderScreen()}</Box>
+      <Box paddingX={1}>
+        <Modeline />
+      </Box>
+    </Box>
+  );
 };

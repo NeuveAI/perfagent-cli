@@ -1,12 +1,20 @@
 import { useCallback, useMemo, useState } from "react";
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useStdout } from "ink";
 import TextInput from "ink-text-input";
-import { COLUMN_PADDING, VISIBLE_COMMIT_COUNT } from "./constants.js";
+import {
+  COMMIT_HASH_COLUMN_WIDTH,
+  COMMIT_AUTHOR_COLUMN_WIDTH,
+  COMMIT_DATE_COLUMN_WIDTH,
+  COMMIT_SELECTOR_WIDTH,
+  VISIBLE_COMMIT_COUNT,
+} from "./constants.js";
 import { useColors } from "./theme-context.js";
 import { fetchCommits } from "./utils/fetch-commits.js";
+import { truncateText } from "./utils/truncate-text.js";
 import { useAppStore } from "./store.js";
 
 export const CommitPickerScreen = () => {
+  const { stdout } = useStdout();
   const selectCommit = useAppStore((state) => state.selectCommit);
   const COLORS = useColors();
   const [commits] = useState(() => fetchCommits());
@@ -25,15 +33,13 @@ export const CommitPickerScreen = () => {
     );
   }, [commits, searchQuery]);
 
-  const maxHashWidth = useMemo(
-    () => Math.max(...filteredCommits.map((commit) => commit.shortHash.length), 0) + COLUMN_PADDING,
-    [filteredCommits],
-  );
-
-  const maxDateWidth = useMemo(
-    () => Math.max(...filteredCommits.map((commit) => commit.relativeDate.length), 0),
-    [filteredCommits],
-  );
+  const subjectColumnWidth =
+    stdout.columns -
+    COMMIT_SELECTOR_WIDTH -
+    COMMIT_HASH_COLUMN_WIDTH -
+    COMMIT_AUTHOR_COLUMN_WIDTH -
+    COMMIT_DATE_COLUMN_WIDTH -
+    2;
 
   const scrollOffset = useMemo(() => {
     if (filteredCommits.length <= VISIBLE_COMMIT_COUNT) return 0;
@@ -81,7 +87,17 @@ export const CommitPickerScreen = () => {
         {searchQuery ? ` matching "${searchQuery}"` : ""}
       </Text>
 
-      <Box marginTop={1} flexDirection="column" height={VISIBLE_COMMIT_COUNT} overflow="hidden">
+      <Box marginTop={1} flexDirection="column">
+        <Text color={COLORS.DIM}>
+          {"  "}
+          {"Hash".padEnd(COMMIT_HASH_COLUMN_WIDTH)}
+          {"Message".padEnd(subjectColumnWidth)}
+          {"Author".padEnd(COMMIT_AUTHOR_COLUMN_WIDTH)}
+          {"Date"}
+        </Text>
+      </Box>
+
+      <Box flexDirection="column" height={VISIBLE_COMMIT_COUNT} overflow="hidden">
         {visibleCommits.map((commit, index) => {
           const actualIndex = index + scrollOffset;
           const isSelected = actualIndex === highlightedIndex;
@@ -90,13 +106,19 @@ export const CommitPickerScreen = () => {
               <Text color={isSelected ? COLORS.ORANGE : COLORS.DIM}>
                 {isSelected ? "❯ " : "  "}
               </Text>
-              <Text color={COLORS.PURPLE}>{commit.shortHash.padEnd(maxHashWidth)}</Text>
+              <Text color={COLORS.PURPLE}>
+                {commit.shortHash.padEnd(COMMIT_HASH_COLUMN_WIDTH)}
+              </Text>
               <Text color={isSelected ? COLORS.TEXT : COLORS.DIM} bold={isSelected}>
-                {commit.subject}
+                {truncateText(commit.subject, subjectColumnWidth - 1).padEnd(subjectColumnWidth)}
+              </Text>
+              <Text color={COLORS.CYAN}>
+                {truncateText(commit.author, COMMIT_AUTHOR_COLUMN_WIDTH - 1).padEnd(
+                  COMMIT_AUTHOR_COLUMN_WIDTH,
+                )}
               </Text>
               <Text color={COLORS.DIM}>
-                {"  "}
-                {commit.relativeDate.padStart(maxDateWidth)}
+                {truncateText(commit.relativeDate, COMMIT_DATE_COLUMN_WIDTH)}
               </Text>
             </Text>
           );
@@ -109,11 +131,7 @@ export const CommitPickerScreen = () => {
       {isSearching ? (
         <Box marginTop={1}>
           <Text color={COLORS.DIM}>/</Text>
-          <TextInput
-            focus
-            value={searchQuery}
-            onChange={handleInput}
-          />
+          <TextInput focus value={searchQuery} onChange={handleInput} />
         </Box>
       ) : searchQuery ? (
         <Box marginTop={1}>
@@ -121,11 +139,6 @@ export const CommitPickerScreen = () => {
         </Box>
       ) : null}
 
-      <Box marginTop={1}>
-        <Text color={COLORS.DIM}>
-          ↑↓ navigate · enter select · / search · esc back
-        </Text>
-      </Box>
     </Box>
   );
 };

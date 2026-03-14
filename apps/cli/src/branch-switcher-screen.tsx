@@ -1,44 +1,37 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useStdout } from "ink";
 import TextInput from "ink-text-input";
-import { COLUMN_PADDING, SEARCH_PLACEHOLDER } from "./constants.js";
+import {
+  BRANCH_NAME_COLUMN_WIDTH,
+  BRANCH_AUTHOR_COLUMN_WIDTH,
+  BRANCH_VISIBLE_COUNT,
+  COMMIT_SELECTOR_WIDTH,
+} from "./constants.js";
 import { useColors } from "./theme-context.js";
 import { fetchLocalBranches } from "./utils/fetch-local-branches.js";
 import { fetchRemoteBranches, type RemoteBranch } from "./utils/fetch-remote-branches.js";
 import { Spinner } from "./spinner.js";
-import { PrFilterBar, PR_FILTERS, type PrFilter } from "./pr-filter.js";
+import { truncateText } from "./utils/truncate-text.js";
+import { PR_FILTERS, type PrFilter } from "./pr-filter.js";
 import { useAppStore } from "./store.js";
 
 type Tab = "local" | "remote";
 
-const PrBadge = ({ branch }: { branch: RemoteBranch }) => {
-  const COLORS = useColors();
-  if (!branch.prNumber || !branch.prStatus) return null;
-
-  const colorMap = {
-    open: COLORS.GREEN,
-    draft: COLORS.DIM,
-    merged: COLORS.PURPLE,
-  };
-
-  return (
-    <Text color={colorMap[branch.prStatus]}>{` PR #${branch.prNumber} (${branch.prStatus})`}</Text>
-  );
-};
-
-const matchesFilter = (branch: RemoteBranch, filter: PrFilter): boolean => {
-  if (filter === "all") return true;
-  if (filter === "no-pr") return branch.prStatus === null;
-  return branch.prStatus === filter;
+const PR_STATUS_LABELS: Record<string, string> = {
+  open: "open",
+  draft: "draft",
+  merged: "merged",
 };
 
 export const BranchSwitcherScreen = () => {
+  const { stdout } = useStdout();
   const storeSwitchBranch = useAppStore((state) => state.switchBranch);
   const COLORS = useColors();
   const [activeTab, setActiveTab] = useState<Tab>("local");
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [activeFilter, setActiveFilter] = useState<PrFilter>("all");
+  const [isSearching, setIsSearching] = useState(false);
 
   const [localBranches] = useState(() => fetchLocalBranches());
   const [remoteBranches, setRemoteBranches] = useState<RemoteBranch[]>([]);
@@ -61,7 +54,11 @@ export const BranchSwitcherScreen = () => {
   }, [localBranches, searchQuery]);
 
   const filteredRemoteBranches = useMemo(() => {
-    let result = remoteBranches.filter((branch) => matchesFilter(branch, activeFilter));
+    let result = remoteBranches.filter((branch) => {
+      if (activeFilter === "all") return true;
+      if (activeFilter === "no-pr") return branch.prStatus === null;
+      return branch.prStatus === activeFilter;
+    });
     if (searchQuery) {
       const lower = searchQuery.toLowerCase();
       result = result.filter((branch) => branch.name.toLowerCase().includes(lower));
@@ -69,17 +66,24 @@ export const BranchSwitcherScreen = () => {
     return result;
   }, [remoteBranches, searchQuery, activeFilter]);
 
-  const maxBranchWidth = useMemo(
-    () =>
-      Math.max(...filteredRemoteBranches.map((branch) => branch.name.length), 0) + COLUMN_PADDING,
-    [filteredRemoteBranches],
-  );
+  const currentList = activeTab === "local" ? filteredLocalBranches : filteredRemoteBranches;
+  const currentCount = currentList.length;
 
-  const maxAuthorWidth = useMemo(
-    () =>
-      Math.max(...filteredRemoteBranches.map((branch) => branch.author.length), 0) + COLUMN_PADDING,
-    [filteredRemoteBranches],
-  );
+  const prColumnWidth =
+    stdout.columns -
+    COMMIT_SELECTOR_WIDTH -
+    BRANCH_NAME_COLUMN_WIDTH -
+    BRANCH_AUTHOR_COLUMN_WIDTH -
+    2;
+
+  const scrollOffset = useMemo(() => {
+    if (currentCount <= BRANCH_VISIBLE_COUNT) return 0;
+    const half = Math.floor(BRANCH_VISIBLE_COUNT / 2);
+    const maxOffset = currentCount - BRANCH_VISIBLE_COUNT;
+    return Math.min(maxOffset, Math.max(0, highlightedIndex - half));
+  }, [currentCount, highlightedIndex]);
+
+  const visibleItems = currentList.slice(scrollOffset, scrollOffset + BRANCH_VISIBLE_COUNT);
 
   const handleInput = useCallback((value: string) => {
     setSearchQuery(value);
@@ -97,6 +101,13 @@ export const BranchSwitcherScreen = () => {
   );
 
   useInput((input, key) => {
+    if (isSearching) {
+      if (key.escape) {
+        setIsSearching(false);
+      }
+      return;
+    }
+
     if (key.tab) {
       setActiveTab((previous) => (previous === "local" ? "remote" : "local"));
       setHighlightedIndex(0);
@@ -104,14 +115,10 @@ export const BranchSwitcherScreen = () => {
       return;
     }
 
-    if (key.downArrow || (key.ctrl && input === "n")) {
-      const max =
-        activeTab === "local"
-          ? filteredLocalBranches.length - 1
-          : filteredRemoteBranches.length - 1;
-      setHighlightedIndex((previous) => Math.min(max, previous + 1));
+    if (key.downArrow || input === "j" || (key.ctrl && input === "n")) {
+      setHighlightedIndex((previous) => Math.min(currentCount - 1, previous + 1));
     }
-    if (key.upArrow || (key.ctrl && input === "p")) {
+    if (key.upArrow || input === "k" || (key.ctrl && input === "p")) {
       setHighlightedIndex((previous) => Math.max(0, previous - 1));
     }
 
@@ -128,98 +135,131 @@ export const BranchSwitcherScreen = () => {
         storeSwitchBranch(filteredRemoteBranches[highlightedIndex].name);
       }
     }
+
+    if (input === "/") {
+      setIsSearching(true);
+    }
   });
 
   const isCurrentTabLoading = activeTab === "remote" && isLoadingRemote;
 
   return (
-    <Box flexDirection="column" width="100%" paddingX={2} paddingY={1}>
-      <Box flexDirection="row" gap={2}>
-        <Text
-          color={activeTab === "local" ? COLORS.SELECTION : COLORS.DIM}
-          bold={activeTab === "local"}
-        >
-          {activeTab === "local" ? "[Local]" : " Local "}
+    <Box flexDirection="column" width="100%" paddingX={1} paddingY={1}>
+      <Text bold color={COLORS.TEXT}>
+        Switch branch
+      </Text>
+      <Text color={COLORS.DIM}>
+        <Text color={activeTab === "local" ? COLORS.TEXT : COLORS.DIM} bold={activeTab === "local"}>
+          local
         </Text>
+        <Text color={COLORS.DIM}> · </Text>
         <Text
-          color={activeTab === "remote" ? COLORS.SELECTION : COLORS.DIM}
+          color={activeTab === "remote" ? COLORS.TEXT : COLORS.DIM}
           bold={activeTab === "remote"}
         >
-          {activeTab === "remote" ? "[Remote]" : " Remote "}
+          remote
         </Text>
-        {activeTab === "local" && <Text color={COLORS.DIM}>({filteredLocalBranches.length})</Text>}
-      </Box>
+        <Text color={COLORS.DIM}>
+          {"  "}({currentCount}){searchQuery ? ` matching "${searchQuery}"` : ""}
+        </Text>
+      </Text>
 
-      <Box
-        marginTop={1}
-        borderStyle="single"
-        borderTop
-        borderBottom={false}
-        borderLeft={false}
-        borderRight={false}
-        borderColor={COLORS.DIVIDER}
-      />
+      {activeTab === "remote" && (
+        <Box marginTop={1}>
+          <Text color={COLORS.DIM}>
+            {PR_FILTERS.map((filter, index) => {
+              const isActive = filter === activeFilter;
+              const separator = index < PR_FILTERS.length - 1 ? " · " : "";
+              const filterColors: Record<PrFilter, string> = {
+                all: COLORS.TEXT,
+                open: COLORS.GREEN,
+                draft: COLORS.DIM,
+                merged: COLORS.PURPLE,
+                "no-pr": COLORS.YELLOW,
+              };
+              return (
+                <Text key={filter}>
+                  <Text color={isActive ? filterColors[filter] : COLORS.DIM}>
+                    {isActive ? `[${filter}]` : filter}
+                  </Text>
+                  <Text color={COLORS.DIM}>{separator}</Text>
+                </Text>
+              );
+            })}
+          </Text>
+        </Box>
+      )}
 
       {isCurrentTabLoading ? (
         <Box marginTop={1}>
           <Spinner message="Fetching remote branches..." />
         </Box>
       ) : (
-        <Box flexDirection="column" marginTop={1}>
-          {activeTab === "remote" && <PrFilterBar activeFilter={activeFilter} />}
+        <>
+          <Box marginTop={1} flexDirection="column" height={BRANCH_VISIBLE_COUNT} overflow="hidden">
+            {visibleItems.map((item, index) => {
+              const actualIndex = index + scrollOffset;
+              const isSelected = actualIndex === highlightedIndex;
+              const branchName = typeof item === "string" ? item : item.name;
+              const remoteBranch = typeof item === "string" ? null : item;
 
-          <Box flexDirection="column" marginTop={activeTab === "remote" ? 1 : 0}>
-            {activeTab === "local" &&
-              filteredLocalBranches.map((branch, index) => (
-                <Text
-                  key={branch}
-                  color={index === highlightedIndex ? COLORS.SELECTION : COLORS.TEXT}
-                >
-                  {index === highlightedIndex ? `➤ ${branch}` : `  ${branch}`}
-                </Text>
-              ))}
-
-            {activeTab === "remote" &&
-              filteredRemoteBranches.map((branch, index) => (
-                <Text
-                  key={branch.name}
-                  color={index === highlightedIndex ? COLORS.SELECTION : COLORS.TEXT}
-                >
-                  {index === highlightedIndex ? "➤ " : "  "}
-                  {branch.name.padEnd(maxBranchWidth)}
-                  {branch.author && (
-                    <Text color={COLORS.YELLOW}>{branch.author.padEnd(maxAuthorWidth)}</Text>
+              return (
+                <Text key={branchName}>
+                  <Text color={isSelected ? COLORS.ORANGE : COLORS.DIM}>
+                    {isSelected ? "❯ " : "  "}
+                  </Text>
+                  <Text color={isSelected ? COLORS.TEXT : COLORS.DIM} bold={isSelected}>
+                    {truncateText(branchName, BRANCH_NAME_COLUMN_WIDTH - 1).padEnd(
+                      BRANCH_NAME_COLUMN_WIDTH,
+                    )}
+                  </Text>
+                  {remoteBranch && (
+                    <>
+                      <Text color={COLORS.CYAN}>
+                        {truncateText(
+                          remoteBranch.author || "—",
+                          BRANCH_AUTHOR_COLUMN_WIDTH - 1,
+                        ).padEnd(BRANCH_AUTHOR_COLUMN_WIDTH)}
+                      </Text>
+                      {remoteBranch.prNumber && remoteBranch.prStatus ? (
+                        <Text
+                          color={
+                            remoteBranch.prStatus === "open"
+                              ? COLORS.GREEN
+                              : remoteBranch.prStatus === "merged"
+                                ? COLORS.PURPLE
+                                : COLORS.DIM
+                          }
+                        >
+                          {truncateText(
+                            `#${remoteBranch.prNumber} ${PR_STATUS_LABELS[remoteBranch.prStatus] ?? ""}`,
+                            prColumnWidth,
+                          )}
+                        </Text>
+                      ) : (
+                        <Text color={COLORS.DIM}>—</Text>
+                      )}
+                    </>
                   )}
-                  <PrBadge branch={branch} />
                 </Text>
-              ))}
-
-            {((activeTab === "local" && filteredLocalBranches.length === 0) ||
-              (activeTab === "remote" && filteredRemoteBranches.length === 0)) && (
-              <Text color={COLORS.DIM}>No matching branches</Text>
-            )}
+              );
+            })}
+            {currentCount === 0 && <Text color={COLORS.DIM}>No matching branches</Text>}
           </Box>
-        </Box>
+        </>
       )}
 
-      {!isCurrentTabLoading && (
-        <Box marginTop={2} borderStyle="round" borderColor={COLORS.BORDER} paddingX={2}>
-          <TextInput
-            focus
-            placeholder={SEARCH_PLACEHOLDER}
-            value={searchQuery}
-            onChange={handleInput}
-          />
+      {isSearching ? (
+        <Box marginTop={1}>
+          <Text color={COLORS.DIM}>/</Text>
+          <TextInput focus value={searchQuery} onChange={handleInput} />
         </Box>
-      )}
+      ) : searchQuery ? (
+        <Box marginTop={1}>
+          <Text color={COLORS.DIM}>/{searchQuery}</Text>
+        </Box>
+      ) : null}
 
-      <Text color={COLORS.DIM}>
-        {isCurrentTabLoading
-          ? "Tab to switch · Esc to go back"
-          : activeTab === "remote"
-            ? "↑/↓ navigate · ←/→ filter · Tab to switch · Enter select · Esc back"
-            : "↑/↓ navigate · Tab to switch · Enter select · Esc back"}
-      </Text>
     </Box>
   );
 };
