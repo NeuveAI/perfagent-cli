@@ -1,6 +1,6 @@
 import { Box, Text } from "ink";
 import type { ElementInfo, ElementSourceInfo } from "element-source";
-import { useColors } from "./theme-context.js";
+import { useColors } from "./components/theme-context.js";
 
 const formatLocation = (source: ElementSourceInfo): string => {
   const parts = [source.filePath];
