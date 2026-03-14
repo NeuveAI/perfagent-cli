@@ -1,13 +1,12 @@
 import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { useEffect, useRef } from "react";
-import { Text, useStdout } from "ink";
-import Link from "ink-link";
+import { useStdout } from "ink";
 import { buildImageSequence } from "../../utils/build-image-sequence.js";
 import {
   supportsKittyImages,
   supportsItermImages,
 } from "../../utils/supports-inline-images.js";
+import { FileLink } from "./file-link.js";
 
 interface ImageProps {
   src: string;
@@ -37,12 +36,5 @@ export const Image = ({ src, alt, width, height }: ImageProps) => {
     return null;
   }
 
-  const fileUrl = pathToFileURL(absolutePath).href;
-  const label = alt ?? absolutePath;
-
-  return (
-    <Link url={fileUrl}>
-      <Text>{label}</Text>
-    </Link>
-  );
+  return <FileLink path={absolutePath} label={alt} />;
 };

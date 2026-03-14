@@ -19,6 +19,7 @@ import {
 } from "../utils/format-browser-tool-call.js";
 import { extractScreenshotPath } from "../utils/extract-screenshot-path.js";
 import { Image } from "./ui/image.js";
+import { FileLink } from "./ui/file-link.js";
 
 interface TestingLine {
   text: string;
@@ -274,7 +275,11 @@ export const TestingScreen = () => {
             <Text color={COLORS.GREEN} bold>
               Done
             </Text>
-            {videoPath ? <Text color={COLORS.DIM}>Video saved to {videoPath}</Text> : null}
+            {videoPath ? (
+              <Text color={COLORS.DIM}>
+                Video saved to <FileLink path={videoPath} />
+              </Text>
+            ) : null}
           </Box>
         </Box>
       )}
