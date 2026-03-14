@@ -134,7 +134,6 @@ export const MainMenu = () => {
 
   const dots = `${figures.circleFilled} ${figures.circleFilled} ${figures.circleFilled}`;
   const titleLabel = "browser-tester";
-  const fillChar = "\u00B7";
 
   const inner =
     Math.max(
@@ -142,7 +141,7 @@ export const MainMenu = () => {
       stringWidth(dots) + FRAME_DOTS_TRAILING_GAP
     ) + FRAME_CONTENT_PADDING;
 
-  const fillRow = `${fillChar} `.repeat(Math.ceil(inner / 2)).slice(0, inner);
+  const emptyRow = " ".repeat(inner);
   const topRows = Math.floor((BROWSER_FRAME_BODY_HEIGHT - 1) / 2);
   const bottomRows = BROWSER_FRAME_BODY_HEIGHT - 1 - topRows;
   const labelPadLeft = Math.floor((inner - stringWidth(titleLabel)) / 2);
@@ -150,12 +149,12 @@ export const MainMenu = () => {
 
   return (
     <Box flexDirection="column" width="100%" paddingX={1} paddingY={1}>
-      <Text color={COLORS.DIM}>
+      <Text color={COLORS.BORDER}>
         {"╭"}
         {"─".repeat(inner)}
         {"╮"}
       </Text>
-      <Text color={COLORS.DIM}>
+      <Text color={COLORS.BORDER}>
         {"│ "}
         <Text color="#ff5f57">{`${figures.circleFilled} `}</Text>
         <Text color="#febc2e">{`${figures.circleFilled} `}</Text>
@@ -164,31 +163,31 @@ export const MainMenu = () => {
         {"│"}
       </Text>
       {Array.from({ length: topRows }).map((_, index) => (
-        <Text key={`top-${index}`} color={COLORS.DIM}>
+        <Text key={`top-${index}`} color={COLORS.BORDER}>
           {"│"}
-          {fillRow}
+          {emptyRow}
           {"│"}
         </Text>
       ))}
-      <Text color={COLORS.DIM}>
+      <Text color={COLORS.BORDER}>
         {"│"}
-        {fillRow.slice(0, labelPadLeft)}
+        {" ".repeat(labelPadLeft)}
         <Text bold color={COLORS.TEXT}>
           {titleLabel}
         </Text>
-        <Text color={COLORS.DIM}>
-          {fillRow.slice(0, labelPadRight)}
+        <Text color={COLORS.BORDER}>
+          {" ".repeat(labelPadRight)}
           {"│"}
         </Text>
       </Text>
       {Array.from({ length: bottomRows }).map((_, index) => (
-        <Text key={`bot-${index}`} color={COLORS.DIM}>
+        <Text key={`bot-${index}`} color={COLORS.BORDER}>
           {"│"}
-          {fillRow}
+          {emptyRow}
           {"│"}
         </Text>
       ))}
-      <Text color={COLORS.DIM}>
+      <Text color={COLORS.BORDER}>
         {"╰"}
         {"─".repeat(inner)}
         {"╯"}
