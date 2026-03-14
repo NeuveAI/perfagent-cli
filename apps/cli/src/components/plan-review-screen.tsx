@@ -52,11 +52,7 @@ export const PlanReviewScreen = () => {
   const cookiesEnabled = (environment ?? {}).cookies === true;
 
   const titleColumnWidth =
-    columns -
-    COMMIT_SELECTOR_WIDTH -
-    STEP_ID_COLUMN_WIDTH -
-    STEP_ROUTE_COLUMN_WIDTH -
-    4;
+    columns - COMMIT_SELECTOR_WIDTH - STEP_ID_COLUMN_WIDTH - STEP_ROUTE_COLUMN_WIDTH - 4;
 
   const items: NavigableItem[] = useMemo(() => {
     const result: NavigableItem[] = [];
@@ -167,12 +163,11 @@ export const PlanReviewScreen = () => {
     const countSuffix = count !== undefined ? ` (${count})` : "";
     return (
       <Text>
-        <Text color={isSelected ? COLORS.ORANGE : COLORS.DIM}>
-          {isSelected ? "❯ " : "  "}
-        </Text>
+        <Text color={isSelected ? COLORS.ORANGE : COLORS.DIM}>{isSelected ? "❯ " : "  "}</Text>
         <Text color={isSelected ? COLORS.TEXT : COLORS.DIM}>{arrow} </Text>
         <Text bold color={isSelected ? COLORS.TEXT : COLORS.DIM}>
-          {label}{countSuffix}
+          {label}
+          {countSuffix}
         </Text>
       </Text>
     );
@@ -187,10 +182,12 @@ export const PlanReviewScreen = () => {
         {!collapsed["details"] ? (
           <Box flexDirection="column" marginLeft={4}>
             <Text color={COLORS.DIM}>
-              {"rationale  "}<Text color={COLORS.TEXT}>{plan.rationale}</Text>
+              {"rationale  "}
+              <Text color={COLORS.TEXT}>{plan.rationale}</Text>
             </Text>
             <Text color={COLORS.DIM}>
-              {"target     "}<Text color={COLORS.TEXT}>{plan.targetSummary}</Text>
+              {"target     "}
+              <Text color={COLORS.TEXT}>{plan.targetSummary}</Text>
             </Text>
           </Box>
         ) : null}
@@ -202,7 +199,8 @@ export const PlanReviewScreen = () => {
           {!collapsed["assumptions"]
             ? plan.assumptions.map((assumption) => (
                 <Text key={assumption} color={COLORS.DIM}>
-                  {"    "}<Text color={COLORS.TEXT}>{assumption}</Text>
+                  {"    "}
+                  <Text color={COLORS.TEXT}>{assumption}</Text>
                 </Text>
               ))
             : null}
@@ -215,7 +213,8 @@ export const PlanReviewScreen = () => {
           {!collapsed["cookies"] ? (
             <Box flexDirection="column" marginLeft={4}>
               <Text color={COLORS.DIM}>
-                {"reason  "}<Text color={COLORS.TEXT}>{plan.cookieSync.reason}</Text>
+                {"reason  "}
+                <Text color={COLORS.TEXT}>{plan.cookieSync.reason}</Text>
               </Text>
               <Text color={COLORS.DIM}>
                 {"sync    "}
@@ -273,11 +272,13 @@ export const PlanReviewScreen = () => {
                     <>
                       <Text color={COLORS.DIM}>
                         {"".padEnd(COMMIT_SELECTOR_WIDTH + STEP_ID_COLUMN_WIDTH + 2)}
-                        {"instruction  "}<Text color={COLORS.TEXT}>{step.instruction}</Text>
+                        {"instruction  "}
+                        <Text color={COLORS.TEXT}>{step.instruction}</Text>
                       </Text>
                       <Text color={COLORS.DIM}>
                         {"".padEnd(COMMIT_SELECTOR_WIDTH + STEP_ID_COLUMN_WIDTH + 2)}
-                        {"expected     "}<Text color={COLORS.TEXT}>{step.expectedOutcome}</Text>
+                        {"expected     "}
+                        <Text color={COLORS.TEXT}>{step.expectedOutcome}</Text>
                       </Text>
                     </>
                   ) : null}
@@ -290,7 +291,9 @@ export const PlanReviewScreen = () => {
 
       {editingStep ? (
         <Box flexDirection="column" marginTop={1}>
-          <Text bold color={COLORS.YELLOW}>Editing {editingStep.id}</Text>
+          <Text bold color={COLORS.YELLOW}>
+            Editing {editingStep.id}
+          </Text>
           <Box marginTop={0}>
             <Text color={COLORS.DIM}>/</Text>
             <TextInput focus value={editingValue} onChange={setEditingValue} />

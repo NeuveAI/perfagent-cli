@@ -34,7 +34,10 @@ export const FlowInputScreen = () => {
 
   return (
     <Box flexDirection="column" width="100%" paddingX={1} paddingY={1}>
-      <ScreenHeading title="Describe the browser flow to test" subtitle={ACTION_LABELS[testAction]} />
+      <ScreenHeading
+        title="Describe the browser flow to test"
+        subtitle={ACTION_LABELS[testAction]}
+      />
 
       <Box marginTop={1} flexDirection="column">
         <Text color={COLORS.TEXT}>

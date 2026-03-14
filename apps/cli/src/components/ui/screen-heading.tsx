@@ -23,9 +23,7 @@ export const ScreenHeading = ({ title, subtitle }: ScreenHeadingProps) => {
       <Text backgroundColor={theme.border} color={theme.text} bold>
         {leftContent}
       </Text>
-      <Text backgroundColor={theme.border}>
-        {" ".repeat(gapWidth)}
-      </Text>
+      <Text backgroundColor={theme.border}>{" ".repeat(gapWidth)}</Text>
       <Text backgroundColor={theme.border} color={theme.text}>
         {rightContent}
       </Text>

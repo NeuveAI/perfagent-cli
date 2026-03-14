@@ -27,6 +27,7 @@ const filterThemes = (filter: VariantFilter): string[] =>
 
 export const ThemePickerScreen = () => {
   const navigateTo = useAppStore((state) => state.navigateTo);
+  const previousScreen = useAppStore((state) => state.previousScreen);
   const { themeName, setTheme } = useThemeContext();
   const COLORS = useColors();
   const [previousTheme] = useState(themeName);
@@ -67,11 +68,11 @@ export const ThemePickerScreen = () => {
     if (key.return) {
       const selected = filteredThemeNames[selectedIndex];
       if (selected) saveThemeName(selected);
-      navigateTo("main");
+      navigateTo(previousScreen);
     }
     if (key.escape) {
       setTheme(previousTheme);
-      navigateTo("main");
+      navigateTo(previousScreen);
     }
   });
 

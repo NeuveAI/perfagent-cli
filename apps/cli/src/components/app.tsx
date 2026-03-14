@@ -77,9 +77,14 @@ export const App = () => {
 
   usePlanningEffect();
 
-  useInput((_input, key) => {
+  const navigateTo = useAppStore((state) => state.navigateTo);
+
+  useInput((input, key) => {
     if (key.escape && screen !== "main") {
       goBack();
+    }
+    if (input === "t" && screen !== "theme" && screen !== "flow-input") {
+      navigateTo("theme");
     }
   });
 

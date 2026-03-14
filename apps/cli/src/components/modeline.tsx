@@ -30,7 +30,7 @@ export const Modeline = () => {
   const hints =
     screen === "main" && savedFlowSummaries.length > 0
       ? "t theme · b branch · r reuse flow · ↑↓ nav"
-      : SCREEN_HINTS[screen] ?? "";
+      : (SCREEN_HINTS[screen] ?? "");
   const remaining =
     columns -
     STATUSBAR_BRANCH_PADDING -

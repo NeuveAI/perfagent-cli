@@ -28,6 +28,7 @@ export type Screen =
 
 interface AppStore {
   screen: Screen;
+  previousScreen: Screen;
   gitState: GitState | null;
   testAction: TestAction | null;
   selectedCommit: CommitSummary | null;
@@ -66,6 +67,7 @@ interface AppStore {
 
 export const useAppStore = create<AppStore>((set) => ({
   screen: "main",
+  previousScreen: "main",
   gitState: null,
   testAction: null,
   selectedCommit: null,
@@ -118,7 +120,7 @@ export const useAppStore = create<AppStore>((set) => ({
       return {};
     }),
 
-  navigateTo: (screen) => set({ screen }),
+  navigateTo: (screen) => set((state) => ({ screen, previousScreen: state.screen })),
 
   selectAction: (action) =>
     set({

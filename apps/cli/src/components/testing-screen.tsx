@@ -153,7 +153,10 @@ export const TestingScreen = () => {
 
   return (
     <Box flexDirection="column" width="100%" paddingX={1} paddingY={1}>
-      <ScreenHeading title="Executing browser plan" subtitle={`${plan.title} · ${target.displayName}`} />
+      <ScreenHeading
+        title="Executing browser plan"
+        subtitle={`${plan.title} · ${target.displayName}`}
+      />
 
       <Box flexDirection="column" marginTop={1}>
         <Text color={currentStep ? COLORS.SELECTION : COLORS.DIM}>

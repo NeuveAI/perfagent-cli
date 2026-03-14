@@ -97,10 +97,6 @@ export const MainMenu = () => {
       navigateTo("switch-branch");
     }
 
-    if (input === "t") {
-      navigateTo("theme");
-    }
-
     if (input === "r" && canReuseSavedFlow && selectedOption) {
       if (selectedOption.action === "test-unstaged" || selectedOption.action === "test-branch") {
         beginSavedFlowReuse(selectedOption.action);
