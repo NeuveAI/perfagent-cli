@@ -24,7 +24,9 @@ import type { AgentProviderSettings } from "./types.js";
 const DEFAULT_CLAUDE_MAX_TURNS = 200;
 
 const resolveClaudeExecutablePath = (): string | undefined => {
-  const require = createRequire(import.meta.url);
+  const require = createRequire(
+    typeof __filename !== "undefined" ? __filename : import.meta.url,
+  );
 
   try {
     const sdkEntryPath = require.resolve("@anthropic-ai/claude-agent-sdk");

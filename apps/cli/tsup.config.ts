@@ -9,4 +9,7 @@ export default defineConfig({
   banner: { js: "#!/usr/bin/env node" },
   noExternal: [/^@browser-tester\//],
   esbuildPlugins: [reactCompilerPlugin()],
+  esbuildOptions(options) {
+    options.logOverride = { ...options.logOverride, "empty-import-meta": "silent" };
+  },
 });

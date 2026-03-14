@@ -7,4 +7,7 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   external: ["@ai-sdk/provider", "@anthropic-ai/claude-agent-sdk", "@openai/codex-sdk", "ai"],
+  esbuildOptions(options) {
+    options.logOverride = { ...options.logOverride, "empty-import-meta": "silent" };
+  },
 });
