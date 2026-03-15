@@ -5,12 +5,6 @@ import { useState, useEffect, useCallback } from "react";
 // ─── Types ───────────────────────────────────────────────
 type ItemStack = { id: string; count: number } | null;
 
-type BlockTextures = {
-  top: HTMLImageElement;
-  side: HTMLImageElement;
-  front: HTMLImageElement;
-};
-
 // ─── Constants ───────────────────────────────────────────
 const S = 3; // scale factor (1 MC pixel = 3 CSS px)
 const SLOT = 18 * S;
@@ -18,85 +12,11 @@ const SLOT_INNER = 16 * S;
 const GUI_W = 176 * S;
 const GUI_H = 166 * S;
 
-// ─── Texture paths (real Minecraft Beta 1.6 textures) ───
-const BLOCK_TEXTURE_PATHS: Record<
-  string,
-  { top: string; side: string; front: string }
-> = {
-  oak_log: {
-    top: "/textures/oak_log_top.png",
-    side: "/textures/oak_log_side.png",
-    front: "/textures/oak_log_side.png",
-  },
-  oak_planks: {
-    top: "/textures/oak_planks_flat.png",
-    side: "/textures/oak_planks_flat.png",
-    front: "/textures/oak_planks_flat.png",
-  },
+// ─── Item icon paths (flat textures) ───
+const ITEM_ICONS: Record<string, string> = {
+  oak_log: "/textures/oak_log_side.png",
+  oak_planks: "/textures/oak_planks.png",
 };
-
-// ─── Load an image as a promise ─────────────────────────
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
-}
-
-// ─── Render a 3D isometric block to a data URL ─────────
-// Uses real Minecraft isometric projection:
-//   3D x → screen (1, 0.5)
-//   3D z → screen (-1, 0.5)
-//   3D y → screen (0, -1)
-// Fits a 16-unit cube into a 32x32 canvas (scale = 0.5)
-function renderIsometricBlock(textures: BlockTextures): string {
-  const canvas = document.createElement("canvas");
-  // Use higher resolution for crisp rendering
-  const size = 32;
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
-
-  // Disable image smoothing for crisp pixel art
-  ctx.imageSmoothingEnabled = false;
-
-  // Face transforms map 16x16 texture to isometric parallelograms
-  // Scale factor: 16 texture px → 16 screen px (cube fits in ~32x32)
-
-  // Draw order: left, right, top (painter's algorithm)
-
-  // LEFT FACE (z=S plane, south-facing)
-  // Maps texture (0,0)→(0,8), (16,0)→(16,16), (0,16)→(0,24)
-  ctx.save();
-  ctx.setTransform(1, 0.5, 0, 1, 0, 8);
-  ctx.drawImage(textures.side, 0, 0, 16, 16);
-  // Darken: south face = 0.8 brightness → 20% dark overlay
-  ctx.fillStyle = "rgba(0,0,0,0.2)";
-  ctx.fillRect(0, 0, 16, 16);
-  ctx.restore();
-
-  // RIGHT FACE (x=S plane, east-facing)
-  // Maps texture (0,0)→(32,8), (16,0)→(16,16), (0,16)→(32,24)
-  ctx.save();
-  ctx.setTransform(-1, 0.5, 0, 1, 32, 8);
-  ctx.drawImage(textures.front, 0, 0, 16, 16);
-  // Darken: east face = 0.6 brightness → 40% dark overlay
-  ctx.fillStyle = "rgba(0,0,0,0.4)";
-  ctx.fillRect(0, 0, 16, 16);
-  ctx.restore();
-
-  // TOP FACE (y=S plane)
-  // Maps texture (0,0)→(16,0), (16,0)→(32,8), (0,16)→(0,8)
-  ctx.save();
-  ctx.setTransform(1, 0.5, -1, 0.5, 16, 0);
-  ctx.drawImage(textures.top, 0, 0, 16, 16);
-  ctx.restore();
-
-  return canvas.toDataURL();
-}
 
 // Dirt background uses the real texture from /textures/dirt.png
 const DIRT_BG_SIZE = 16 * 4; // tile at 4x scale for the classic look
@@ -251,8 +171,8 @@ function Slot({
 
 // ─── Main Component ─────────────────────────────────────
 export default function CraftingTable() {
-  const [itemIcons, setItemIcons] = useState<Record<string, string>>({});
-  const [ready, setReady] = useState(false);
+  const itemIcons = ITEM_ICONS;
+  const ready = true;
 
   // Inventory: 36 slots (0-26 = main, 27-35 = hotbar)
   const [inventory, setInventory] = useState<ItemStack[]>(() => {
@@ -267,27 +187,6 @@ export default function CraftingTable() {
   const [craftingOutput, setCraftingOutput] = useState<ItemStack>(null);
   const [heldItem, setHeldItem] = useState<ItemStack>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-
-  // Load real textures and create 3D isometric renders
-  useEffect(() => {
-    async function loadTextures() {
-      const icons: Record<string, string> = {};
-
-      for (const [blockId, paths] of Object.entries(BLOCK_TEXTURE_PATHS)) {
-        const [top, side, front] = await Promise.all([
-          loadImage(paths.top),
-          loadImage(paths.side),
-          loadImage(paths.front),
-        ]);
-        icons[blockId] = renderIsometricBlock({ top, side, front });
-      }
-
-      setItemIcons(icons);
-      setReady(true);
-    }
-
-    loadTextures();
-  }, []);
 
   // Mouse tracking
   useEffect(() => {
