@@ -18,24 +18,24 @@ interface ScopeMenuOption {
 }
 
 const buildMenuOptions = (gitState: GitState): ScopeMenuOption[] => {
+  const options: ScopeMenuOption[] = [];
+
   if (!gitState.isOnMain && gitState.hasBranchCommits) {
-    return [
-      {
-        label: "Test current branch",
-        detail: `(${gitState.branchCommitCount} commits)`,
-        action: "test-branch",
-        diffStats: gitState.branchDiffStats,
-      },
-    ];
+    options.push({
+      label: "Test current branch",
+      detail: `(${gitState.branchCommitCount} commits)`,
+      action: "test-branch",
+      diffStats: gitState.branchDiffStats,
+    });
   }
 
-  return [
-    {
-      label: "Select a PR to test",
-      detail: "",
-      action: "select-pr",
-    },
-  ];
+  options.push({
+    label: "Select a PR to test",
+    detail: "",
+    action: "select-pr",
+  });
+
+  return options;
 };
 
 export const MainMenu = () => {
