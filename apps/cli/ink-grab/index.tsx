@@ -13,8 +13,7 @@ import type { StackFrame } from "bippy/source";
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const IS_CLICK_SUPPORT_ENABLED =
-  process.env.SUPPORT_CLICK === "true" ||
-  process.env.SUPPORT_CLICK === "1";
+  process.env.SUPPORT_CLICK === "true" || process.env.SUPPORT_CLICK === "1";
 const SGR_PREFIX = "\x1b[<";
 const CSI_PREFIX = "\x1b[";
 const MOUSE_ENABLE = "\x1b[?1003h\x1b[?1006h";
@@ -25,9 +24,19 @@ const TEXT_PREVIEW_MAX_CHARS = 50;
 const OVERLAY_MAX_WIDTH = 60;
 
 const INK_INTERNAL_NAMES = new Set([
-  "Box", "Text", "Static", "Transform", "Newline", "Spacer",
-  "App", "StdinContext", "StdoutContext", "StderrContext",
-  "FocusContext", "AccessibilityContext", "ThemeContext",
+  "Box",
+  "Text",
+  "Static",
+  "Transform",
+  "Newline",
+  "Spacer",
+  "App",
+  "StdinContext",
+  "StdoutContext",
+  "StderrContext",
+  "FocusContext",
+  "AccessibilityContext",
+  "ThemeContext",
 ]);
 
 interface TerminalMouseEvent {
@@ -46,8 +55,18 @@ const parseMouseSequence = (sequence: string): TerminalMouseEvent | null => {
   const buttonCode = Number(parts[0]);
   const xCoordinate = Number(parts[1]);
   const yCoordinate = Number(parts[2]);
-  if (!Number.isFinite(buttonCode) || !Number.isFinite(xCoordinate) || !Number.isFinite(yCoordinate)) return null;
-  return { x: xCoordinate, y: yCoordinate, isMove: Boolean(buttonCode & 32), meta: Boolean(buttonCode & 8) };
+  if (
+    !Number.isFinite(buttonCode) ||
+    !Number.isFinite(xCoordinate) ||
+    !Number.isFinite(yCoordinate)
+  )
+    return null;
+  return {
+    x: xCoordinate,
+    y: yCoordinate,
+    isMove: Boolean(buttonCode & 32),
+    meta: Boolean(buttonCode & 8),
+  };
 };
 
 const parseCursorPosition = (data: string): number | null => {
@@ -84,15 +103,21 @@ const truncatePreview = (text: string, maxLength: number): string => {
 };
 
 const findDeepestElement = (
-  node: DOMElement, absoluteX: number, absoluteY: number, targetX: number, targetY: number,
+  node: DOMElement,
+  absoluteX: number,
+  absoluteY: number,
+  targetX: number,
+  targetY: number,
 ): DOMElement | null => {
   const yogaNode = node.yogaNode;
   if (!yogaNode) return null;
   const nodeLeft = absoluteX + yogaNode.getComputedLeft();
   const nodeTop = absoluteY + yogaNode.getComputedTop();
   const withinBounds =
-    targetX >= nodeLeft && targetX < nodeLeft + yogaNode.getComputedWidth() &&
-    targetY >= nodeTop && targetY < nodeTop + yogaNode.getComputedHeight();
+    targetX >= nodeLeft &&
+    targetX < nodeLeft + yogaNode.getComputedWidth() &&
+    targetY >= nodeTop &&
+    targetY < nodeTop + yogaNode.getComputedHeight();
   if (!withinBounds) return null;
   for (const child of node.childNodes) {
     if (isDOMElement(child)) {
@@ -103,8 +128,12 @@ const findDeepestElement = (
   return node;
 };
 
-const hitTest = (root: DOMElement, terminalX: number, terminalY: number, verticalOffset: number): DOMElement | null =>
-  findDeepestElement(root, 0, 0, terminalX, terminalY - verticalOffset);
+const hitTest = (
+  root: DOMElement,
+  terminalX: number,
+  terminalY: number,
+  verticalOffset: number,
+): DOMElement | null => findDeepestElement(root, 0, 0, terminalX, terminalY - verticalOffset);
 
 const localFetch = async (url: string): Promise<Response> => {
   try {
@@ -154,7 +183,9 @@ const findNearestUserComponent = (fiber: Fiber): { name: string; fiber: Fiber } 
 const stripFileProtocol = (frames: StackFrame[]): StackFrame[] =>
   frames.map((frame) => ({
     ...frame,
-    fileName: frame.fileName?.startsWith("file://") ? fileURLToPath(frame.fileName) : frame.fileName,
+    fileName: frame.fileName?.startsWith("file://")
+      ? fileURLToPath(frame.fileName)
+      : frame.fileName,
   }));
 
 const formatSource = (frame: StackFrame): string => {
@@ -185,7 +216,9 @@ const resolveInkElement = async (node: DOMElement): Promise<ResolvedElement> => 
     }
     const rawStack = await getOwnerStack(component.fiber, true, localFetch);
     const symbolicated = await symbolicateStack(stripFileProtocol(rawStack), true, localFetch);
-    const sourceFrame = symbolicated.find((frame) => frame.fileName && isSourceFile(frame.fileName));
+    const sourceFrame = symbolicated.find(
+      (frame) => frame.fileName && isSourceFile(frame.fileName),
+    );
     const source = sourceFrame ? formatSource(sourceFrame) : null;
     const clipboardText = `<${component.name}>${preview ? ` "${preview}"` : ""}${source ? ` ${source}` : ""}`;
     return { component: component.name, tag, preview, source, clipboardText };
@@ -195,7 +228,9 @@ const resolveInkElement = async (node: DOMElement): Promise<ResolvedElement> => 
 };
 
 const copyToClipboard = (text: string): void => {
-  try { execSync("pbcopy", { input: text, stdio: ["pipe", "ignore", "ignore"] }); } catch {}
+  try {
+    execSync("pbcopy", { input: text, stdio: ["pipe", "ignore", "ignore"] });
+  } catch {}
 };
 
 interface InkGrabProps {
@@ -238,7 +273,12 @@ export const InkGrab = ({ children }: InkGrabProps) => {
           return;
         }
 
-        const element = hitTest(rootRef.current, mouseEvent.x - 1, mouseEvent.y - 1, verticalOffsetRef.current);
+        const element = hitTest(
+          rootRef.current,
+          mouseEvent.x - 1,
+          mouseEvent.y - 1,
+          verticalOffsetRef.current,
+        );
         if (!element) {
           if (mouseEvent.isMove) setHoveredElement(null);
           return;
@@ -256,7 +296,9 @@ export const InkGrab = ({ children }: InkGrabProps) => {
     };
 
     internalEmitter.on("input", handleInput);
-    setTimeout(() => { if (!cancelled) stdout.write(CURSOR_QUERY); }, CALIBRATION_DELAY_MS);
+    setTimeout(() => {
+      if (!cancelled) stdout.write(CURSOR_QUERY);
+    }, CALIBRATION_DELAY_MS);
 
     return () => {
       cancelled = true;
@@ -271,16 +313,36 @@ export const InkGrab = ({ children }: InkGrabProps) => {
     <Box ref={rootRef}>
       {children}
       {hoveredElement ? (
-        <Box position="absolute" marginLeft={stdout.columns - overlayWidth} flexDirection="column" borderStyle="round" borderColor="magenta" paddingX={1} width={overlayWidth}>
-          <Text color="magenta" bold wrap="truncate-end">{"<"}{hoveredElement.component}{">"}</Text>
+        <Box
+          position="absolute"
+          marginLeft={stdout.columns - overlayWidth}
+          flexDirection="column"
+          borderStyle="round"
+          borderColor="magenta"
+          paddingX={1}
+          width={overlayWidth}
+        >
+          <Text color="magenta" bold wrap="truncate-end">
+            {"<"}
+            {hoveredElement.component}
+            {">"}
+          </Text>
           {hoveredElement.component !== hoveredElement.tag ? (
-            <Text dimColor wrap="truncate-end">{hoveredElement.tag}</Text>
+            <Text dimColor wrap="truncate-end">
+              {hoveredElement.tag}
+            </Text>
           ) : null}
           {hoveredElement.preview ? (
-            <Text color="gray" wrap="truncate-end">{"\""}{hoveredElement.preview}{"\""}</Text>
+            <Text color="gray" wrap="truncate-end">
+              {'"'}
+              {hoveredElement.preview}
+              {'"'}
+            </Text>
           ) : null}
           {hoveredElement.source ? (
-            <Text color="cyan" wrap="truncate-end">{hoveredElement.source}</Text>
+            <Text color="cyan" wrap="truncate-end">
+              {hoveredElement.source}
+            </Text>
           ) : null}
         </Box>
       ) : null}

@@ -41,22 +41,12 @@ export const HintBar = ({ segments, color, mutedColor }: HintBarProps) => (
       <Box key={segment.key + segment.label}>
         {segment.onClick ? (
           <Clickable fullWidth={false} onClick={segment.onClick}>
-            <HintContent
-              segment={segment}
-              color={color}
-              mutedColor={mutedColor}
-            />
+            <HintContent segment={segment} color={color} mutedColor={mutedColor} />
           </Clickable>
         ) : (
-          <HintContent
-            segment={segment}
-            color={color}
-            mutedColor={mutedColor}
-          />
+          <HintContent segment={segment} color={color} mutedColor={mutedColor} />
         )}
-        {index < segments.length - 1 && (
-          <Text color={mutedColor}>{HINT_SEPARATOR}</Text>
-        )}
+        {index < segments.length - 1 && <Text color={mutedColor}>{HINT_SEPARATOR}</Text>}
       </Box>
     ))}
   </Box>

@@ -142,6 +142,7 @@ export const TestingScreen = () => {
   const environment = useAppStore((state) => state.browserEnvironment);
   const completeTestingRun = useAppStore((state) => state.completeTestingRun);
   const exitTesting = useAppStore((state) => state.exitTesting);
+  const autoSaveStatus = useAppStore((state) => state.autoSaveStatus);
   const COLORS = useColors();
   const colorsRef = useRef(COLORS);
   colorsRef.current = COLORS;
@@ -304,6 +305,22 @@ export const TestingScreen = () => {
         title="Executing browser plan"
         subtitle={`${plan.title} · ${target.displayName}`}
       />
+
+      {autoSaveStatus === "saving" ? (
+        <Box marginTop={1}>
+          <Text color={COLORS.DIM}>Saving flow...</Text>
+        </Box>
+      ) : autoSaveStatus === "saved" ? (
+        <Box marginTop={1}>
+          <Text color={COLORS.GREEN}>{"✓ "}</Text>
+          <Text color={COLORS.DIM}>Flow saved</Text>
+        </Box>
+      ) : autoSaveStatus === "error" ? (
+        <Box marginTop={1}>
+          <Text color={COLORS.RED}>{"✗ "}</Text>
+          <Text color={COLORS.DIM}>Auto-save failed</Text>
+        </Box>
+      ) : null}
 
       <Box flexDirection="column" marginTop={1}>
         <Text color={currentStep ? COLORS.SELECTION : COLORS.DIM}>

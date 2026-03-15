@@ -15,12 +15,10 @@ import { ThemePickerScreen } from "./screens/theme-picker-screen.js";
 import { MainMenu } from "./screens/main-menu-screen.js";
 import { Modeline } from "./ui/modeline.js";
 import { InkGrab } from "../../ink-grab/index.js";
-import {
-  resolveBrowserTarget,
-  getBrowserEnvironment,
-} from "../utils/browser-agent.js";
+import { resolveBrowserTarget, getBrowserEnvironment } from "../utils/browser-agent.js";
 import { planBrowserFlow } from "@browser-tester/supervisor";
 import { useAppStore } from "../store.js";
+import { saveFlow } from "../utils/save-flow.js";
 
 const usePlanningEffect = () => {
   const screen = useAppStore((state) => state.screen);
@@ -66,9 +64,7 @@ const usePlanningEffect = () => {
 
     void run().catch((caughtError) => {
       if (!isCancelled) {
-        failPlanning(
-          caughtError instanceof Error ? caughtError.message : "Unknown error"
-        );
+        failPlanning(caughtError instanceof Error ? caughtError.message : "Unknown error");
       }
     });
 
@@ -84,6 +80,64 @@ const usePlanningEffect = () => {
     screen,
     selectedCommit,
     testAction,
+  ]);
+};
+
+const useAutoSaveEffect = () => {
+  const screen = useAppStore((state) => state.screen);
+  const autoSaveFlows = useAppStore((state) => state.autoSaveFlows);
+  const autoSaveStatus = useAppStore((state) => state.autoSaveStatus);
+  const planOrigin = useAppStore((state) => state.planOrigin);
+  const resolvedTarget = useAppStore((state) => state.resolvedTarget);
+  const generatedPlan = useAppStore((state) => state.generatedPlan);
+  const browserEnvironment = useAppStore((state) => state.browserEnvironment);
+  const loadSavedFlows = useAppStore((state) => state.loadSavedFlows);
+
+  useEffect(() => {
+    if (
+      screen !== "testing" ||
+      !autoSaveFlows ||
+      autoSaveStatus !== "idle" ||
+      planOrigin !== "generated" ||
+      !resolvedTarget ||
+      !generatedPlan ||
+      !browserEnvironment
+    ) {
+      return;
+    }
+
+    let isCancelled = false;
+    useAppStore.setState({ autoSaveStatus: "saving" });
+
+    void saveFlow({
+      target: resolvedTarget,
+      plan: generatedPlan,
+      environment: browserEnvironment,
+    })
+      .then(() => {
+        if (!isCancelled) {
+          useAppStore.setState({ autoSaveStatus: "saved" });
+          void loadSavedFlows();
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          useAppStore.setState({ autoSaveStatus: "error" });
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    autoSaveFlows,
+    autoSaveStatus,
+    browserEnvironment,
+    generatedPlan,
+    loadSavedFlows,
+    planOrigin,
+    resolvedTarget,
+    screen,
   ]);
 };
 
@@ -105,6 +159,7 @@ export const App = () => {
   }, [loadSavedFlows]);
 
   usePlanningEffect();
+  useAutoSaveEffect();
 
   const navigateTo = useAppStore((state) => state.navigateTo);
 

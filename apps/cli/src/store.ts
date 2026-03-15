@@ -14,10 +14,7 @@ import {
   type TestAction,
 } from "./utils/browser-agent.js";
 import { getGitState, type GitState } from "./utils/get-git-state.js";
-import {
-  listSavedFlows,
-  type SavedFlowSummary,
-} from "./utils/list-saved-flows.js";
+import { listSavedFlows, type SavedFlowSummary } from "./utils/list-saved-flows.js";
 import type { LoadedSavedFlow } from "./utils/load-saved-flow.js";
 import type { EnvironmentOverrides } from "./utils/test-run-config.js";
 
@@ -55,6 +52,8 @@ interface AppStore {
   checkedOutPrNumber: number | null;
   checkoutError: string | null;
   latestRunReport: BrowserRunReport | null;
+  autoSaveFlows: boolean;
+  autoSaveStatus: "idle" | "saving" | "saved" | "error";
 
   setMainMenuOnAction: (value: boolean) => void;
   loadGitState: () => void;
@@ -67,6 +66,7 @@ interface AppStore {
   applySavedFlow: (savedFlow: LoadedSavedFlow) => void;
   submitFlowInstruction: (instruction: string) => void;
   toggleAutoRun: () => void;
+  toggleAutoSave: () => void;
   completePlanning: (result: {
     target: TestTarget;
     plan: BrowserFlowPlan;
@@ -89,6 +89,7 @@ const RESET_PLAN_STATE = {
   browserEnvironment: null,
   pendingSavedFlow: null,
   latestRunReport: null,
+  autoSaveStatus: "idle" as const,
 };
 
 const RESET_FLOW_STATE = {
@@ -101,16 +102,13 @@ const RESET_FLOW_STATE = {
   planOrigin: null,
 };
 
-const rememberFlowInstruction = (
-  history: string[],
-  instruction: string
-): string[] => {
+const rememberFlowInstruction = (history: string[], instruction: string): string[] => {
   if (!instruction) return history;
 
-  return [
-    instruction,
-    ...history.filter((entry) => entry !== instruction),
-  ].slice(0, FLOW_INPUT_HISTORY_LIMIT);
+  return [instruction, ...history.filter((entry) => entry !== instruction)].slice(
+    0,
+    FLOW_INPUT_HISTORY_LIMIT,
+  );
 };
 
 export const useAppStore = create<AppStore>((set) => ({
@@ -135,6 +133,8 @@ export const useAppStore = create<AppStore>((set) => ({
   checkedOutPrNumber: null,
   checkoutError: null,
   latestRunReport: null,
+  autoSaveFlows: true,
+  autoSaveStatus: "idle",
 
   setMainMenuOnAction: (value) => set({ mainMenuOnAction: value }),
   loadGitState: () => set({ gitState: getGitState() }),
@@ -148,8 +148,7 @@ export const useAppStore = create<AppStore>((set) => ({
     set((state) => {
       if (state.screen === "review-plan") {
         return {
-          screen:
-            state.planOrigin === "saved" ? "saved-flow-picker" : "flow-input",
+          screen: state.planOrigin === "saved" ? "saved-flow-picker" : "flow-input",
         };
       }
       if (state.screen === "planning") {
@@ -179,8 +178,7 @@ export const useAppStore = create<AppStore>((set) => ({
       return {};
     }),
 
-  navigateTo: (screen) =>
-    set((state) => ({ screen, previousScreen: state.screen })),
+  navigateTo: (screen) => set((state) => ({ screen, previousScreen: state.screen })),
 
   selectAction: (action) =>
     set({
@@ -253,17 +251,14 @@ export const useAppStore = create<AppStore>((set) => ({
     set((state) => ({
       ...RESET_PLAN_STATE,
       flowInstruction: instruction,
-      flowInstructionHistory: rememberFlowInstruction(
-        state.flowInstructionHistory,
-        instruction
-      ),
+      flowInstructionHistory: rememberFlowInstruction(state.flowInstructionHistory, instruction),
       planningError: null,
       planOrigin: "generated",
       screen: "planning",
     })),
 
-  toggleAutoRun: () =>
-    set((state) => ({ autoRunAfterPlanning: !state.autoRunAfterPlanning })),
+  toggleAutoRun: () => set((state) => ({ autoRunAfterPlanning: !state.autoRunAfterPlanning })),
+  toggleAutoSave: () => set((state) => ({ autoSaveFlows: !state.autoSaveFlows })),
 
   completePlanning: (result) =>
     set((state) => ({
@@ -271,9 +266,7 @@ export const useAppStore = create<AppStore>((set) => ({
       generatedPlan: result.plan,
       browserEnvironment: result.environment,
       screen:
-        state.autoRunAfterPlanning && !result.plan.cookieSync.required
-          ? "testing"
-          : "review-plan",
+        state.autoRunAfterPlanning && !result.plan.cookieSync.required ? "testing" : "review-plan",
     })),
 
   failPlanning: (error) => set({ planningError: error }),
@@ -285,8 +278,7 @@ export const useAppStore = create<AppStore>((set) => ({
   requestPlanApproval: () =>
     set((state) => ({
       screen:
-        state.generatedPlan?.cookieSync.required &&
-        state.browserEnvironment?.cookies !== true
+        state.generatedPlan?.cookieSync.required && state.browserEnvironment?.cookies !== true
           ? "cookie-sync-confirm"
           : "testing",
     })),

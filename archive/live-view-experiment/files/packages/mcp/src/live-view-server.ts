@@ -59,10 +59,7 @@ const getViewerHtml = (): string => `<!doctype html>
 </html>
 `;
 
-const writeMjpegFrame = (
-  response: ServerResponse<IncomingMessage>,
-  frameBuffer: Buffer,
-): void => {
+const writeMjpegFrame = (response: ServerResponse<IncomingMessage>, frameBuffer: Buffer): void => {
   response.write(`--${LIVE_VIEW_MJPEG_BOUNDARY}\r\n`);
   response.write("Content-Type: image/jpeg\r\n");
   response.write(`Content-Length: ${frameBuffer.length}\r\n\r\n`);

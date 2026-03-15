@@ -30,7 +30,9 @@ const ensureDotPrefix = (domain: string): string =>
   domain.startsWith(".") ? domain : `.${domain}`;
 
 const resolveCookieDomain = (cookie: Cookie): string =>
-  cookie.name.startsWith("__Host-") ? cookie.domain.replace(/^\./, "") : ensureDotPrefix(cookie.domain);
+  cookie.name.startsWith("__Host-")
+    ? cookie.domain.replace(/^\./, "")
+    : ensureDotPrefix(cookie.domain);
 
 const toBaseCookie = (cookie: Cookie) => ({
   name: cookie.name,

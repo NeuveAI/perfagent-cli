@@ -103,8 +103,9 @@ describe("toPlaywrightCookies", () => {
   });
 
   it("preserves host-only domains for __Host- cookies", () => {
-    expect(toPlaywrightCookies([cookie({ name: "__Host-session", domain: "example.com" })])[0].domain)
-      .toBe("example.com");
+    expect(
+      toPlaywrightCookies([cookie({ name: "__Host-session", domain: "example.com" })])[0].domain,
+    ).toBe("example.com");
   });
 });
 

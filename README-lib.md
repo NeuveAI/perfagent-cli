@@ -76,11 +76,11 @@ Options:
 
 ## Environment variables
 
-| Variable | Description |
-| --- | --- |
-| `BROWSER_TESTER_BASE_URL` | Default base URL for the browser |
-| `BROWSER_TESTER_HEADED` | Set to `true` or `1` to run headed by default |
-| `BROWSER_TESTER_COOKIES` | Set to `true` or `1` to enable cookie sync by default |
+| Variable                  | Description                                           |
+| ------------------------- | ----------------------------------------------------- |
+| `BROWSER_TESTER_BASE_URL` | Default base URL for the browser                      |
+| `BROWSER_TESTER_HEADED`   | Set to `true` or `1` to run headed by default         |
+| `BROWSER_TESTER_COOKIES`  | Set to `true` or `1` to enable cookie sync by default |
 
 ## Examples
 

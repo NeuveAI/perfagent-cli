@@ -54,8 +54,8 @@ const useHintSegments = (screen: Screen): HintSegment[] => {
       ];
     case "flow-input":
       return [
-        { key: "↑↓", label: "history" },
-        { key: "shift+enter", label: "newline" },
+        { key: "↑↓", label: "nav" },
+        { key: "tab", label: "presets/custom" },
         { key: "esc", label: "back", cta: true, onClick: goBack },
         { key: "enter", label: "submit", color: COLORS.PRIMARY, cta: true },
       ];
@@ -118,9 +118,7 @@ const useHintSegments = (screen: Screen): HintSegment[] => {
     case "results": {
       return [
         { key: "y", label: "copy", color: COLORS.PRIMARY, cta: true },
-        ...(latestRunReport?.pullRequest
-          ? [{ key: "p", label: "post to PR", cta: true }]
-          : []),
+        ...(latestRunReport?.pullRequest ? [{ key: "p", label: "post to PR", cta: true }] : []),
         { key: "esc", label: "main menu", cta: true, onClick: goBack },
       ];
     }

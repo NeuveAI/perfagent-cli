@@ -34,7 +34,9 @@ export default function RootLayout({
       </head>
       <body className={`${geistMono.variable} antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <TooltipProvider delay={0} closeDelay={0}>{children}</TooltipProvider>
+          <TooltipProvider delay={0} closeDelay={0}>
+            {children}
+          </TooltipProvider>
         </ThemeProvider>
       </body>
     </html>

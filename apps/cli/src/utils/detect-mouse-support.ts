@@ -1,12 +1,6 @@
 import { detectTerminal } from "detect-terminal";
 
-const NO_SGR_MOUSE_TERMINALS = new Set([
-  "linux_console",
-  "vt100",
-  "putty",
-  "eterm",
-  "rxvt",
-]);
+const NO_SGR_MOUSE_TERMINALS = new Set(["linux_console", "vt100", "putty", "eterm", "rxvt"]);
 
 const XTERM_JS_TERMINALS = new Set(["vscode", "hyper"]);
 

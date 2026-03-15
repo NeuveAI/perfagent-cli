@@ -77,24 +77,24 @@ testie commit abc1234
 
 ## Options
 
-| Flag | Description |
-|------|-------------|
+| Flag                          | Description                                        |
+| ----------------------------- | -------------------------------------------------- |
 | `-m, --message <instruction>` | Natural language instruction for the browser agent |
-| `-f, --flow <slug>` | Reuse a previously saved flow by its slug |
-| `-y, --yes` | Skip plan review and auto-run after planning |
-| `--base-url <url>` | Override the browser base URL |
-| `--headed` | Run browser in headed (visible) mode |
-| `--cookies` | Enable cookie sync from your browser |
-| `--no-cookies` | Disable cookie sync |
-| `-v, --version` | Print version |
+| `-f, --flow <slug>`           | Reuse a previously saved flow by its slug          |
+| `-y, --yes`                   | Skip plan review and auto-run after planning       |
+| `--base-url <url>`            | Override the browser base URL                      |
+| `--headed`                    | Run browser in headed (visible) mode               |
+| `--cookies`                   | Enable cookie sync from your browser               |
+| `--no-cookies`                | Disable cookie sync                                |
+| `-v, --version`               | Print version                                      |
 
 ## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
+| Variable                  | Description                                                      |
+| ------------------------- | ---------------------------------------------------------------- |
 | `BROWSER_TESTER_BASE_URL` | Default base URL for the browser (e.g., `http://localhost:3000`) |
-| `BROWSER_TESTER_HEADED` | `true`/`1` to run headed by default |
-| `BROWSER_TESTER_COOKIES` | `true`/`1` to enable cookie sync by default |
+| `BROWSER_TESTER_HEADED`   | `true`/`1` to run headed by default                              |
+| `BROWSER_TESTER_COOKIES`  | `true`/`1` to enable cookie sync by default                      |
 
 CLI flags override environment variables when both are set.
 

@@ -27,14 +27,13 @@ export const SavedFlowPickerScreen = () => {
   const scrollOffset = useMemo(() => {
     if (savedFlowSummaries.length <= SAVED_FLOW_PICKER_VISIBLE_COUNT) return 0;
     const half = Math.floor(SAVED_FLOW_PICKER_VISIBLE_COUNT / 2);
-    const maxOffset =
-      savedFlowSummaries.length - SAVED_FLOW_PICKER_VISIBLE_COUNT;
+    const maxOffset = savedFlowSummaries.length - SAVED_FLOW_PICKER_VISIBLE_COUNT;
     return Math.min(maxOffset, Math.max(0, selectedIndex - half));
   }, [savedFlowSummaries.length, selectedIndex]);
 
   const visibleSavedFlows = savedFlowSummaries.slice(
     scrollOffset,
-    scrollOffset + SAVED_FLOW_PICKER_VISIBLE_COUNT
+    scrollOffset + SAVED_FLOW_PICKER_VISIBLE_COUNT,
   );
 
   const selectFlow = (index: number) => {
@@ -50,9 +49,7 @@ export const SavedFlowPickerScreen = () => {
       .then((loaded) => applySavedFlow(loaded))
       .catch((caughtError) => {
         setLoadingError(
-          caughtError instanceof Error
-            ? caughtError.message
-            : "Failed to load flow."
+          caughtError instanceof Error ? caughtError.message : "Failed to load flow.",
         );
         setLoadingFilePath(null);
       });
@@ -63,9 +60,7 @@ export const SavedFlowPickerScreen = () => {
     if (savedFlowSummaries.length === 0) return;
 
     if (key.downArrow || input === "j" || (key.ctrl && input === "n")) {
-      setSelectedIndex((previous) =>
-        Math.min(savedFlowSummaries.length - 1, previous + 1)
-      );
+      setSelectedIndex((previous) => Math.min(savedFlowSummaries.length - 1, previous + 1));
     }
 
     if (key.upArrow || input === "k" || (key.ctrl && input === "p")) {
@@ -79,10 +74,7 @@ export const SavedFlowPickerScreen = () => {
 
   return (
     <Box flexDirection="column" width="100%" paddingX={1} paddingY={1}>
-      <ScreenHeading
-        title="Reuse saved flow"
-        subtitle={ACTION_LABELS[testAction]}
-      />
+      <ScreenHeading title="Reuse saved flow" subtitle={ACTION_LABELS[testAction]} />
 
       <Box
         flexDirection="column"
@@ -96,10 +88,7 @@ export const SavedFlowPickerScreen = () => {
           const isLoading = loadingFilePath === savedFlow.filePath;
 
           return (
-            <Clickable
-              key={savedFlow.filePath}
-              onClick={() => selectFlow(actualIndex)}
-            >
+            <Clickable key={savedFlow.filePath} onClick={() => selectFlow(actualIndex)}>
               <Box flexDirection="column" marginBottom={1}>
                 <Text>
                   <Text color={isSelected ? COLORS.PRIMARY : COLORS.DIM}>
@@ -129,9 +118,7 @@ export const SavedFlowPickerScreen = () => {
           );
         })}
         {savedFlowSummaries.length === 0 ? (
-          <Text color={COLORS.DIM}>
-            No compatible saved flows available yet.
-          </Text>
+          <Text color={COLORS.DIM}>No compatible saved flows available yet.</Text>
         ) : null}
       </Box>
 
