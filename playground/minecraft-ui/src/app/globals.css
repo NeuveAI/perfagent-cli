@@ -1,10 +1,12 @@
 @import "tailwindcss";
 
-@font-face {
-  font-family: "Minecraft";
-  src: url("/fonts/Minecraft.ttf") format("truetype");
-  font-weight: normal;
-  font-style: normal;
+@layer base {
+  @font-face {
+    font-family: "Minecraft";
+    src: url("/fonts/Minecraft.ttf") format("truetype");
+    font-weight: normal;
+    font-style: normal;
+  }
 }
 
 * {
@@ -18,6 +20,7 @@ body {
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
+  font-family: "Minecraft", monospace;
 }
 
 img {
