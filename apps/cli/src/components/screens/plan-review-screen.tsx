@@ -230,7 +230,11 @@ export const PlanReviewScreen = () => {
       setSelectedIndex((previous) => Math.min(items.length - 1, previous + 1));
     }
     if (key.upArrow || input === "k" || (key.ctrl && input === "p")) {
-      setSelectedIndex((previous) => Math.max(0, previous - 1));
+      if (selectedIndex === 0) {
+        setInputFocused(true);
+      } else {
+        setSelectedIndex((previous) => Math.max(0, previous - 1));
+      }
     }
 
     if (key.tab && currentItem?.kind === "section") {
@@ -333,6 +337,7 @@ export const PlanReviewScreen = () => {
                 multiline
                 value={inputValue}
                 onSubmit={handleInputSubmit}
+                onDownArrowAtBottom={() => setInputFocused(false)}
                 onChange={(nextValue) =>
                   setInputValue(stripMouseSequences(nextValue))
                 }
