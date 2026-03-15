@@ -15,7 +15,7 @@ export const PROJECTS: Project[] = [
     description:
       "Testie lets coding agents test your code changes in a real browser.",
     features: [
-      "No playwright scripts. No selectors. Just your git diff.",
+      "Describe what to test → an agent handles the rest.",
     ],
     command: "npx testie@latest",
     agentPrompt: "npx -y testie@latest -m 'test my current changes' -y",
