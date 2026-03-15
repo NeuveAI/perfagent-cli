@@ -1,0 +1,3 @@
+# Saved Flows
+
+- [Oak Block → Crafting Table → 4 Planks → Inventory](./oak-block-crafting-table-4-planks-inventory.md) - Unstaged changes — full new project, 26 added files, no commits. All code is local and undeployed; assumes dev server i…
