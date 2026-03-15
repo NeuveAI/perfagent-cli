@@ -23,19 +23,27 @@ const program = new Command()
   .name("testie")
   .description("AI-powered browser testing for your changes")
   .version(VERSION, "-v, --version")
-  .option(
-    "-m, --message <instruction>",
-    "flow instruction for the browser agent"
-  )
-  .option("-f, --flow <slug>", "reuse a saved flow by slug")
-  .option("-y, --yes", "auto-run after planning (skip plan review)")
-  .option(
-    "--base-url <url>",
-    "browser base URL (overrides BROWSER_TESTER_BASE_URL)"
-  )
-  .option("--headed", "run browser in headed mode")
-  .option("--cookies", "enable cookie sync")
-  .option("--no-cookies", "disable cookie sync");
+  .option("-m, --message <instruction>", "natural language instruction for what to test")
+  .option("-f, --flow <slug>", "reuse a saved flow by its slug")
+  .option("-y, --yes", "skip plan review and run immediately")
+  .option("--base-url <url>", "browser base URL (overrides BROWSER_TESTER_BASE_URL)")
+  .option("--headed", "run browser visibly instead of headless")
+  .option("--cookies", "sync cookies from your browser profile")
+  .option("--no-cookies", "disable cookie sync")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  $ testie                                    open interactive TUI
+  $ testie -m "test the login flow" -y        plan and run immediately
+  $ testie branch -m "verify signup" -y       test all branch changes
+  $ testie -f my-flow                         reuse a saved flow
+
+Environment variables:
+  BROWSER_TESTER_BASE_URL     base URL for the browser (e.g. http://localhost:3000)
+  BROWSER_TESTER_HEADED       run headed by default (true | 1)
+  BROWSER_TESTER_COOKIES      enable cookie sync by default (true | 1)`,
+  );
 
 const isHeadless = () => isRunningInAgent() || !process.stdin.isTTY;
 
@@ -108,12 +116,12 @@ const createCommandAction =
 
 program
   .command("unstaged")
-  .description("Test current changes")
+  .description("test current unstaged changes (default)")
   .action(createCommandAction("test-unstaged"));
 
 program
   .command("branch")
-  .description("Test entire branch diff against main")
+  .description("test full branch diff against main")
   .action(createCommandAction("test-branch"));
 
 program.action(async () => {
