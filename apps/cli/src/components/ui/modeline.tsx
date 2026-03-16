@@ -36,12 +36,6 @@ const useHintSegments = (screen: Screen): HintSegment[] => {
           onClick: () => navigateTo("saved-flow-picker"),
         });
       }
-      hints.push({
-        key: "enter",
-        label: "submit",
-        color: COLORS.PRIMARY,
-        cta: true,
-      });
       return hints;
     }
     case "select-pr":
