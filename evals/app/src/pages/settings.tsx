@@ -102,8 +102,6 @@ export const SettingsPage = ({ currentUser, setCurrentUser }: SettingsPageProps)
   const handleSaveProfile = () => {
     const nextSaved = { name: profileName, avatarUrl: profileAvatarUrl };
     setSavedProfile(nextSaved);
-    setProfileName("");
-    setProfileAvatarUrl("");
     setCurrentUser((prev) => ({
       ...prev,
       name: nextSaved.name,
