@@ -6,5 +6,6 @@ export default defineConfig((options) => ({
   dts: true,
   clean: !options.watch,
   sourcemap: true,
-  external: ["bun:sqlite"],
+  platform: "node",
+  external: ["bun:sqlite", "libsql"],
 }));

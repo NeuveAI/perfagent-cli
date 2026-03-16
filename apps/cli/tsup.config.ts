@@ -10,7 +10,7 @@ export default defineConfig((options) => ({
   platform: "node",
   banner: { js: "#!/usr/bin/env node" },
   noExternal: [/^@browser-tester\//],
-  external: ["playwright", "playwright-core", "chromium-bidi", "sqlite", "ws"],
+  external: ["playwright", "playwright-core", "chromium-bidi", "libsql", "ws"],
   esbuildPlugins: [reactCompilerPlugin()],
   esbuildOptions(esbuildOptions) {
     esbuildOptions.inject = [...(esbuildOptions.inject ?? []), "./ink-grab/inject-hook.js"];

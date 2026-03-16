@@ -1,9 +1,6 @@
-import {
-  detectBrowserProfiles,
-  detectDefaultBrowser,
-  extractCookies,
-  extractProfileCookies,
-} from "@browser-tester/cookies";
+import { Effect, Layer, Option } from "effect";
+import { NodeServices } from "@effect/platform-node";
+import { Cookies } from "@browser-tester/cookies";
 import { tmpdir } from "node:os";
 import type { Browser as BrowserKey, BrowserProfile, Cookie } from "@browser-tester/cookies";
 import { chromium } from "playwright";
@@ -16,40 +13,59 @@ import { injectCookies } from "./inject-cookies";
 import type { CreatePageOptions, CreatePageResult, VideoOptions } from "./types";
 
 interface DefaultBrowserContext {
-  defaultBrowser: BrowserKey | null;
-  preferredProfile: BrowserProfile | null;
+  defaultBrowser: BrowserKey | undefined;
+  preferredProfile: BrowserProfile | undefined;
 }
 
 const EMPTY_DEFAULT_BROWSER_CONTEXT: DefaultBrowserContext = {
-  defaultBrowser: null,
-  preferredProfile: null,
+  defaultBrowser: undefined,
+  preferredProfile: undefined,
 };
 
-const resolveDefaultBrowserContext = async (): Promise<DefaultBrowserContext> => {
-  const defaultBrowser = await detectDefaultBrowser();
-  if (!defaultBrowser) {
-    return EMPTY_DEFAULT_BROWSER_CONTEXT;
-  }
+const CookiesRuntime = Layer.merge(Cookies.layer, NodeServices.layer);
 
-  const preferredProfile = detectBrowserProfiles({ browser: defaultBrowser })[0] ?? null;
-  return { defaultBrowser, preferredProfile };
-};
+const resolveDefaultBrowserContext = async (): Promise<DefaultBrowserContext> =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const cookies = yield* Cookies;
+      const defaultBrowserOption = yield* cookies.detectDefaultBrowser();
+      const defaultBrowser = Option.getOrUndefined(defaultBrowserOption);
+      if (!defaultBrowser) return EMPTY_DEFAULT_BROWSER_CONTEXT;
+
+      const profiles = yield* cookies.detectProfiles({ browser: defaultBrowser });
+      return { defaultBrowser, preferredProfile: profiles[0] } as DefaultBrowserContext;
+    }).pipe(
+      Effect.provide(CookiesRuntime),
+      Effect.catch(() => Effect.succeed(EMPTY_DEFAULT_BROWSER_CONTEXT)),
+    ),
+  );
 
 const extractDefaultBrowserCookies = async (
   url: string,
   defaultBrowserContext: DefaultBrowserContext,
-): Promise<Cookie[]> => {
-  const { defaultBrowser, preferredProfile } = defaultBrowserContext;
+): Promise<Cookie[]> =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const cookies = yield* Cookies;
 
-  if (preferredProfile) {
-    const result = await extractProfileCookies({ profile: preferredProfile });
-    if (result.cookies.length > 0) return result.cookies;
-  }
+      if (defaultBrowserContext.preferredProfile) {
+        const profileCookies = yield* cookies
+          .extractProfile({
+            profile: defaultBrowserContext.preferredProfile,
+          })
+          .pipe(Effect.catch(() => Effect.succeed([] as Cookie[])));
+        if (profileCookies.length > 0) return profileCookies;
+      }
 
-  const browsers = defaultBrowser ? [defaultBrowser] : undefined;
-  const result = await extractCookies({ url, browsers });
-  return result.cookies;
-};
+      const browsers = defaultBrowserContext.defaultBrowser
+        ? [defaultBrowserContext.defaultBrowser]
+        : undefined;
+      return yield* cookies.extract({ url, browsers });
+    }).pipe(
+      Effect.provide(CookiesRuntime),
+      Effect.catch(() => Effect.succeed([] as Cookie[])),
+    ),
+  );
 
 const resolveVideoOptions = (
   video: boolean | VideoOptions | undefined,

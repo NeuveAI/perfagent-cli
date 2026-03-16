@@ -45,11 +45,6 @@ export interface ExtractOptions {
   onKeychainAccess?: (browser: Browser) => void | Promise<void>;
 }
 
-export interface ExtractResult {
-  cookies: Cookie[];
-  warnings: string[];
-}
-
 export interface BrowserInfo {
   name: string;
   executablePath: string;
@@ -70,32 +65,4 @@ export interface LocalStateProfile {
 export interface ExtractProfileOptions {
   profile: BrowserProfile;
   port?: number;
-}
-
-export interface CdpRawCookie {
-  domain: string;
-  name: string;
-  value: string;
-  path: string;
-  expires: number;
-  secure: boolean;
-  httpOnly: boolean;
-  sameSite: string;
-  priority: string;
-  sourceScheme: string;
-  sourcePort: number;
-  sameParty: boolean;
-  partitionKey?: string;
-  url?: string;
-}
-
-export interface CdpResponse {
-  id: number;
-  error?: {
-    code: number;
-    message: string;
-  };
-  result?: {
-    cookies: CdpRawCookie[];
-  };
 }

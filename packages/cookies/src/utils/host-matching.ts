@@ -1,4 +1,7 @@
-import { stripLeadingDot } from "./strip-leading-dot.js";
+import type { Cookie } from "../types.js";
+
+export const stripLeadingDot = (domain: string): string =>
+  domain.startsWith(".") ? domain.slice(1) : domain;
 
 export const hostMatchesCookieDomain = (host: string, cookieDomain: string): boolean => {
   const normalizedHost = host.toLowerCase();
@@ -9,12 +12,23 @@ export const hostMatchesCookieDomain = (host: string, cookieDomain: string): boo
 export const hostMatchesAny = (hosts: string[], cookieDomain: string): boolean =>
   hosts.some((host) => hostMatchesCookieDomain(host, cookieDomain));
 
-const toHostname = (origin: string): string => {
-  try {
-    return new URL(origin).hostname;
-  } catch {
-    return new URL(`https://${origin}`).hostname;
+export const originsToHosts = (origins: string[]): string[] =>
+  origins.map((origin) => {
+    try {
+      return new URL(origin).hostname;
+    } catch {
+      return new URL(`https://${origin}`).hostname;
+    }
+  });
+
+export const dedupeCookies = (cookies: Cookie[]): Cookie[] => {
+  const merged = new Map<string, Cookie>();
+  for (const cookie of cookies) {
+    const key = `${cookie.name}|${cookie.domain}|${cookie.path}`;
+    if (!merged.has(key)) merged.set(key, cookie);
   }
+  return Array.from(merged.values());
 };
 
-export const originsToHosts = (origins: string[]): string[] => origins.map(toHostname);
+export const toCookieHeader = (cookies: Cookie[]): string =>
+  cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");

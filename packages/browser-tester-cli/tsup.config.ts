@@ -15,7 +15,7 @@ export default defineConfig({
     "picocolors",
     "ws",
     "bun:sqlite",
-    "sqlite",
+    "libsql",
     "events",
     "stream",
     "http",
