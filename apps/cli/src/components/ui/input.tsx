@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Text, useInput } from "ink";
 import pc from "picocolors";
+import { stripMouseSequences } from "../../hooks/mouse-context.js";
 
 interface InputProps {
   readonly value: string;
@@ -212,13 +213,15 @@ export const Input = ({
             nextCursorOffset--;
           }
         } else {
+          const cleanedInput = stripMouseSequences(input);
+          if (!cleanedInput) return;
           nextValue =
             originalValue.slice(0, cursorOffset) +
-            input +
+            cleanedInput +
             originalValue.slice(cursorOffset, originalValue.length);
-          nextCursorOffset += input.length;
-          if (input.length > 1) {
-            nextCursorWidth = input.length;
+          nextCursorOffset += cleanedInput.length;
+          if (cleanedInput.length > 1) {
+            nextCursorWidth = cleanedInput.length;
           }
         }
       }

@@ -13,7 +13,6 @@ export default defineConfig((options) => ({
   external: ["playwright", "playwright-core", "chromium-bidi", "sqlite", "ws"],
   esbuildPlugins: [reactCompilerPlugin()],
   esbuildOptions(esbuildOptions) {
-    esbuildOptions.inject = [...(esbuildOptions.inject ?? []), "./ink-grab/inject-hook.js"];
     esbuildOptions.supported = { ...esbuildOptions.supported, "import-meta": true };
   },
 }));

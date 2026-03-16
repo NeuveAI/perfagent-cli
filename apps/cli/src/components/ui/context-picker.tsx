@@ -2,6 +2,7 @@ import { Box, Text, useInput } from "ink";
 import { useColors } from "../theme-context.js";
 import type { ContextOption } from "../../utils/context-options.js";
 import { CONTEXT_PICKER_VISIBLE_COUNT } from "../../constants.js";
+import { stripMouseSequences } from "../../hooks/mouse-context.js";
 import figures from "figures";
 
 interface ContextPickerProps {
@@ -67,7 +68,8 @@ export const ContextPicker = ({
     }
 
     if (input && !key.ctrl && !key.meta) {
-      onQueryChange(query + input);
+      const cleaned = stripMouseSequences(input);
+      if (cleaned) onQueryChange(query + cleaned);
     }
   });
 

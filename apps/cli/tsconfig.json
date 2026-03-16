@@ -5,5 +5,5 @@
     "rootDir": ".",
     "jsx": "react-jsx"
   },
-  "include": ["src", "ink-grab"]
+  "include": ["src"]
 }

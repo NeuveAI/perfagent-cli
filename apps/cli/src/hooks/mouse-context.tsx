@@ -21,10 +21,13 @@ const NOOP_CONTEXT: MouseContextValue = { subscribeClick: () => NOOP_UNSUBSCRIBE
 
 const MouseContext = createContext<MouseContextValue>(NOOP_CONTEXT);
 
-const MOUSE_ENABLE = "\u001b[?1000h\u001b[?1006h";
-const MOUSE_DISABLE = "\u001b[?1000l\u001b[?1006l";
+const MOUSE_ENABLE = "\u001b[?1003l\u001b[?1002l\u001b[?1000h\u001b[?1006h";
+const MOUSE_DISABLE = "\u001b[?1000l\u001b[?1006l\u001b[?1003l\u001b[?1002l";
 // oxlint-disable-next-line no-control-regex
 const SGR_MOUSE_SEQUENCE = /\x1b\[<(\d+);(\d+);(\d+)([Mm])/g;
+// oxlint-disable-next-line no-control-regex
+const PARTIAL_TERMINAL_SEQUENCE =
+  /\x1b\[[\d;?<>=]*[A-Za-z~]|\[<[\d;]+[Mm]|\[\d+;\d+R|\[\?[\d;]+[a-z]/g;
 
 export const MouseProvider = ({ children }: { children: React.ReactNode }) => {
   if (!CLICK_SUPPORT_ENABLED) return <>{children}</>;
@@ -51,7 +54,7 @@ export const MouseProvider = ({ children }: { children: React.ReactNode }) => {
           }
         }
 
-        const cleaned = text.replace(SGR_MOUSE_SEQUENCE, "");
+        const cleaned = text.replace(SGR_MOUSE_SEQUENCE, "").replace(PARTIAL_TERMINAL_SEQUENCE, "");
         if (cleaned.length === 0) return true;
         return originalEmit(event, cleaned);
       }
@@ -76,8 +79,9 @@ export const MouseProvider = ({ children }: { children: React.ReactNode }) => {
 
 export const useMouse = (): MouseContextValue => useContext(MouseContext);
 
-// oxlint-disable-next-line no-control-regex
-const SGR_MOUSE_GARBAGE = /\u001b\[?<?(\d+;)*\d+[Mm]?|\[<(\d+;)*\d+[Mm]?/g;
+const TERMINAL_RESPONSE_GARBAGE =
+  // oxlint-disable-next-line no-control-regex
+  /\x1b\[[\d;?<>=]*[A-Za-z~]|\[<[\d;]+[Mm]?|\[\?[\d;]+[a-z]|\[\d+;\d+R/g;
 
 export const stripMouseSequences = (value: string): string =>
-  CLICK_SUPPORT_ENABLED ? value.replace(SGR_MOUSE_GARBAGE, "") : value;
+  CLICK_SUPPORT_ENABLED ? value.replace(TERMINAL_RESPONSE_GARBAGE, "") : value;

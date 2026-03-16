@@ -56,9 +56,6 @@ const renderApp = () => {
     </ThemeProvider>,
   );
   setInkInstance(instance);
-  process.stdout.on("resize", () => {
-    instance.clear();
-  });
 };
 
 const resolveInitialScreen = (config: TestRunConfig, hasSavedFlow: boolean): Screen => {
