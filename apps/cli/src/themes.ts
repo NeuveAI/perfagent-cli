@@ -15,24 +15,24 @@ export interface ThemeDefinition {
   borderSubtle: string;
 }
 
-export const DEFAULT_DARK_THEME_NAME = "doric-fire";
+export const DEFAULT_DARK_THEME_NAME = "mono";
 
 export const THEMES: Record<string, ThemeDefinition> = {
-  "doric-fire": {
-    name: "Doric Fire",
+  mono: {
+    name: "Mono",
     variant: "dark",
-    primary: "#d6b577",
-    secondary: "#f3ac6f",
-    accent: "#56452f",
-    error: "#eca27f",
-    warning: "#c5ba80",
-    success: "#b9d08a",
-    info: "#9fbfe7",
-    text: "#f5ceb0",
-    textMuted: "#afa497",
-    border: "#706061",
-    borderActive: "#7c362c",
-    borderSubtle: "#40332b",
+    primary: "#FFFFFF",
+    secondary: "#B0B0B0",
+    accent: "#D0D0D0",
+    error: "#B0B0B0",
+    warning: "#B0B0B0",
+    success: "#B0B0B0",
+    info: "#909090",
+    text: "#E0E0E0",
+    textMuted: "#707070",
+    border: "#505050",
+    borderActive: "#909090",
+    borderSubtle: "#303030",
   },
   "flexoki-light": {
     name: "Flexoki Light",
