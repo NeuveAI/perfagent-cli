@@ -453,8 +453,10 @@ export const PlanReviewScreen = () => {
 
   return (
     <Box flexDirection="column" width="100%" paddingY={1}>
-      <Box flexDirection="column" paddingX={1}>
-        <Text color={COLORS.DIM}>{selectedContext?.label ?? flowInstruction}</Text>
+      <Box flexDirection="column">
+        <Box paddingX={1}>
+          <Text color={COLORS.DIM}>{selectedContext?.label ?? flowInstruction}</Text>
+        </Box>
         <Clickable onClick={() => setTopFocus("input")}>
           <RuledBox color={inputFocused ? COLORS.PRIMARY : COLORS.BORDER}>
             {inputFocused ? (
@@ -475,7 +477,7 @@ export const PlanReviewScreen = () => {
         </Clickable>
         {pickerOpen ? (
           <Box flexDirection="column">
-            <Box marginBottom={0}>
+            <Box marginBottom={0} paddingX={1}>
               <Text color={COLORS.DIM}>@ </Text>
               <Text color={COLORS.PRIMARY}>{pickerQuery}</Text>
               <Text color={COLORS.DIM}>{pickerQuery ? "" : "type to filter"}</Text>
@@ -492,9 +494,11 @@ export const PlanReviewScreen = () => {
             />
           </Box>
         ) : inputFocused ? (
-          <Text color={COLORS.DIM}>
-            type <Text color={COLORS.PRIMARY}>@</Text> to set context
-          </Text>
+          <Box paddingX={1}>
+            <Text color={COLORS.DIM}>
+              type <Text color={COLORS.PRIMARY}>@</Text> to set context
+            </Text>
+          </Box>
         ) : null}
       </Box>
 

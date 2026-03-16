@@ -326,8 +326,8 @@ export const MainMenu = () => {
           </RuledBox>
         </Clickable>
         {pickerOpen ? (
-          <Box flexDirection="column" paddingX={1}>
-            <Box marginBottom={0}>
+          <Box flexDirection="column">
+            <Box marginBottom={0} paddingX={1}>
               <Text color={COLORS.DIM}>@ </Text>
               <Text color={COLORS.PRIMARY}>{pickerQuery}</Text>
               <Text color={COLORS.DIM}>{pickerQuery ? "" : "type to filter"}</Text>
