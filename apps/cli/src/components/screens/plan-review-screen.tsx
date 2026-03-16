@@ -452,8 +452,8 @@ export const PlanReviewScreen = () => {
     currentItem?.kind === "section" && currentItem.section === section;
 
   return (
-    <Box flexDirection="column" width="100%" paddingX={1} paddingY={1}>
-      <Box flexDirection="column">
+    <Box flexDirection="column" width="100%" paddingY={1}>
+      <Box flexDirection="column" paddingX={1}>
         <Text color={COLORS.DIM}>{selectedContext?.label ?? flowInstruction}</Text>
         <Clickable onClick={() => setTopFocus("input")}>
           <RuledBox color={inputFocused ? COLORS.PRIMARY : COLORS.BORDER}>
@@ -534,7 +534,7 @@ export const PlanReviewScreen = () => {
         </RuledBox>
       ) : null}
 
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Collapsible
           label="Details"
           selected={isSectionSelected("details")}
@@ -549,7 +549,7 @@ export const PlanReviewScreen = () => {
       </Box>
 
       {cookieSyncIsRequired ? (
-        <Box flexDirection="column" marginTop={1}>
+        <Box flexDirection="column" marginTop={1} paddingX={1}>
           <Collapsible
             label="Cookie sync"
             selected={isSectionSelected("cookies")}
@@ -595,7 +595,7 @@ export const PlanReviewScreen = () => {
       ) : null}
 
       {plan.assumptions.length > 0 ? (
-        <Box flexDirection="column" marginTop={1}>
+        <Box flexDirection="column" marginTop={1} paddingX={1}>
           <Collapsible
             label="Assumptions"
             count={plan.assumptions.length}
@@ -620,7 +620,7 @@ export const PlanReviewScreen = () => {
       ) : null}
 
       {savedPaths ? (
-        <Box marginTop={1} flexDirection="column">
+        <Box marginTop={1} flexDirection="column" paddingX={1}>
           <Text color={COLORS.GREEN}>
             Saved <FileLink path={savedPaths.flowPath} />
           </Text>
@@ -630,9 +630,11 @@ export const PlanReviewScreen = () => {
         </Box>
       ) : null}
 
-      <ErrorMessage message={saveError} />
+      <Box paddingX={1}>
+        <ErrorMessage message={saveError} />
+      </Box>
 
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Collapsible
           label="Steps"
           count={plan.steps.length}
@@ -672,7 +674,7 @@ export const PlanReviewScreen = () => {
       </Box>
 
       {editingState ? (
-        <Box flexDirection="column" marginTop={1}>
+        <Box flexDirection="column" marginTop={1} paddingX={1}>
           <Text bold color={COLORS.YELLOW}>
             {editingStep ? `Editing ${editingStep.id}` : "Editing assumptions"}
           </Text>
@@ -694,7 +696,7 @@ export const PlanReviewScreen = () => {
       ) : null}
 
       {saving ? (
-        <Box marginTop={1}>
+        <Box marginTop={1} paddingX={1}>
           <Text color={COLORS.DIM}>Saving flow...</Text>
         </Box>
       ) : null}

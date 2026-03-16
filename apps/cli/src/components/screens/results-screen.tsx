@@ -141,13 +141,18 @@ export const ResultsScreen = () => {
   const shareUrl = latestRunReport.artifacts.shareUrl;
 
   return (
-    <Box flexDirection="column" width="100%" paddingX={1} paddingY={1}>
-      <ScreenHeading
-        title="Run results"
-        subtitle={`${latestRunReport.title} │ ${latestRunReport.status.toUpperCase()}`}
-      />
+    <Box flexDirection="column" width="100%" paddingY={1}>
+      <Box paddingX={1}>
+        <ScreenHeading
+          title="Run results"
+          subtitle={`${latestRunReport.title} │ ${latestRunReport.status.toUpperCase()}`}
+        />
+      </Box>
 
-      <RuledBox color={latestRunReport.status === "passed" ? COLORS.GREEN : COLORS.RED} marginTop={1}>
+      <RuledBox
+        color={latestRunReport.status === "passed" ? COLORS.GREEN : COLORS.RED}
+        marginTop={1}
+      >
         <Text color={latestRunReport.status === "passed" ? COLORS.GREEN : COLORS.RED} bold>
           {latestRunReport.status === "passed" ? "Plan completed" : "Issues found"}
         </Text>
@@ -162,7 +167,7 @@ export const ResultsScreen = () => {
         ) : null}
       </RuledBox>
 
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Text color={COLORS.DIM} bold>
           FINDINGS
         </Text>
@@ -180,7 +185,7 @@ export const ResultsScreen = () => {
         )}
       </Box>
 
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Text color={COLORS.DIM} bold>
           STEP SUMMARY
         </Text>
@@ -203,7 +208,7 @@ export const ResultsScreen = () => {
       {latestRunReport.confirmedRiskAreas.length > 0 ||
       latestRunReport.clearedRiskAreas.length > 0 ||
       latestRunReport.unresolvedRiskAreas.length > 0 ? (
-        <Box flexDirection="column" marginTop={1}>
+        <Box flexDirection="column" marginTop={1} paddingX={1}>
           <Text color={COLORS.DIM} bold>
             RISK AREAS
           </Text>
@@ -225,7 +230,7 @@ export const ResultsScreen = () => {
         </Box>
       ) : null}
 
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Text color={COLORS.DIM} bold>
           ARTIFACTS
         </Text>
@@ -272,7 +277,7 @@ export const ResultsScreen = () => {
         </RuledBox>
       ) : null}
 
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
         <Clickable onClick={handleCopyToClipboard}>
           <Text color={COLORS.DIM}>
             Press <Text color={COLORS.PRIMARY}>y</Text> to copy share details to the clipboard.
@@ -282,7 +287,7 @@ export const ResultsScreen = () => {
       </Box>
 
       {latestRunReport.pullRequest ? (
-        <Box flexDirection="column">
+        <Box flexDirection="column" paddingX={1}>
           <Clickable onClick={handlePostPullRequestComment}>
             <Text color={COLORS.DIM}>
               Press <Text color={COLORS.PRIMARY}>p</Text> to post this summary to the PR.
@@ -293,11 +298,15 @@ export const ResultsScreen = () => {
         </Box>
       ) : null}
 
-      <ErrorMessage message={clipboardError} />
-      <ErrorMessage message={commentError} />
+      <Box paddingX={1} flexDirection="column">
+        <ErrorMessage message={clipboardError} />
+        <ErrorMessage message={commentError} />
+      </Box>
 
       {screenshotPaths.map((screenshotPath) => (
-        <Image key={screenshotPath} src={screenshotPath} alt={`Screenshot: ${screenshotPath}`} />
+        <Box key={screenshotPath} paddingX={1}>
+          <Image src={screenshotPath} alt={`Screenshot: ${screenshotPath}`} />
+        </Box>
       ))}
     </Box>
   );

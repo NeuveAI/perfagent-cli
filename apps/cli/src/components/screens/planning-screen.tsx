@@ -24,15 +24,15 @@ export const PlanningScreen = () => {
   }, [startTime]);
 
   return (
-    <Box flexDirection="column" width="100%" paddingX={1} paddingY={1}>
-      <Box flexDirection="column">
+    <Box flexDirection="column" width="100%" paddingY={1}>
+      <Box paddingX={1}>
         <Text color={COLORS.DIM}>{selectedContext?.label ?? flowInstruction}</Text>
-        <RuledBox color={COLORS.BORDER}>
-          <Text color={COLORS.DIM}>{flowInstruction}</Text>
-        </RuledBox>
       </Box>
+      <RuledBox color={COLORS.BORDER}>
+        <Text color={COLORS.DIM}>{flowInstruction}</Text>
+      </RuledBox>
 
-      <Box marginTop={1}>
+      <Box marginTop={1} paddingX={1}>
         <Spinner />
         <Text> </Text>
         <TextShimmer

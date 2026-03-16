@@ -120,14 +120,17 @@ export const SavedFlowPickerScreen = () => {
   if (!testAction) return null;
 
   return (
-    <Box flexDirection="column" width="100%" paddingX={1} paddingY={1}>
-      <ScreenHeading title="Reuse saved flow" subtitle={ACTION_LABELS[testAction]} />
+    <Box flexDirection="column" width="100%" paddingY={1}>
+      <Box paddingX={1}>
+        <ScreenHeading title="Reuse saved flow" subtitle={ACTION_LABELS[testAction]} />
+      </Box>
 
       <Box
         flexDirection="column"
         marginTop={1}
         height={SAVED_FLOW_PICKER_VISIBLE_COUNT}
         overflow="hidden"
+        paddingX={1}
       >
         {visibleSavedFlows.map((savedFlow, index) => {
           const actualIndex = index + scrollOffset;
@@ -182,7 +185,7 @@ export const SavedFlowPickerScreen = () => {
           </Text>
         </RuledBox>
       ) : savedFlowSummaries.length > 0 ? (
-        <Box marginTop={1}>
+        <Box marginTop={1} paddingX={1}>
           <Text color={COLORS.DIM}>
             Press <Text color={COLORS.PRIMARY}>Enter</Text> to load or{" "}
             <Text color={COLORS.PRIMARY}>d</Text> to remove the selected flow.
@@ -190,7 +193,9 @@ export const SavedFlowPickerScreen = () => {
         </Box>
       ) : null}
 
-      <ErrorMessage message={loadingError} />
+      <Box paddingX={1}>
+        <ErrorMessage message={loadingError} />
+      </Box>
     </Box>
   );
 };

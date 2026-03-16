@@ -230,108 +230,113 @@ export const TestingScreen = () => {
 
   return (
     <>
-    <Static items={screenshotPaths}>
-      {(screenshotPath) => (
-        <Box key={screenshotPath} paddingX={1}>
-          <Image src={screenshotPath} alt={screenshotPath} />
-        </Box>
-      )}
-    </Static>
-    <Box flexDirection="column" width="100%" paddingX={1} paddingY={1}>
-      <ScreenHeading
-        title="Executing browser plan"
-        subtitle={`${plan.title} │ ${target.displayName}`}
-      />
-
-      <Box marginTop={1}>
-        <Text>
-          <Text color={COLORS.PRIMARY}>{"━".repeat(filledWidth)}</Text>
-          <Text color={COLORS.BORDER}>{"─".repeat(emptyWidth)}</Text>
-        </Text>
-        <Text color={COLORS.DIM}>
-          {`  ${completedCount}/${totalCount}`}
-          {running ? ` ${figures.pointerSmall} ${elapsedTimeLabel}` : ""}
-        </Text>
-      </Box>
-
-      <Box flexDirection="column" marginTop={1}>
-        {steps.map((step, stepIndex) => {
-          const stepPrefix = `Step ${stepIndex + 1}`;
-          return (
-            <Box key={step.stepId} flexDirection="column">
-              {step.status === "passed" ? (
-                <Text color={COLORS.GREEN}>
-                  {`  ${figures.tick} ${stepPrefix} ${cliTruncate(step.label, TESTING_TOOL_TEXT_CHAR_LIMIT)}`}
-                </Text>
-              ) : step.status === "failed" ? (
-                <Text color={COLORS.RED}>
-                  {`  ${figures.cross} ${stepPrefix} ${cliTruncate(step.label, TESTING_TOOL_TEXT_CHAR_LIMIT)}`}
-                </Text>
-              ) : step.status === "active" ? (
-                <>
-                  <Box>
-                    <Text>{"  "}</Text>
-                    <Spinner />
-                    <Text> </Text>
-                    <TextShimmer
-                      text={`${stepPrefix} ${step.label}${stepElapsedLabel ? ` ${stepElapsedLabel}` : ""}`}
-                      baseColor={COLORS.SELECTION}
-                      highlightColor={COLORS.PRIMARY}
-                    />
-                  </Box>
-                  {currentToolCallText ? (
-                    <Text color={COLORS.DIM}>
-                      {`    ${figures.pointerSmall} ${currentToolCallText}`}
-                    </Text>
-                  ) : null}
-                </>
-              ) : (
-                <Text color={COLORS.DIM}>{`  ○ ${stepPrefix} ${step.label}`}</Text>
-              )}
-            </Box>
-          );
-        })}
-      </Box>
-
-      {showCancelConfirmation ? (
-        <RuledBox color={COLORS.YELLOW} marginTop={1}>
-          <Text color={COLORS.YELLOW} bold>
-            Stop this browser run?
-          </Text>
-          <Text color={COLORS.DIM}>This will terminate the agent and close the browser.</Text>
-          <Text color={COLORS.DIM}>
-            Press <Text color={COLORS.PRIMARY}>Enter</Text> or <Text color={COLORS.PRIMARY}>y</Text>{" "}
-            to stop, or <Text color={COLORS.PRIMARY}>Esc</Text> or{" "}
-            <Text color={COLORS.PRIMARY}>n</Text> to keep it running.
-          </Text>
-        </RuledBox>
-      ) : null}
-
-      {running && !showCancelConfirmation ? (
-        <Box marginTop={1}>
-          <TextShimmer
-            text={`${exitRequested ? "Stopping" : "Testing"}${figures.ellipsis} ${elapsedTimeLabel}`}
-            baseColor={COLORS.DIM}
-            highlightColor={COLORS.PRIMARY}
+      <Static items={screenshotPaths}>
+        {(screenshotPath) => (
+          <Box key={screenshotPath} paddingX={1}>
+            <Image src={screenshotPath} alt={screenshotPath} />
+          </Box>
+        )}
+      </Static>
+      <Box flexDirection="column" width="100%" paddingY={1}>
+        <Box paddingX={1}>
+          <ScreenHeading
+            title="Executing browser plan"
+            subtitle={`${plan.title} │ ${target.displayName}`}
           />
         </Box>
-      ) : null}
 
-      {!running && !error ? (
-        <Box marginTop={1} flexDirection="column">
-          <Text color={COLORS.GREEN} bold>
-            Done
+        <Box marginTop={1} paddingX={1}>
+          <Text>
+            <Text color={COLORS.PRIMARY}>{"━".repeat(filledWidth)}</Text>
+            <Text color={COLORS.BORDER}>{"─".repeat(emptyWidth)}</Text>
           </Text>
-          {videoPath ? (
-            <Text color={COLORS.DIM}>
-              Video saved to <FileLink path={videoPath} />
-            </Text>
-          ) : null}
+          <Text color={COLORS.DIM}>
+            {`  ${completedCount}/${totalCount}`}
+            {running ? ` ${figures.pointerSmall} ${elapsedTimeLabel}` : ""}
+          </Text>
         </Box>
-      ) : null}
 
-      <ErrorMessage message={error ? `Error: ${error}` : null} />
-    </Box>
+        <Box flexDirection="column" marginTop={1} paddingX={1}>
+          {steps.map((step, stepIndex) => {
+            const stepPrefix = `Step ${stepIndex + 1}`;
+            return (
+              <Box key={step.stepId} flexDirection="column">
+                {step.status === "passed" ? (
+                  <Text color={COLORS.GREEN}>
+                    {`  ${figures.tick} ${stepPrefix} ${cliTruncate(step.label, TESTING_TOOL_TEXT_CHAR_LIMIT)}`}
+                  </Text>
+                ) : step.status === "failed" ? (
+                  <Text color={COLORS.RED}>
+                    {`  ${figures.cross} ${stepPrefix} ${cliTruncate(step.label, TESTING_TOOL_TEXT_CHAR_LIMIT)}`}
+                  </Text>
+                ) : step.status === "active" ? (
+                  <>
+                    <Box>
+                      <Text>{"  "}</Text>
+                      <Spinner />
+                      <Text> </Text>
+                      <TextShimmer
+                        text={`${stepPrefix} ${step.label}${stepElapsedLabel ? ` ${stepElapsedLabel}` : ""}`}
+                        baseColor={COLORS.SELECTION}
+                        highlightColor={COLORS.PRIMARY}
+                      />
+                    </Box>
+                    {currentToolCallText ? (
+                      <Text color={COLORS.DIM}>
+                        {`    ${figures.pointerSmall} ${currentToolCallText}`}
+                      </Text>
+                    ) : null}
+                  </>
+                ) : (
+                  <Text color={COLORS.DIM}>{`  ○ ${stepPrefix} ${step.label}`}</Text>
+                )}
+              </Box>
+            );
+          })}
+        </Box>
+
+        {showCancelConfirmation ? (
+          <RuledBox color={COLORS.YELLOW} marginTop={1}>
+            <Text color={COLORS.YELLOW} bold>
+              Stop this browser run?
+            </Text>
+            <Text color={COLORS.DIM}>This will terminate the agent and close the browser.</Text>
+            <Text color={COLORS.DIM}>
+              Press <Text color={COLORS.PRIMARY}>Enter</Text> or{" "}
+              <Text color={COLORS.PRIMARY}>y</Text> to stop, or{" "}
+              <Text color={COLORS.PRIMARY}>Esc</Text> or <Text color={COLORS.PRIMARY}>n</Text> to
+              keep it running.
+            </Text>
+          </RuledBox>
+        ) : null}
+
+        {running && !showCancelConfirmation ? (
+          <Box marginTop={1} paddingX={1}>
+            <TextShimmer
+              text={`${exitRequested ? "Stopping" : "Testing"}${figures.ellipsis} ${elapsedTimeLabel}`}
+              baseColor={COLORS.DIM}
+              highlightColor={COLORS.PRIMARY}
+            />
+          </Box>
+        ) : null}
+
+        {!running && !error ? (
+          <Box marginTop={1} flexDirection="column" paddingX={1}>
+            <Text color={COLORS.GREEN} bold>
+              Done
+            </Text>
+            {videoPath ? (
+              <Text color={COLORS.DIM}>
+                Video saved to <FileLink path={videoPath} />
+              </Text>
+            ) : null}
+          </Box>
+        ) : null}
+
+        <Box paddingX={1}>
+          <ErrorMessage message={error ? `Error: ${error}` : null} />
+        </Box>
+      </Box>
     </>
   );
 };

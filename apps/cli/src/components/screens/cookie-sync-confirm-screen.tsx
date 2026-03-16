@@ -70,8 +70,10 @@ export const CookieSyncConfirmScreen = () => {
   });
 
   return (
-    <Box flexDirection="column" width="100%" paddingX={1} paddingY={1}>
-      <ScreenHeading title="Cookie sync is off" subtitle={plan.title} />
+    <Box flexDirection="column" width="100%" paddingY={1}>
+      <Box paddingX={1}>
+        <ScreenHeading title="Cookie sync is off" subtitle={plan.title} />
+      </Box>
 
       <RuledBox color={COLORS.RED} marginTop={1}>
         <Text color={COLORS.RED} bold>
@@ -89,7 +91,7 @@ export const CookieSyncConfirmScreen = () => {
         </Text>
       </RuledBox>
 
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column" marginTop={1} paddingX={1}>
         {CONFIRM_OPTIONS.map((option, index) => {
           const isSelected = index === selectedIndex;
           return (
@@ -116,7 +118,7 @@ export const CookieSyncConfirmScreen = () => {
         })}
       </Box>
 
-      <Box marginTop={1}>
+      <Box marginTop={1} paddingX={1}>
         <Text color={COLORS.DIM}>
           Press <Text color={COLORS.PRIMARY}>c</Text> to enable cookie sync,{" "}
           <Text color={COLORS.PRIMARY}>a</Text> to approve anyway, or{" "}

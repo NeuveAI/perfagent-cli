@@ -163,13 +163,15 @@ export const PrPickerScreen = () => {
   );
 
   return (
-    <Box flexDirection="column" width="100%" paddingX={1} paddingY={1}>
-      <ScreenHeading
-        title="Select a PR or branch to test"
-        subtitle={`${filteredBranches.length} branches`}
-      />
+    <Box flexDirection="column" width="100%" paddingY={1}>
+      <Box paddingX={1}>
+        <ScreenHeading
+          title="Select a PR or branch to test"
+          subtitle={`${filteredBranches.length} branches`}
+        />
+      </Box>
 
-      <Box marginTop={1}>
+      <Box marginTop={1} paddingX={1}>
         {PR_FILTERS.map((filter, index) => {
           const isActive = filter === activeFilter;
           const separator = index < PR_FILTERS.length - 1 ? " · " : "";
@@ -201,11 +203,17 @@ export const PrPickerScreen = () => {
       </Box>
 
       {isLoading ? (
-        <Box marginTop={1}>
+        <Box marginTop={1} paddingX={1}>
           <Spinner message="Fetching PRs..." />
         </Box>
       ) : (
-        <Box marginTop={1} flexDirection="column" height={BRANCH_VISIBLE_COUNT} overflow="hidden">
+        <Box
+          marginTop={1}
+          flexDirection="column"
+          height={BRANCH_VISIBLE_COUNT}
+          overflow="hidden"
+          paddingX={1}
+        >
           {visibleItems.map((branch, index) => {
             const actualIndex = index + scrollOffset;
             const isSelected = actualIndex === highlightedIndex;
@@ -256,7 +264,7 @@ export const PrPickerScreen = () => {
       )}
 
       {checkoutError ? (
-        <Box marginTop={1}>
+        <Box marginTop={1} paddingX={1}>
           <Text color={COLORS.RED}>{checkoutError}</Text>
         </Box>
       ) : null}
@@ -274,7 +282,9 @@ export const PrPickerScreen = () => {
         </RuledBox>
       ) : null}
 
-      <SearchBar isSearching={isSearching} query={searchQuery} onChange={handleSearchChange} />
+      <Box paddingX={1}>
+        <SearchBar isSearching={isSearching} query={searchQuery} onChange={handleSearchChange} />
+      </Box>
     </Box>
   );
 };
