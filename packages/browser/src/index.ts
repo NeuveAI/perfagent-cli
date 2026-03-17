@@ -7,27 +7,18 @@ export { diffSnapshots } from "./diff";
 export { saveVideo } from "./save-video";
 export { waitForNavigationSettle } from "./utils/wait-for-settle";
 export {
-  detectBrowserProfiles,
-  detectDefaultBrowser,
-  extractAllProfileCookies,
-  extractCookies,
-  extractProfileCookies,
-  matchCookieHeader,
-  matchCookies,
-  toCookieHeader,
-  toPlaywrightCookies,
-  toPuppeteerCookies,
+  Browsers,
+  Cookies,
+  layerLive,
 } from "@browser-tester/cookies";
 export type {
   Browser,
-  BrowserInfo,
-  BrowserProfile,
+  BrowserKey,
+  ChromiumBrowser,
+  FirefoxBrowser,
+  SafariBrowser,
   Cookie,
-  ExtractOptions,
-  ExtractProfileOptions,
-  ExtractResult,
-  PlaywrightCookie,
-  PuppeteerCookie,
+  SameSitePolicy,
 } from "@browser-tester/cookies";
 export type {
   AnnotatedScreenshotOptions,

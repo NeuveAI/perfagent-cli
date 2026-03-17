@@ -212,7 +212,13 @@ export const createBrowserMcpServer = () => {
         });
       }
 
-      return textResult(`Opened ${url}`);
+      const injectedCookies = await context.cookies();
+      return textResult(
+        `Opened ${url}` +
+          (injectedCookies.length > 0
+            ? ` (${injectedCookies.length} cookies synced from local browser)`
+            : ""),
+      );
     },
   );
 

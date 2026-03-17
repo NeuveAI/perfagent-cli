@@ -1,12 +1,11 @@
-import type { BrowserProfile, Cookie } from "@browser-tester/cookies";
+import { ChromiumBrowser, Cookie } from "@browser-tester/cookies";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_VIDEO_HEIGHT_PX, DEFAULT_VIDEO_WIDTH_PX } from "../src/constants";
+import {
+  DEFAULT_VIDEO_HEIGHT_PX,
+  DEFAULT_VIDEO_WIDTH_PX,
+} from "../src/constants";
 
 const {
-  detectBrowserProfilesMock,
-  detectDefaultBrowserMock,
-  extractProfileCookiesMock,
-  extractCookiesMock,
   injectCookiesMock,
   launchMock,
   newContextMock,
@@ -14,23 +13,12 @@ const {
   gotoMock,
   closeMock,
 } = vi.hoisted(() => ({
-  detectBrowserProfilesMock: vi.fn(),
-  detectDefaultBrowserMock: vi.fn(),
-  extractProfileCookiesMock: vi.fn(),
-  extractCookiesMock: vi.fn(),
   injectCookiesMock: vi.fn(),
   launchMock: vi.fn(),
   newContextMock: vi.fn(),
   newPageMock: vi.fn(),
   gotoMock: vi.fn(),
   closeMock: vi.fn(),
-}));
-
-vi.mock("@browser-tester/cookies", () => ({
-  detectBrowserProfiles: detectBrowserProfilesMock,
-  detectDefaultBrowser: detectDefaultBrowserMock,
-  extractProfileCookies: extractProfileCookiesMock,
-  extractCookies: extractCookiesMock,
 }));
 
 vi.mock("playwright", () => ({
@@ -45,30 +33,8 @@ vi.mock("../src/inject-cookies", () => ({
 
 import { createPage } from "../src/create-page";
 
-const heliumProfile: BrowserProfile = {
-  profileName: "Default",
-  profilePath: "/tmp/helium/Default",
-  displayName: "You",
-  locale: "en-US",
-  browser: {
-    name: "Helium",
-    executablePath: "/Applications/Helium.app/Contents/MacOS/Helium",
-  },
-};
-
-const workProfile: BrowserProfile = {
-  profileName: "Profile 1",
-  profilePath: "/tmp/helium/Profile 1",
-  displayName: "Work",
-  locale: "en-CA",
-  browser: {
-    name: "Helium",
-    executablePath: "/Applications/Helium.app/Contents/MacOS/Helium",
-  },
-};
-
-const profileCookies: Cookie[] = [
-  {
+const testCookies: Cookie[] = [
+  Cookie.make({
     name: "__Host-session",
     value: "profile-cookie",
     domain: "github.com",
@@ -76,8 +42,7 @@ const profileCookies: Cookie[] = [
     secure: true,
     httpOnly: true,
     sameSite: "Strict",
-    browser: "helium",
-  },
+  }),
 ];
 
 const fallbackCookies: Cookie[] = [
@@ -123,12 +88,19 @@ describe("createPage cookie reuse", () => {
     await createPage("https://github.com", { cookies: true });
 
     expect(detectDefaultBrowserMock).toHaveBeenCalledOnce();
-    expect(detectBrowserProfilesMock).toHaveBeenCalledWith({ browser: "helium" });
+    expect(detectBrowserProfilesMock).toHaveBeenCalledWith({
+      browser: "helium",
+    });
     expect(extractProfileCookiesMock).toHaveBeenCalledOnce();
-    expect(extractProfileCookiesMock).toHaveBeenCalledWith({ profile: heliumProfile });
+    expect(extractProfileCookiesMock).toHaveBeenCalledWith({
+      profile: heliumProfile,
+    });
     expect(newContextMock).toHaveBeenCalledWith({ locale: "en-US" });
     expect(extractCookiesMock).not.toHaveBeenCalled();
-    expect(injectCookiesMock).toHaveBeenCalledWith(expect.anything(), profileCookies);
+    expect(injectCookiesMock).toHaveBeenCalledWith(
+      expect.anything(),
+      profileCookies
+    );
   });
 
   it("falls back to sqlite extraction when profile extraction returns no cookies", async () => {
@@ -143,7 +115,10 @@ describe("createPage cookie reuse", () => {
       url: "https://github.com",
       browsers: ["helium"],
     });
-    expect(injectCookiesMock).toHaveBeenCalledWith(expect.anything(), fallbackCookies);
+    expect(injectCookiesMock).toHaveBeenCalledWith(
+      expect.anything(),
+      fallbackCookies
+    );
   });
 });
 
@@ -213,5 +188,16 @@ describe("createPage video recording", () => {
         },
       },
     });
+  });
+
+  it("injects explicit cookies when provided as an array", async () => {
+    injectCookiesMock.mockResolvedValue(undefined);
+
+    await createPage("https://github.com", { cookies: testCookies });
+
+    expect(injectCookiesMock).toHaveBeenCalledWith(
+      expect.anything(),
+      testCookies
+    );
   });
 });

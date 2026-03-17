@@ -1,21 +1,39 @@
-export { extractCookies, SUPPORTED_BROWSERS } from "./sqlite/extract.js";
+export { Cookies } from "./cookies.js";
+export { Browsers } from "./browser-detector.js";
+export { CdpClient } from "./cdp-client.js";
+export { SqliteClient, SqliteEngine } from "./sqlite-client.js";
+export { ChromiumSource, ChromiumPlatform } from "./chromium.js";
+export { FirefoxSource, FirefoxPlatform } from "./firefox.js";
+export { SafariSource, SafariPlatform } from "./safari.js";
+export { layerLive } from "./layers.js";
 
-export { extractAllProfileCookies, extractProfileCookies } from "./profiles/extract.js";
-export { detectBrowserProfiles } from "./profiles/detector.js";
+export {
+  ExtractionError,
+  RequiresFullDiskAccess,
+  ListBrowsersError,
+  CookieDatabaseNotFoundError,
+  CookieDatabaseCopyError,
+  CookieDecryptionKeyError,
+  CookieReadError,
+  BinaryParseError,
+  CdpConnectionError,
+  BrowserSpawnError,
+  UnsupportedPlatformError,
+  UnsupportedBrowserError,
+  UnknownError,
+} from "./errors.js";
 
-export { matchCookies, matchCookieHeader, toPlaywrightCookies, toPuppeteerCookies } from "./jar.js";
-export { toCookieHeader } from "./utils/format-cookie-header.js";
-export { detectDefaultBrowser } from "./utils/detect-default-browser.js";
+export { BROWSER_CONFIGS, configByKey } from "./browser-config.js";
 
-export type { PlaywrightCookie, PuppeteerCookie } from "./jar.js";
-export type { DetectBrowserProfilesOptions } from "./profiles/detector.js";
-export type {
+export {
+  BrowserKey,
+  ChromiumBrowserKey,
+  ChromiumBrowser,
+  FirefoxBrowser,
+  SafariBrowser,
   Browser,
-  BrowserInfo,
-  BrowserProfile,
   Cookie,
-  ExtractOptions,
-  ExtractProfileOptions,
-  ExtractResult,
   SameSitePolicy,
 } from "./types.js";
+
+export type { ExtractOptions } from "./types.js";

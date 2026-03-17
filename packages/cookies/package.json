@@ -23,10 +23,17 @@
   },
   "dependencies": {
     "@browser-tester/utils": "workspace:*",
+    "@effect/platform-node": "4.0.0-beta.28",
+    "@effect/vitest": "4.0.0-beta.28",
     "default-browser": "^5.5.0",
+    "effect": "4.0.0-beta.28",
+    "get-port": "^7.1.0",
+    "ini": "^6.0.0",
+    "libsql": "^0.5.22",
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/ini": "^4.1.1",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.0",
     "tsup": "^8.5.0",
