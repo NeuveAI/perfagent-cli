@@ -8,6 +8,23 @@ import { useAppStore } from "../../store.js";
 import { formatElapsedTime } from "../../utils/format-elapsed-time.js";
 import { TESTING_TIMER_UPDATE_INTERVAL_MS } from "../../constants.js";
 
+const PLANNING_STAGES = [
+  { after: 0, label: "Analyzing changes" },
+  { after: 3000, label: "Identifying test surfaces" },
+  { after: 7000, label: "Building browser steps" },
+  { after: 12000, label: "Defining expected outcomes" },
+  { after: 18000, label: "Validating plan" },
+  { after: 25000, label: "Finalizing" },
+] as const;
+
+const getStageLabel = (elapsed: number): (typeof PLANNING_STAGES)[number]["label"] => {
+  let label: (typeof PLANNING_STAGES)[number]["label"] = PLANNING_STAGES[0].label;
+  for (const stage of PLANNING_STAGES) {
+    if (elapsed >= stage.after) label = stage.label;
+  }
+  return label;
+};
+
 export const PlanningScreen = () => {
   const COLORS = useColors();
   const flowInstruction = useAppStore((state) => state.flowInstruction);
@@ -22,6 +39,8 @@ export const PlanningScreen = () => {
     return () => clearInterval(interval);
   }, [startTime]);
 
+  const stageLabel = getStageLabel(elapsed);
+
   return (
     <Box flexDirection="column" width="100%" paddingY={1}>
       {selectedContext ? (
@@ -35,9 +54,10 @@ export const PlanningScreen = () => {
 
       <Box marginTop={1} paddingX={1}>
         <Spinner />
-        <Text
-          color={COLORS.DIM}
-        >{` Generating plan${figures.ellipsis} ${formatElapsedTime(elapsed)}`}</Text>
+        <Text color={COLORS.DIM}>
+          {` ${stageLabel}${figures.ellipsis} `}
+          <Text color={COLORS.BORDER}>{formatElapsedTime(elapsed)}</Text>
+        </Text>
       </Box>
     </Box>
   );

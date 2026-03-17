@@ -278,7 +278,7 @@ export const MainMenu = () => {
       <Box marginBottom={1} paddingX={1}>
         <Text color={COLORS.BORDER}>
           <Text bold color={COLORS.TEXT}>
-            {"TESTIE"}
+            {"Difficult"}
           </Text>
           <Text color={COLORS.DIM}>{" v0.0.1"}</Text> {"─".repeat(Math.max(0, columns - 18))}
         </Text>
