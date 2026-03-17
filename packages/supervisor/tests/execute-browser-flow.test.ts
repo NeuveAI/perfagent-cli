@@ -169,6 +169,7 @@ describe("executeBrowserFlow", () => {
     expect(settings.tools?.every((toolName) => toolName.startsWith("mcp__browser__"))).toBe(true);
     expect(settings.mcpServers).toEqual({
       browser: {
+        type: "stdio",
         command: process.execPath,
         args: expect.any(Array),
         env: {

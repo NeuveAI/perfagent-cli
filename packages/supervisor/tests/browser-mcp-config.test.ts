@@ -37,6 +37,7 @@ describe("buildBrowserMcpServerEnv", () => {
 
     expect(settings.mcpServers).toEqual({
       browser: {
+        type: "stdio",
         command: process.execPath,
         args: expect.any(Array),
         env: {
