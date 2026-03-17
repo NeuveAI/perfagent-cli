@@ -1,13 +1,8 @@
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 
-export const commandExists = (command: string): boolean => {
-  try {
-    execFileSync("which", [command], {
-      encoding: "utf-8",
-      stdio: "pipe",
+export const commandExists = (command: string): Promise<boolean> =>
+  new Promise((resolve) => {
+    execFile("which", [command], { encoding: "utf-8" }, (error) => {
+      resolve(!error);
     });
-    return true;
-  } catch {
-    return false;
-  }
-};
+  });

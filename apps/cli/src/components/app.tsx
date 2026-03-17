@@ -1,3 +1,4 @@
+import { Effect, Fiber } from "effect";
 import { useEffect, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { MouseProvider } from "../hooks/mouse-context.js";
@@ -16,7 +17,8 @@ import { Modeline } from "./ui/modeline.js";
 import { resolveBrowserTarget, getBrowserEnvironment } from "../utils/browser-agent.js";
 import { planBrowserFlow } from "@browser-tester/supervisor";
 import { useAppStore } from "../store.js";
-import { saveFlow } from "../utils/save-flow.js";
+import { CliRuntime } from "../runtime.js";
+import { saveFlow } from "../utils/flow-storage.js";
 import { clearInkDisplay } from "../utils/clear-ink-display.js";
 import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
 
@@ -33,35 +35,30 @@ const usePlanningEffect = () => {
   useEffect(() => {
     if (screen !== "planning" || !gitState || !testAction || !flowInstruction.trim()) return;
 
-    let isCancelled = false;
+    const target = resolveBrowserTarget({
+      action: testAction,
+      commit: selectedCommit ?? undefined,
+    });
+    const environment = getBrowserEnvironment(environmentOverrides);
+    useAppStore.setState({ resolvedTarget: target });
 
-    const run = async () => {
-      const target = resolveBrowserTarget({
-        action: testAction,
-        commit: selectedCommit ?? undefined,
-      });
-      if (isCancelled) return;
-
-      const environment = getBrowserEnvironment(environmentOverrides);
-      useAppStore.setState({ resolvedTarget: target });
-      const plan = await planBrowserFlow({
+    const planningFiber = Effect.runFork(
+      planBrowserFlow({
         target,
         userInstruction: flowInstruction,
         environment,
-      });
-      if (isCancelled) return;
-
-      completePlanning({ target, plan, environment });
-    };
-
-    void run().catch((caughtError) => {
-      if (!isCancelled) {
-        failPlanning(caughtError instanceof Error ? caughtError.message : "Unknown error");
-      }
-    });
+      }).pipe(
+        Effect.tap((plan) => Effect.sync(() => completePlanning({ target, plan, environment }))),
+        Effect.catch((caughtError) =>
+          Effect.sync(() =>
+            failPlanning(caughtError instanceof Error ? caughtError.message : "Unknown error"),
+          ),
+        ),
+      ),
+    );
 
     return () => {
-      isCancelled = true;
+      void Effect.runFork(Fiber.interrupt(planningFiber));
     };
   }, [
     completePlanning,
@@ -98,28 +95,26 @@ const useAutoSaveEffect = () => {
       return;
     }
 
-    let isCancelled = false;
     useAppStore.setState({ autoSaveStatus: "saving" });
 
-    void saveFlow({
-      target: resolvedTarget,
-      plan: generatedPlan,
-      environment: browserEnvironment,
-    })
-      .then(() => {
-        if (!isCancelled) {
-          useAppStore.setState({ autoSaveStatus: "saved" });
-          void loadSavedFlows();
-        }
-      })
-      .catch(() => {
-        if (!isCancelled) {
-          useAppStore.setState({ autoSaveStatus: "error" });
-        }
-      });
+    const saveFiber = CliRuntime.runFork(
+      saveFlow({
+        target: resolvedTarget,
+        plan: generatedPlan,
+        environment: browserEnvironment,
+      }).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            useAppStore.setState({ autoSaveStatus: "saved" });
+            void loadSavedFlows();
+          }),
+        ),
+        Effect.catch(() => Effect.sync(() => useAppStore.setState({ autoSaveStatus: "error" }))),
+      ),
+    );
 
     return () => {
-      isCancelled = true;
+      void Effect.runFork(Fiber.interrupt(saveFiber));
     };
   }, [
     autoSaveFlows,

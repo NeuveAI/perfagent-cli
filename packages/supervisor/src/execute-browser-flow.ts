@@ -1,8 +1,9 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { LanguageModelV3 } from "@ai-sdk/provider";
+import type { LanguageModelV3, LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import type { AgentProviderSettings } from "@browser-tester/agent";
+import { Effect, Option, Stream } from "effect";
 import {
   BROWSER_TEST_MODEL,
   DEFAULT_AGENT_PROVIDER,
@@ -14,6 +15,7 @@ import {
 import { buildBrowserMcpSettings } from "./browser-mcp-config.js";
 import { createBrowserRunReport } from "./create-browser-run-report.js";
 import { createAgentModel } from "./create-agent-model.js";
+import { ExecutionError, MemoryRetrievalError } from "./errors.js";
 import type { BrowserRunEvent } from "./events.js";
 import {
   buildStepMap,
@@ -24,15 +26,10 @@ import {
 } from "./parse-execution-stream.js";
 import type { ExecutionStreamContext, ExecutionStreamState } from "./parse-execution-stream.js";
 import { retrieveExecutorMemory } from "./memory/retrieve-executor-memory.js";
-import type { ExecuteBrowserFlowOptions, PlanStep } from "./types.js";
+import type { ExecuteBrowserFlowOptions } from "./types.js";
 import { saveBrowserImageResult } from "./utils/save-browser-image-result.js";
 import { serializeToolResult } from "./utils/serialize-tool-result.js";
 import { resolveLiveViewUrl } from "./utils/resolve-live-view-url.js";
-
-const BROWSER_EXECUTION_TOOL_NAMES = ["open", "playwright", "screenshot", "close"];
-
-const buildExecutionToolAllowlist = (browserMcpServerName: string): string[] =>
-  BROWSER_EXECUTION_TOOL_NAMES.map((toolName) => `mcp__${browserMcpServerName}__${toolName}`);
 
 export const buildExecutionModelSettings = (
   options: Pick<
@@ -54,50 +51,15 @@ export const buildExecutionModelSettings = (
       ...(provider === "claude" ? { model: BROWSER_TEST_MODEL } : {}),
       ...(options.providerSettings ?? {}),
       effort: EXECUTION_MODEL_EFFORT,
-      tools: buildExecutionToolAllowlist(browserMcpServerName),
+      tools: ["open", "playwright", "screenshot", "close"].map(
+        (toolName) => `mcp__${browserMcpServerName}__${toolName}`,
+      ),
     },
     browserMcpServerName,
     videoOutputPath: options.videoOutputPath,
     liveViewUrl: options.liveViewUrl,
   });
 };
-
-const createExecutionModel = (
-  options: Pick<
-    ExecuteBrowserFlowOptions,
-    | "model"
-    | "provider"
-    | "providerSettings"
-    | "target"
-    | "browserMcpServerName"
-    | "videoOutputPath"
-    | "liveViewUrl"
-  >,
-): LanguageModelV3 => {
-  if (options.model) return options.model;
-
-  const provider = options.provider ?? DEFAULT_AGENT_PROVIDER;
-  const settings = buildExecutionModelSettings(options);
-
-  return createAgentModel(provider, settings);
-};
-
-const formatPlanSteps = (steps: PlanStep[]): string =>
-  steps
-    .map((step) =>
-      [
-        `- ${step.id}: ${step.title}`,
-        `  instruction: ${step.instruction}`,
-        `  expected outcome: ${step.expectedOutcome}`,
-        `  route hint: ${step.routeHint ?? "none"}`,
-        `  changed file evidence: ${
-          step.changedFileEvidence && step.changedFileEvidence.length > 0
-            ? step.changedFileEvidence.join(", ")
-            : "none"
-        }`,
-      ].join("\n"),
-    )
-    .join("\n");
 
 const buildExecutionPrompt = (
   options: ExecuteBrowserFlowOptions,
@@ -204,234 +166,307 @@ const buildExecutionPrompt = (
     `Risk areas: ${plan.riskAreas.length > 0 ? plan.riskAreas.join("; ") : "none"}`,
     `Target URLs: ${plan.targetUrls.length > 0 ? plan.targetUrls.join(", ") : "none"}`,
     "",
-    formatPlanSteps(plan.steps),
+    plan.steps
+      .map((step) =>
+        [
+          `- ${step.id}: ${step.title}`,
+          `  instruction: ${step.instruction}`,
+          `  expected outcome: ${step.expectedOutcome}`,
+          `  route hint: ${step.routeHint ?? "none"}`,
+          `  changed file evidence: ${
+            step.changedFileEvidence && step.changedFileEvidence.length > 0
+              ? step.changedFileEvidence.join(", ")
+              : "none"
+          }`,
+        ].join("\n"),
+      )
+      .join("\n"),
   ].join("\n");
 };
 
-const createVideoOutputPath = (): string => {
-  const videoDirectory = mkdtempSync(join(tmpdir(), VIDEO_DIRECTORY_PREFIX));
-  return join(videoDirectory, VIDEO_FILE_NAME);
-};
+const createBrowserRunEventIterable = (options: {
+  target: ExecuteBrowserFlowOptions["target"];
+  plan: ExecuteBrowserFlowOptions["plan"];
+  browserMcpServerName: string;
+  videoOutputPath: string;
+  liveViewUrl?: string;
+  stream: ReadableStream<LanguageModelV3StreamPart>;
+  abortController: AbortController;
+}) =>
+  (async function* (): AsyncGenerator<BrowserRunEvent> {
+    const emittedEvents: BrowserRunEvent[] = [];
+    const runStartedEvent: BrowserRunEvent = {
+      type: "run-started",
+      timestamp: Date.now(),
+      planTitle: options.plan.title,
+      liveViewUrl: options.liveViewUrl,
+    };
+    emittedEvents.push(runStartedEvent);
+    yield runStartedEvent;
 
-export const executeBrowserFlow = async function* (
+    const reader = options.stream.getReader();
+    let streamState: ExecutionStreamState = { bufferedText: "" };
+    let completionEvent: Extract<BrowserRunEvent, { type: "run-completed" }> | null = null;
+    let screenshotOutputDirectoryPath: string | undefined;
+    const screenshotPaths: string[] = [];
+    const streamContext: ExecutionStreamContext = {
+      browserMcpServerName: options.browserMcpServerName,
+      stepsById: buildStepMap(options.plan.steps),
+    };
+
+    try {
+      for (;;) {
+        const nextChunk = await reader.read();
+        if (nextChunk.done) break;
+
+        const part = nextChunk.value;
+
+        if (part.type === "text-delta") {
+          const parsedText = parseTextDelta(part.delta, streamState, streamContext);
+          streamState = parsedText.nextState;
+          for (const event of parsedText.events) {
+            if (event.type === "run-completed") {
+              completionEvent = {
+                ...event,
+                sessionId: streamState.sessionId,
+                videoPath: options.videoOutputPath,
+              };
+            } else {
+              emittedEvents.push(event);
+              yield event;
+            }
+          }
+          continue;
+        }
+
+        if (part.type === "reasoning-delta") {
+          const event: BrowserRunEvent = {
+            type: "thinking",
+            timestamp: Date.now(),
+            text: part.delta,
+          };
+          emittedEvents.push(event);
+          yield event;
+          continue;
+        }
+
+        if (part.type === "tool-call") {
+          const toolCallEvent: BrowserRunEvent = {
+            type: "tool-call",
+            timestamp: Date.now(),
+            toolName: part.toolName,
+            input: part.input,
+          };
+          emittedEvents.push(toolCallEvent);
+          yield toolCallEvent;
+
+          const browserAction = parseBrowserToolName(part.toolName, options.browserMcpServerName);
+          if (browserAction) {
+            const browserLogEvent: BrowserRunEvent = {
+              type: "browser-log",
+              timestamp: Date.now(),
+              action: browserAction,
+              message: `Called ${browserAction}`,
+            };
+            emittedEvents.push(browserLogEvent);
+            yield browserLogEvent;
+          }
+          continue;
+        }
+
+        if (part.type === "tool-result") {
+          const browserAction = parseBrowserToolName(part.toolName, options.browserMcpServerName);
+          let result = serializeToolResult(part.result);
+          if (browserAction === "screenshot") {
+            const savedBrowserImageResult = saveBrowserImageResult({
+              browserAction,
+              outputDirectoryPath: screenshotOutputDirectoryPath,
+              result,
+            });
+
+            if (savedBrowserImageResult) {
+              screenshotOutputDirectoryPath = savedBrowserImageResult.outputDirectoryPath;
+              screenshotPaths.push(savedBrowserImageResult.outputPath);
+              result = savedBrowserImageResult.resultText;
+            }
+          }
+
+          const toolResultEvent: BrowserRunEvent = {
+            type: "tool-result",
+            timestamp: Date.now(),
+            toolName: part.toolName,
+            result,
+            isError: Boolean(part.isError),
+          };
+          emittedEvents.push(toolResultEvent);
+          yield toolResultEvent;
+
+          if (browserAction) {
+            const browserLogEvent: BrowserRunEvent = {
+              type: "browser-log",
+              timestamp: Date.now(),
+              action: browserAction,
+              message: result,
+            };
+            emittedEvents.push(browserLogEvent);
+            yield browserLogEvent;
+          }
+          continue;
+        }
+
+        const sessionId = extractStreamSessionId(part);
+        if (sessionId) {
+          streamState = {
+            ...streamState,
+            sessionId,
+          };
+        }
+      }
+
+      if (streamState.bufferedText.trim()) {
+        const trailingEvent = parseMarkerLine(streamState.bufferedText.trim(), streamContext);
+        if (trailingEvent) {
+          if (Array.isArray(trailingEvent)) {
+            for (const event of trailingEvent) {
+              if (event.type === "run-completed") {
+                completionEvent = {
+                  ...event,
+                  sessionId: streamState.sessionId,
+                  videoPath: options.videoOutputPath,
+                };
+              } else {
+                emittedEvents.push(event);
+                yield event;
+              }
+            }
+          } else if (trailingEvent.type === "run-completed") {
+            completionEvent = {
+              ...trailingEvent,
+              sessionId: streamState.sessionId,
+              videoPath: options.videoOutputPath,
+            };
+          } else {
+            emittedEvents.push(trailingEvent);
+            yield trailingEvent;
+          }
+        }
+      }
+
+      const resolvedCompletionEvent =
+        completionEvent ??
+        ({
+          type: "run-completed",
+          timestamp: Date.now(),
+          status: "passed",
+          summary: "Run completed.",
+          sessionId: streamState.sessionId,
+          videoPath: options.videoOutputPath,
+        } satisfies Extract<BrowserRunEvent, { type: "run-completed" }>);
+
+      const preparingResultsEvent: BrowserRunEvent = {
+        type: "text",
+        timestamp: Date.now(),
+        text: "Preparing results report...",
+      };
+      yield preparingResultsEvent;
+
+      yield {
+        ...resolvedCompletionEvent,
+        report: await createBrowserRunReport({
+          target: options.target,
+          plan: options.plan,
+          events: emittedEvents,
+          completionEvent: resolvedCompletionEvent,
+          rawVideoPath: options.videoOutputPath,
+          screenshotPaths,
+        }),
+      };
+    } catch (cause) {
+      throw cause instanceof ExecutionError
+        ? cause
+        : new ExecutionError({ stage: "stream consumption", cause });
+    } finally {
+      options.abortController.abort();
+      try {
+        await reader.cancel();
+      } catch {}
+    }
+  })();
+
+const buildExecutionStream = Effect.fn("executeBrowserFlow")(function* (
   options: ExecuteBrowserFlowOptions,
-): AsyncGenerator<BrowserRunEvent> {
-  const browserMcpServerName = options.browserMcpServerName ?? DEFAULT_BROWSER_MCP_SERVER_NAME;
-  const videoOutputPath = options.videoOutputPath ?? createVideoOutputPath();
-  const liveViewUrl = options.liveViewUrl ?? (await resolveLiveViewUrl().catch(() => undefined));
-  const model = createExecutionModel({
-    model: options.model,
-    provider: options.provider,
-    providerSettings: options.providerSettings,
-    target: options.target,
-    browserMcpServerName,
-    videoOutputPath,
-    liveViewUrl,
+) {
+  yield* Effect.annotateCurrentSpan({
+    cwd: options.target.cwd,
+    scope: options.target.scope,
   });
-  let memoryContext: string | undefined;
-  try {
-    memoryContext = retrieveExecutorMemory(options.target.cwd, {
-      targetUrls: options.plan.targetUrls,
-      steps: options.plan.steps,
-    });
-  } catch {}
+
+  const browserMcpServerName = options.browserMcpServerName ?? DEFAULT_BROWSER_MCP_SERVER_NAME;
+  const videoOutputPath =
+    options.videoOutputPath ??
+    join(mkdtempSync(join(tmpdir(), VIDEO_DIRECTORY_PREFIX)), VIDEO_FILE_NAME);
+  const liveViewUrl =
+    options.liveViewUrl ??
+    (yield* Effect.tryPromise({
+      try: () => resolveLiveViewUrl(),
+      catch: (cause) => new ExecutionError({ stage: "resolve live view url", cause }),
+    }).pipe(Effect.catchTag("ExecutionError", () => Effect.succeed(undefined))));
+  const model: LanguageModelV3 =
+    options.model ??
+    createAgentModel(
+      options.provider ?? DEFAULT_AGENT_PROVIDER,
+      buildExecutionModelSettings({
+        provider: options.provider,
+        providerSettings: options.providerSettings,
+        target: options.target,
+        browserMcpServerName,
+        videoOutputPath,
+        liveViewUrl,
+      }),
+    );
+  const memoryContext = yield* Effect.try({
+    try: () =>
+      retrieveExecutorMemory(options.target.cwd, {
+        targetUrls: options.plan.targetUrls,
+        steps: options.plan.steps,
+      }),
+    catch: (cause) => new MemoryRetrievalError({ stage: "executor", cause }),
+  }).pipe(
+    Effect.map(Option.some),
+    Effect.catchTag("MemoryRetrievalError", () => Effect.succeed(Option.none<string>())),
+  );
 
   const prompt = buildExecutionPrompt(
     { ...options, browserMcpServerName, videoOutputPath },
-    memoryContext,
+    Option.getOrUndefined(memoryContext),
   );
-
-  const emittedEvents: BrowserRunEvent[] = [];
-  const runStartedEvent: BrowserRunEvent = {
-    type: "run-started",
-    timestamp: Date.now(),
-    planTitle: options.plan.title,
-    liveViewUrl,
-  };
-  emittedEvents.push(runStartedEvent);
-  yield runStartedEvent;
-
-  const streamResult = await model.doStream({
-    abortSignal: options.signal,
-    prompt: [{ role: "user", content: [{ type: "text", text: prompt }] }],
+  const abortController = new AbortController();
+  const streamResult = yield* Effect.tryPromise({
+    try: () =>
+      model.doStream({
+        abortSignal: abortController.signal,
+        prompt: [{ role: "user", content: [{ type: "text", text: prompt }] }],
+      }),
+    catch: (cause) => new ExecutionError({ stage: "model streaming", cause }),
   });
 
-  const reader = streamResult.stream.getReader();
-  let streamState: ExecutionStreamState = { bufferedText: "" };
-  let completionEvent: Extract<BrowserRunEvent, { type: "run-completed" }> | null = null;
-  let screenshotOutputDirectoryPath: string | undefined;
-  const screenshotPaths: string[] = [];
-  const streamContext: ExecutionStreamContext = {
-    browserMcpServerName,
-    stepsById: buildStepMap(options.plan.steps),
-  };
-
-  for (;;) {
-    const nextChunk = await reader.read();
-    if (nextChunk.done) break;
-
-    const part = nextChunk.value;
-
-    if (part.type === "text-delta") {
-      const parsedText = parseTextDelta(part.delta, streamState, streamContext);
-      streamState = parsedText.nextState;
-      for (const event of parsedText.events) {
-        if (event.type === "run-completed") {
-          completionEvent = {
-            ...event,
-            sessionId: streamState.sessionId,
-            videoPath: videoOutputPath,
-          };
-        } else {
-          emittedEvents.push(event);
-          yield event;
-        }
-      }
-      continue;
-    }
-
-    if (part.type === "reasoning-delta") {
-      const event: BrowserRunEvent = {
-        type: "thinking",
-        timestamp: Date.now(),
-        text: part.delta,
-      };
-      emittedEvents.push(event);
-      yield event;
-      continue;
-    }
-
-    if (part.type === "tool-call") {
-      const toolCallEvent: BrowserRunEvent = {
-        type: "tool-call",
-        timestamp: Date.now(),
-        toolName: part.toolName,
-        input: part.input,
-      };
-      emittedEvents.push(toolCallEvent);
-      yield toolCallEvent;
-
-      const browserAction = parseBrowserToolName(part.toolName, browserMcpServerName);
-      if (browserAction) {
-        const browserLogEvent: BrowserRunEvent = {
-          type: "browser-log",
-          timestamp: Date.now(),
-          action: browserAction,
-          message: `Called ${browserAction}`,
-        };
-        emittedEvents.push(browserLogEvent);
-        yield browserLogEvent;
-      }
-      continue;
-    }
-
-    if (part.type === "tool-result") {
-      const browserAction = parseBrowserToolName(part.toolName, browserMcpServerName);
-      let result = serializeToolResult(part.result);
-      if (browserAction === "screenshot") {
-        const savedBrowserImageResult = saveBrowserImageResult({
-          browserAction,
-          outputDirectoryPath: screenshotOutputDirectoryPath,
-          result,
-        });
-
-        if (savedBrowserImageResult) {
-          screenshotOutputDirectoryPath = savedBrowserImageResult.outputDirectoryPath;
-          screenshotPaths.push(savedBrowserImageResult.outputPath);
-          result = savedBrowserImageResult.resultText;
-        }
-      }
-
-      const toolResultEvent: BrowserRunEvent = {
-        type: "tool-result",
-        timestamp: Date.now(),
-        toolName: part.toolName,
-        result,
-        isError: Boolean(part.isError),
-      };
-      emittedEvents.push(toolResultEvent);
-      yield toolResultEvent;
-
-      if (browserAction) {
-        const browserLogEvent: BrowserRunEvent = {
-          type: "browser-log",
-          timestamp: Date.now(),
-          action: browserAction,
-          message: result,
-        };
-        emittedEvents.push(browserLogEvent);
-        yield browserLogEvent;
-      }
-      continue;
-    }
-
-    const sessionId = extractStreamSessionId(part);
-    if (sessionId) {
-      streamState = {
-        ...streamState,
-        sessionId,
-      };
-    }
-  }
-
-  if (streamState.bufferedText.trim()) {
-    const trailingEvent = parseMarkerLine(streamState.bufferedText.trim(), streamContext);
-    if (trailingEvent) {
-      if (Array.isArray(trailingEvent)) {
-        for (const event of trailingEvent) {
-          if (event.type === "run-completed") {
-            completionEvent = {
-              ...event,
-              sessionId: streamState.sessionId,
-              videoPath: videoOutputPath,
-            };
-          } else {
-            emittedEvents.push(event);
-            yield event;
-          }
-        }
-      } else {
-        if (trailingEvent.type === "run-completed") {
-          completionEvent = {
-            ...trailingEvent,
-            sessionId: streamState.sessionId,
-            videoPath: videoOutputPath,
-          };
-        } else {
-          emittedEvents.push(trailingEvent);
-          yield trailingEvent;
-        }
-      }
-    }
-  }
-
-  const resolvedCompletionEvent =
-    completionEvent ??
-    ({
-      type: "run-completed",
-      timestamp: Date.now(),
-      status: "passed",
-      summary: "Run completed.",
-      sessionId: streamState.sessionId,
-      videoPath: videoOutputPath,
-    } satisfies Extract<BrowserRunEvent, { type: "run-completed" }>);
-
-  const preparingResultsEvent: BrowserRunEvent = {
-    type: "text",
-    timestamp: Date.now(),
-    text: "Preparing results report...",
-  };
-  yield preparingResultsEvent;
-
-  yield {
-    ...resolvedCompletionEvent,
-    report: createBrowserRunReport({
+  return Stream.fromAsyncIterable(
+    createBrowserRunEventIterable({
       target: options.target,
       plan: options.plan,
-      events: emittedEvents,
-      completionEvent: resolvedCompletionEvent,
-      rawVideoPath: videoOutputPath,
-      screenshotPaths,
+      browserMcpServerName,
+      videoOutputPath,
+      liveViewUrl,
+      stream: streamResult.stream,
+      abortController,
     }),
-  };
-};
+    (cause) =>
+      cause instanceof ExecutionError
+        ? cause
+        : new ExecutionError({ stage: "stream consumption", cause }),
+  );
+});
+
+export const executeBrowserFlow = (
+  options: ExecuteBrowserFlowOptions,
+): Stream.Stream<BrowserRunEvent, ExecutionError> => Stream.unwrap(buildExecutionStream(options));

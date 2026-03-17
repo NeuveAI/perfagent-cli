@@ -23,13 +23,13 @@ export interface ContextOption {
   commitSubject?: string;
 }
 
-const buildChangesOption = (gitState: GitState): ContextOption | null => {
+const buildChangesOption = async (gitState: GitState): Promise<ContextOption | null> => {
   if (!gitState.hasChangesFromMain && !gitState.hasUnstagedChanges) return null;
 
   const cwd = process.cwd();
   const pullRequest = gitState.isOnMain
     ? null
-    : getPullRequestForBranch(cwd, gitState.currentBranch);
+    : await getPullRequestForBranch(cwd, gitState.currentBranch);
 
   const stats = gitState.changesFromMainDiffStats ?? gitState.diffStats;
   const parts: string[] = [];
@@ -113,9 +113,9 @@ export interface FetchContextOptionsResult {
   isLoading: boolean;
 }
 
-export const buildLocalContextOptions = (gitState: GitState): ContextOption[] => {
+export const buildLocalContextOptions = async (gitState: GitState): Promise<ContextOption[]> => {
   const options: ContextOption[] = [];
-  const changesOption = buildChangesOption(gitState);
+  const changesOption = await buildChangesOption(gitState);
   if (changesOption) options.push(changesOption);
 
   const commitOptions = buildCommitOptions(gitState);

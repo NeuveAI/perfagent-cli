@@ -6,8 +6,8 @@ import { useColors } from "../theme-context.js";
 import { RuledBox } from "../ui/ruled-box.js";
 import { useAppStore } from "../../store.js";
 import { formatTimeAgo } from "../../utils/format-time-ago.js";
-import { loadSavedFlow } from "../../utils/load-saved-flow.js";
-import { removeSavedFlow } from "../../utils/remove-saved-flow.js";
+import { CliRuntime } from "../../runtime.js";
+import { loadSavedFlow, removeSavedFlow } from "../../utils/flow-storage.js";
 import { ScreenHeading } from "../ui/screen-heading.js";
 import { ErrorMessage } from "../ui/error-message.js";
 import { Clickable } from "../ui/clickable.js";
@@ -61,7 +61,7 @@ export const SavedFlowPickerScreen = () => {
     setLoadingError(null);
     setLoadingFilePath(flow.filePath);
 
-    void loadSavedFlow(flow.filePath)
+    void CliRuntime.runPromise(loadSavedFlow(flow.filePath))
       .then((loaded) => applySavedFlow(loaded))
       .catch((caughtError) => {
         setLoadingError(
@@ -78,7 +78,7 @@ export const SavedFlowPickerScreen = () => {
     setLoadingError(null);
     setDeletingFilePath(selectedFlow.filePath);
 
-    void removeSavedFlow(selectedFlow.filePath)
+    void CliRuntime.runPromise(removeSavedFlow(selectedFlow.filePath))
       .then(() => loadSavedFlows())
       .catch((caughtError) => {
         setLoadingError(

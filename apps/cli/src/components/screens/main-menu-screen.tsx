@@ -44,12 +44,21 @@ export const MainMenu = () => {
   const [pickerQuery, setPickerQuery] = useState("");
   const [pickerIndex, setPickerIndex] = useState(0);
   const [remoteOptions, setRemoteOptions] = useState<ContextOption[]>([]);
+  const [localOptions, setLocalOptions] = useState<ContextOption[]>([]);
   const [remoteLoading, setRemoteLoading] = useState(false);
 
-  const localOptions = useMemo(
-    () => (gitState ? buildLocalContextOptions(gitState) : []),
-    [gitState],
-  );
+  useEffect(() => {
+    if (!gitState) return;
+    let cancelled = false;
+    buildLocalContextOptions(gitState)
+      .then((options) => {
+        if (!cancelled) setLocalOptions(options);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [gitState]);
 
   useEffect(() => {
     if (!pickerOpen || !gitState) return;

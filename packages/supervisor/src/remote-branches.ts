@@ -83,7 +83,7 @@ const getRemoteBranchNames = async (cwd: string): Promise<string[]> => {
 export const fetchRemoteBranches = async (cwd: string): Promise<RemoteBranch[]> => {
   const branchNames = await getRemoteBranchNames(cwd);
 
-  if (!commandExists("gh")) {
+  if (!(await commandExists("gh"))) {
     return branchNames.map((name) => ({
       name,
       author: "",

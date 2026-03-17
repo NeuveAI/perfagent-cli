@@ -1,9 +1,10 @@
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 import {
   HIGHLIGHT_OVERLAY_FONT_SIZE_PX,
   HIGHLIGHT_OVERLAY_HEIGHT_PX,
@@ -60,27 +61,25 @@ interface ArtifactPreparationResult {
   warnings: string[];
 }
 
+const execFileAsync = promisify(execFile);
+
 const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 
-const commandExists = (command: string): boolean => {
+const commandExists = async (command: string): Promise<boolean> => {
   try {
-    execFileSync("which", [command], {
-      encoding: "utf-8",
-      stdio: "pipe",
-    });
+    await execFileAsync("which", [command], { encoding: "utf-8" });
     return true;
   } catch {
     return false;
   }
 };
 
-const ffmpegFilterAvailable = (filterName: string): boolean => {
+const ffmpegFilterAvailable = async (filterName: string): Promise<boolean> => {
   try {
-    const output = execFileSync("ffmpeg", ["-hide_banner", "-filters"], {
+    const { stdout } = await execFileAsync("ffmpeg", ["-hide_banner", "-filters"], {
       encoding: "utf-8",
-      stdio: "pipe",
     });
-    return output.includes(filterName);
+    return stdout.includes(filterName);
   } catch {
     return false;
   }
@@ -281,15 +280,15 @@ export const getHighlightWindows = (events: BrowserRunEvent[]): TimeWindow[] => 
   return mergedWindows;
 };
 
-const createHighlightVideo = (rawVideoPath: string | undefined, events: BrowserRunEvent[]) => {
+const createHighlightVideo = async (
+  rawVideoPath: string | undefined,
+  events: BrowserRunEvent[],
+) => {
   if (!rawVideoPath || !existsSync(rawVideoPath)) {
-    return {
-      highlightVideoPath: undefined,
-      warning: undefined,
-    };
+    return { highlightVideoPath: undefined, warning: undefined };
   }
 
-  if (!commandExists("ffmpeg")) {
+  if (!(await commandExists("ffmpeg"))) {
     return {
       highlightVideoPath: undefined,
       warning: "Highlight reel skipped because ffmpeg is not installed.",
@@ -298,20 +297,17 @@ const createHighlightVideo = (rawVideoPath: string | undefined, events: BrowserR
 
   const windows = getHighlightWindows(events);
   if (windows.length === 0) {
-    return {
-      highlightVideoPath: undefined,
-      warning: undefined,
-    };
+    return { highlightVideoPath: undefined, warning: undefined };
   }
 
-  const canDrawText = ffmpegFilterAvailable("drawtext");
+  const canDrawText = await ffmpegFilterAvailable("drawtext");
   const temporaryDirectoryPath = mkdtempSync(join(tmpdir(), "browser-tester-highlight-"));
   const highlightVideoPath = join(dirname(resolve(rawVideoPath)), HIGHLIGHT_VIDEO_FILE_NAME);
 
   try {
     const segmentPaths: string[] = [];
 
-    windows.forEach((window, index) => {
+    for (const [index, window] of windows.entries()) {
       const segmentPath = join(temporaryDirectoryPath, `segment-${index}.webm`);
       const ffmpegArguments = [
         "-y",
@@ -328,9 +324,9 @@ const createHighlightVideo = (rawVideoPath: string | undefined, events: BrowserR
       }
 
       ffmpegArguments.push("-c:v", "libvpx-vp9", "-c:a", "libopus", segmentPath);
-      execFileSync("ffmpeg", ffmpegArguments, { stdio: "pipe" });
+      await execFileAsync("ffmpeg", ffmpegArguments);
       segmentPaths.push(segmentPath);
-    });
+    }
 
     const concatFilePath = join(temporaryDirectoryPath, "segments.txt");
     writeFileSync(
@@ -341,29 +337,22 @@ const createHighlightVideo = (rawVideoPath: string | undefined, events: BrowserR
       "utf-8",
     );
 
-    execFileSync(
-      "ffmpeg",
-      [
-        "-y",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        concatFilePath,
-        "-c:v",
-        "libvpx-vp9",
-        "-c:a",
-        "libopus",
-        highlightVideoPath,
-      ],
-      { stdio: "pipe" },
-    );
-
-    return {
+    await execFileAsync("ffmpeg", [
+      "-y",
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-i",
+      concatFilePath,
+      "-c:v",
+      "libvpx-vp9",
+      "-c:a",
+      "libopus",
       highlightVideoPath,
-      warning: undefined,
-    };
+    ]);
+
+    return { highlightVideoPath, warning: undefined };
   } catch {
     return {
       highlightVideoPath: undefined,
@@ -374,15 +363,14 @@ const createHighlightVideo = (rawVideoPath: string | undefined, events: BrowserR
   }
 };
 
-const getScreenshotEmailBoxes = (screenshotPath: string): RedactionBox[] => {
-  if (!commandExists("tesseract")) return [];
+const getScreenshotEmailBoxes = async (screenshotPath: string): Promise<RedactionBox[]> => {
+  if (!(await commandExists("tesseract"))) return [];
 
   try {
-    const output = execFileSync("tesseract", [screenshotPath, "stdout", "tsv"], {
+    const { stdout } = await execFileAsync("tesseract", [screenshotPath, "stdout", "tsv"], {
       encoding: "utf-8",
-      stdio: "pipe",
     });
-    const lines = output.split("\n").slice(1);
+    const lines = stdout.split("\n").slice(1);
     const boxes: RedactionBox[] = [];
 
     for (const line of lines) {
@@ -410,12 +398,7 @@ const getScreenshotEmailBoxes = (screenshotPath: string): RedactionBox[] => {
       if (confidence < PII_TESSERACT_CONFIDENCE_THRESHOLD) continue;
       if (!EMAIL_PATTERN.test(text)) continue;
 
-      boxes.push({
-        left,
-        top,
-        width,
-        height,
-      });
+      boxes.push({ left, top, width, height });
     }
 
     return boxes;
@@ -432,36 +415,49 @@ const buildDrawBoxFilter = (boxes: RedactionBox[]): string =>
     )
     .join(",");
 
-const redactImage = (imagePath: string, boxes: RedactionBox[]): string | undefined => {
-  if (boxes.length === 0 || !commandExists("ffmpeg")) return undefined;
+const redactImage = async (
+  imagePath: string,
+  boxes: RedactionBox[],
+): Promise<string | undefined> => {
+  if (boxes.length === 0 || !(await commandExists("ffmpeg"))) return undefined;
 
   const imageExtension = extname(imagePath) || ".png";
   const redactedImagePath = imagePath.replace(imageExtension, `-redacted${imageExtension}`);
 
   try {
-    execFileSync(
-      "ffmpeg",
-      ["-y", "-i", imagePath, "-vf", buildDrawBoxFilter(boxes), redactedImagePath],
-      { stdio: "pipe" },
-    );
+    await execFileAsync("ffmpeg", [
+      "-y",
+      "-i",
+      imagePath,
+      "-vf",
+      buildDrawBoxFilter(boxes),
+      redactedImagePath,
+    ]);
     return redactedImagePath;
   } catch {
     return undefined;
   }
 };
 
-const redactVideo = (videoPath: string | undefined, boxes: RedactionBox[]): string | undefined => {
-  if (!videoPath || !existsSync(videoPath) || boxes.length === 0 || !commandExists("ffmpeg")) {
-    return undefined;
-  }
+const redactVideo = async (
+  videoPath: string | undefined,
+  boxes: RedactionBox[],
+): Promise<string | undefined> => {
+  if (!videoPath || !existsSync(videoPath) || boxes.length === 0) return undefined;
+  if (!(await commandExists("ffmpeg"))) return undefined;
 
   const redactedVideoPath = join(dirname(resolve(videoPath)), REDACTED_VIDEO_FILE_NAME);
   try {
-    execFileSync(
-      "ffmpeg",
-      ["-y", "-i", videoPath, "-vf", buildDrawBoxFilter(boxes), "-c:a", "copy", redactedVideoPath],
-      { stdio: "pipe" },
-    );
+    await execFileAsync("ffmpeg", [
+      "-y",
+      "-i",
+      videoPath,
+      "-vf",
+      buildDrawBoxFilter(boxes),
+      "-c:a",
+      "copy",
+      redactedVideoPath,
+    ]);
     return redactedVideoPath;
   } catch {
     return undefined;
@@ -600,39 +596,43 @@ const createShareBundle = (options: {
   };
 };
 
-const prepareArtifacts = (
+const prepareArtifacts = async (
   rawVideoPath: string | undefined,
   screenshotPaths: string[],
   events: BrowserRunEvent[],
-): ArtifactPreparationResult => {
+): Promise<ArtifactPreparationResult> => {
   const warnings: string[] = [];
   const existingScreenshotPaths = screenshotPaths.filter((screenshotPath) =>
     existsSync(screenshotPath),
   );
   const existingRawVideoPath = rawVideoPath && existsSync(rawVideoPath) ? rawVideoPath : undefined;
-  const highlightVideoResult = createHighlightVideo(existingRawVideoPath, events);
+  const highlightVideoResult = await createHighlightVideo(existingRawVideoPath, events);
   if (highlightVideoResult.warning) warnings.push(highlightVideoResult.warning);
 
-  const redactionBoxes = existingScreenshotPaths.flatMap((screenshotPath) =>
-    getScreenshotEmailBoxes(screenshotPath),
+  const redactionBoxResults = await Promise.all(
+    existingScreenshotPaths.map((screenshotPath) => getScreenshotEmailBoxes(screenshotPath)),
   );
+  const redactionBoxes = redactionBoxResults.flat();
 
   if (
     existingScreenshotPaths.length > 0 &&
     redactionBoxes.length === 0 &&
-    !commandExists("tesseract")
+    !(await commandExists("tesseract"))
   ) {
     warnings.push("PII redaction skipped because tesseract is not installed.");
   }
 
-  if (redactionBoxes.length > 0 && !commandExists("ffmpeg")) {
+  if (redactionBoxes.length > 0 && !(await commandExists("ffmpeg"))) {
     warnings.push("PII redaction skipped because ffmpeg is not installed.");
   }
 
-  const redactedScreenshotPaths = existingScreenshotPaths
-    .map((screenshotPath) => redactImage(screenshotPath, redactionBoxes))
-    .filter((screenshotPath): screenshotPath is string => Boolean(screenshotPath));
-  const redactedVideoPath = redactVideo(
+  const redactedScreenshotResults = await Promise.all(
+    existingScreenshotPaths.map((screenshotPath) => redactImage(screenshotPath, redactionBoxes)),
+  );
+  const redactedScreenshotPaths = redactedScreenshotResults.filter(
+    (screenshotPath): screenshotPath is string => Boolean(screenshotPath),
+  );
+  const redactedVideoPath = await redactVideo(
     highlightVideoResult.highlightVideoPath ?? existingRawVideoPath,
     redactionBoxes,
   );
@@ -649,17 +649,16 @@ const prepareArtifacts = (
   };
 };
 
-export const createBrowserRunReport = (
+export const createBrowserRunReport = async (
   options: CreateBrowserRunReportOptions,
-): BrowserRunReport => {
+): Promise<BrowserRunReport> => {
   const stepResults = getStepResults(options.plan, options.events);
   const findings = getFindings(options.events, options.plan, options.completionEvent);
   const riskAreaSummary = getRiskAreaSummary(options.plan, stepResults, findings);
-  const artifactPreparation = prepareArtifacts(
-    options.rawVideoPath,
-    options.screenshotPaths,
-    options.events,
-  );
+  const [artifactPreparation, pullRequest] = await Promise.all([
+    prepareArtifacts(options.rawVideoPath, options.screenshotPaths, options.events),
+    getPullRequestForBranch(options.target.cwd, options.target.branch.current),
+  ]);
 
   const partialReport = {
     title: options.plan.title,
@@ -668,7 +667,7 @@ export const createBrowserRunReport = (
     findings,
     stepResults,
     warnings: artifactPreparation.warnings,
-    pullRequest: getPullRequestForBranch(options.target.cwd, options.target.branch.current),
+    pullRequest,
     ...riskAreaSummary,
   };
 

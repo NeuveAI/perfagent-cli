@@ -1,4 +1,5 @@
 import { Effect, Layer, Option } from "effect";
+import { DevTools } from "effect/unstable/devtools";
 import { Browsers, Cookies, layerLive, type Browser, type Cookie } from "@browser-tester/cookies";
 import { tmpdir } from "node:os";
 import { chromium } from "playwright";
@@ -10,7 +11,7 @@ import {
 import { injectCookies } from "./inject-cookies";
 import type { CreatePageOptions, CreatePageResult, VideoOptions } from "./types";
 
-const CookiesRuntime = Layer.mergeAll(layerLive, Cookies.layer);
+const CookiesRuntime = Layer.mergeAll(layerLive, Cookies.layer, DevTools.layer());
 
 const resolveDefaultBrowser = async (): Promise<Browser | undefined> =>
   Effect.runPromise(

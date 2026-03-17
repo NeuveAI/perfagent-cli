@@ -8,7 +8,8 @@ import { RuledBox } from "../ui/ruled-box.js";
 import { FileLink } from "../ui/file-link.js";
 import { ContextPicker } from "../ui/context-picker.js";
 import { useStdoutDimensions } from "../../hooks/use-stdout-dimensions.js";
-import { saveFlow } from "../../utils/save-flow.js";
+import { CliRuntime } from "../../runtime.js";
+import { saveFlow } from "../../utils/flow-storage.js";
 import { useAppStore } from "../../store.js";
 import { ErrorMessage } from "../ui/error-message.js";
 import {
@@ -64,14 +65,23 @@ export const PlanReviewScreen = () => {
   const [pickerQuery, setPickerQuery] = useState("");
   const [pickerIndex, setPickerIndex] = useState(0);
   const [remoteOptions, setRemoteOptions] = useState<ContextOption[]>([]);
+  const [localOptions, setLocalOptions] = useState<ContextOption[]>([]);
   const [remoteLoading, setRemoteLoading] = useState(false);
   const inputFocused = topFocus === "input";
   const branchFocused = topFocus === "branch";
 
-  const localOptions = useMemo(
-    () => (gitState ? buildLocalContextOptions(gitState) : []),
-    [gitState],
-  );
+  useEffect(() => {
+    if (!gitState) return;
+    let cancelled = false;
+    buildLocalContextOptions(gitState)
+      .then((options) => {
+        if (!cancelled) setLocalOptions(options);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [gitState]);
 
   useEffect(() => {
     if (!pickerOpen || !gitState) return;
@@ -301,11 +311,13 @@ export const PlanReviewScreen = () => {
       setSaveError(null);
       setSavedPaths(null);
       setSaving(true);
-      void saveFlow({
-        target: resolvedTarget,
-        plan,
-        environment: environment ?? {},
-      })
+      void CliRuntime.runPromise(
+        saveFlow({
+          target: resolvedTarget,
+          plan,
+          environment: environment ?? {},
+        }),
+      )
         .then((result) => {
           setSavedPaths({
             flowPath: result.flowPath,
@@ -423,7 +435,9 @@ export const PlanReviewScreen = () => {
           <Box marginTop={1}>
             <Text color={railColor}>{"┌  "}</Text>
             <Box flexShrink={1}>
-              <Text color={COLORS.TEXT} wrap="wrap">{flowInstruction}</Text>
+              <Text color={COLORS.TEXT} wrap="wrap">
+                {flowInstruction}
+              </Text>
             </Box>
           </Box>
 
@@ -460,7 +474,9 @@ export const PlanReviewScreen = () => {
                         <Box>
                           <Text color={railColor}>{`${continuation}  `}</Text>
                           <Box flexShrink={1}>
-                            <Text color={COLORS.DIM} wrap="wrap">{plan.rationale}</Text>
+                            <Text color={COLORS.DIM} wrap="wrap">
+                              {plan.rationale}
+                            </Text>
                           </Box>
                         </Box>
                       ) : null}
@@ -468,7 +484,9 @@ export const PlanReviewScreen = () => {
                         <Box>
                           <Text color={railColor}>{`${continuation}  `}</Text>
                           <Box flexShrink={1}>
-                            <Text color={COLORS.DIM} wrap="wrap">{plan.targetSummary}</Text>
+                            <Text color={COLORS.DIM} wrap="wrap">
+                              {plan.targetSummary}
+                            </Text>
                           </Box>
                         </Box>
                       ) : null}
@@ -499,14 +517,17 @@ export const PlanReviewScreen = () => {
                           <Text color={railColor}>{`${continuation}  `}</Text>
                           <Text color={COLORS.DIM}>{"· "}</Text>
                           <Box flexShrink={1}>
-                            <Text color={COLORS.DIM} wrap="wrap">{assumption}</Text>
+                            <Text color={COLORS.DIM} wrap="wrap">
+                              {assumption}
+                            </Text>
                           </Box>
                         </Box>
                       ))}
                       <Box>
                         <Text color={railColor}>{`${continuation}  `}</Text>
                         <Text color={COLORS.DIM}>
-                          <Text color={COLORS.PRIMARY}>e</Text>{" to edit"}
+                          <Text color={COLORS.PRIMARY}>e</Text>
+                          {" to edit"}
                         </Text>
                       </Box>
                     </Box>
@@ -520,11 +541,25 @@ export const PlanReviewScreen = () => {
                 <Box key="cookies" flexDirection="column">
                   <Clickable onClick={() => setSelectedIndex(index)}>
                     <Box>
-                      <Text color={isSelected ? COLORS.PRIMARY : (cookieSyncNeedsAttention ? COLORS.RED : railColor)}>
+                      <Text
+                        color={
+                          isSelected
+                            ? COLORS.PRIMARY
+                            : cookieSyncNeedsAttention
+                              ? COLORS.RED
+                              : railColor
+                        }
+                      >
                         {isSelected ? "◆" : "◇"}{" "}
                       </Text>
                       <Text
-                        color={isSelected ? COLORS.PRIMARY : (cookieSyncNeedsAttention ? COLORS.RED : COLORS.TEXT)}
+                        color={
+                          isSelected
+                            ? COLORS.PRIMARY
+                            : cookieSyncNeedsAttention
+                              ? COLORS.RED
+                              : COLORS.TEXT
+                        }
                         bold={isSelected}
                       >
                         Cookie sync
@@ -539,13 +574,16 @@ export const PlanReviewScreen = () => {
                       <Box>
                         <Text color={railColor}>{`${continuation}  `}</Text>
                         <Box flexShrink={1}>
-                          <Text color={COLORS.DIM} wrap="wrap">{plan.cookieSync.reason}</Text>
+                          <Text color={COLORS.DIM} wrap="wrap">
+                            {plan.cookieSync.reason}
+                          </Text>
                         </Box>
                       </Box>
                       <Box>
                         <Text color={railColor}>{`${continuation}  `}</Text>
                         <Text color={COLORS.DIM}>
-                          <Text color={COLORS.PRIMARY}>c</Text>{" to toggle"}
+                          <Text color={COLORS.PRIMARY}>c</Text>
+                          {" to toggle"}
                         </Text>
                       </Box>
                     </Box>
@@ -560,7 +598,8 @@ export const PlanReviewScreen = () => {
                 {sectionBreak ? (
                   <Box marginTop={1} marginBottom={1}>
                     <Text color={COLORS.BORDER}>
-                      {"STEPS "}{"─".repeat(Math.max(0, columns - 8))}
+                      {"STEPS "}
+                      {"─".repeat(Math.max(0, columns - 8))}
                     </Text>
                   </Box>
                 ) : null}
@@ -576,19 +615,29 @@ export const PlanReviewScreen = () => {
                 </Clickable>
                 {isSelected ? (
                   <Box flexDirection="column">
-                    <Text color={railColor}>{`${continuation}  `}<Text color={COLORS.DIM}>ACTION</Text></Text>
+                    <Text color={railColor}>
+                      {`${continuation}  `}
+                      <Text color={COLORS.DIM}>ACTION</Text>
+                    </Text>
                     <Box>
                       <Text color={railColor}>{`${continuation}  `}</Text>
                       <Box flexShrink={1}>
-                        <Text color={COLORS.TEXT} wrap="wrap">{step.instruction}</Text>
+                        <Text color={COLORS.TEXT} wrap="wrap">
+                          {step.instruction}
+                        </Text>
                       </Box>
                     </Box>
                     <Text color={railColor}>{`${continuation}`}</Text>
-                    <Text color={railColor}>{`${continuation}  `}<Text color={COLORS.DIM}>EXPECTED</Text></Text>
+                    <Text color={railColor}>
+                      {`${continuation}  `}
+                      <Text color={COLORS.DIM}>EXPECTED</Text>
+                    </Text>
                     <Box>
                       <Text color={railColor}>{`${continuation}  `}</Text>
                       <Box flexShrink={1}>
-                        <Text color={COLORS.GREEN} wrap="wrap">{step.expectedOutcome}</Text>
+                        <Text color={COLORS.GREEN} wrap="wrap">
+                          {step.expectedOutcome}
+                        </Text>
                       </Box>
                     </Box>
                   </Box>
@@ -596,7 +645,6 @@ export const PlanReviewScreen = () => {
               </Box>
             );
           })}
-
         </Box>
 
       {editingState ? (

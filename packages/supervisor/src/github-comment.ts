@@ -1,10 +1,13 @@
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { COMMENT_DIRECTORY_PREFIX, GITHUB_TIMEOUT_MS } from "./constants.js";
 import type { BrowserRunPullRequest, BrowserRunReport } from "./types.js";
 import { commandExists } from "./utils/command-exists.js";
+
+const execFileAsync = promisify(execFile);
 
 interface PullRequestJson {
   number?: unknown;
@@ -23,13 +26,14 @@ export interface PostPullRequestCommentResult {
   pullRequest: BrowserRunPullRequest;
 }
 
-const runGhCommand = (cwd: string, args: string[]): string =>
-  execFileSync("gh", args, {
+const runGhCommand = async (cwd: string, args: string[]): Promise<string> => {
+  const { stdout } = await execFileAsync("gh", args, {
     cwd,
     encoding: "utf-8",
     timeout: GITHUB_TIMEOUT_MS,
-    stdio: "pipe",
-  }).trim();
+  });
+  return stdout.trim();
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -59,14 +63,14 @@ const isRemoteShareUrl = (shareUrl: string | undefined): boolean =>
   typeof shareUrl === "string" &&
   (shareUrl.startsWith("https://") || shareUrl.startsWith("http://"));
 
-export const getPullRequestForBranch = (
+export const getPullRequestForBranch = async (
   cwd: string,
   branch: string,
-): BrowserRunPullRequest | null => {
-  if (!commandExists("gh")) return null;
+): Promise<BrowserRunPullRequest | null> => {
+  if (!(await commandExists("gh"))) return null;
 
   try {
-    const output = runGhCommand(cwd, [
+    const output = await runGhCommand(cwd, [
       "pr",
       "list",
       "--head",
@@ -132,14 +136,14 @@ export const buildPullRequestCommentBody = (report: BrowserRunReport): string =>
   ].join("\n");
 };
 
-export const postPullRequestComment = (
+export const postPullRequestComment = async (
   options: PostPullRequestCommentOptions,
-): PostPullRequestCommentResult => {
+): Promise<PostPullRequestCommentResult> => {
   if (!options.report.pullRequest) {
     throw new Error("No open pull request is associated with this branch.");
   }
 
-  if (!commandExists("gh")) {
+  if (!(await commandExists("gh"))) {
     throw new Error("GitHub CLI is not installed or is not available in PATH.");
   }
 
@@ -148,7 +152,7 @@ export const postPullRequestComment = (
   const bodyPath = join(outputDirectoryPath, "pull-request-comment.md");
   writeFileSync(bodyPath, body, "utf-8");
 
-  runGhCommand(options.cwd, [
+  await runGhCommand(options.cwd, [
     "pr",
     "comment",
     String(options.report.pullRequest.number),

@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import {
   planBrowserFlow,
   resolveTestTarget,
@@ -65,20 +66,19 @@ export const resolveBrowserTarget = (options: {
     selection: createTargetSelection(options.action, options.commit),
   });
 
-export const generateBrowserPlan = async (
-  options: GenerateBrowserPlanOptions,
-): Promise<GenerateBrowserPlanResult> => {
-  const target = resolveBrowserTarget(options);
-  const environment = getBrowserEnvironment(options.environmentOverrides);
-  const plan = await planBrowserFlow({
-    target,
-    userInstruction: options.userInstruction,
-    environment,
-  });
+export const generateBrowserPlan = (options: GenerateBrowserPlanOptions) =>
+  Effect.gen(function* () {
+    const target = resolveBrowserTarget(options);
+    const environment = getBrowserEnvironment(options.environmentOverrides);
+    const plan = yield* planBrowserFlow({
+      target,
+      userInstruction: options.userInstruction,
+      environment,
+    });
 
-  return {
-    target,
-    plan,
-    environment,
-  };
-};
+    return {
+      target,
+      plan,
+      environment,
+    } satisfies GenerateBrowserPlanResult;
+  });

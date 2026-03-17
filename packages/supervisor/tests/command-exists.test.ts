@@ -4,10 +4,13 @@ import { commandExists } from "../src/utils/command-exists.js";
 const availableCommands = new Set<string>();
 
 vi.mock("node:child_process", () => ({
-  execFileSync: vi.fn((_command: string, args: string[]) => {
+  execFile: vi.fn((_command: string, args: string[], _options: unknown, callback: Function) => {
     const target = args[0];
-    if (!availableCommands.has(target)) throw new Error(`not found: ${target}`);
-    return `/usr/local/bin/${target}`;
+    if (!availableCommands.has(target)) {
+      callback(new Error(`not found: ${target}`));
+    } else {
+      callback(null, `/usr/local/bin/${target}`, "");
+    }
   }),
 }));
 
@@ -16,12 +19,12 @@ describe("commandExists", () => {
     availableCommands.clear();
   });
 
-  it("returns true when the command is available", () => {
+  it("returns true when the command is available", async () => {
     availableCommands.add("gh");
-    expect(commandExists("gh")).toBe(true);
+    expect(await commandExists("gh")).toBe(true);
   });
 
-  it("returns false when the command is not found", () => {
-    expect(commandExists("gh")).toBe(false);
+  it("returns false when the command is not found", async () => {
+    expect(await commandExists("gh")).toBe(false);
   });
 });

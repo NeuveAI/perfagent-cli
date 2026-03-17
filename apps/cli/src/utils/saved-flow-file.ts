@@ -1,9 +1,9 @@
+import { Schema } from "effect";
 import type {
   BrowserEnvironmentHints,
   BrowserFlowPlan,
   TestTarget,
 } from "@browser-tester/supervisor";
-import { z } from "zod";
 import { SAVED_FLOW_FORMAT_VERSION } from "../constants.js";
 
 export interface SavedFlowFileData {
@@ -20,45 +20,45 @@ export interface SavedFlowFileData {
 const FLOW_FRONTMATTER_PATTERN = /^---\n([\s\S]*?)\n---/;
 const FRONTMATTER_LINE_PATTERN = /^([a-z][a-z0-9_]*):\s*(.+)$/gm;
 
-const savedFlowEnvironmentSchema: z.ZodType<BrowserEnvironmentHints> = z.object({
-  baseUrl: z.string().min(1).optional(),
-  headed: z.boolean().optional(),
-  cookies: z.boolean().optional(),
+const SavedFlowEnvironmentSchema = Schema.Struct({
+  baseUrl: Schema.optional(Schema.NonEmptyString),
+  headed: Schema.optional(Schema.Boolean),
+  cookies: Schema.optional(Schema.Boolean),
 });
 
-const savedFlowPlanSchema: z.ZodType<BrowserFlowPlan> = z.object({
-  title: z.string().min(1),
-  rationale: z.string().min(1),
-  targetSummary: z.string().min(1),
-  userInstruction: z.string().min(1),
-  assumptions: z.array(z.string().min(1)),
-  riskAreas: z.array(z.string().min(1)),
-  targetUrls: z.array(z.string().min(1)),
-  cookieSync: z.object({
-    required: z.boolean(),
-    reason: z.string().min(1),
+const SavedFlowStepSchema = Schema.Struct({
+  id: Schema.NonEmptyString,
+  title: Schema.NonEmptyString,
+  instruction: Schema.NonEmptyString,
+  expectedOutcome: Schema.NonEmptyString,
+  routeHint: Schema.optional(Schema.NonEmptyString),
+  changedFileEvidence: Schema.optional(Schema.Array(Schema.NonEmptyString)),
+});
+
+const SavedFlowPlanSchema = Schema.Struct({
+  title: Schema.NonEmptyString,
+  rationale: Schema.NonEmptyString,
+  targetSummary: Schema.NonEmptyString,
+  userInstruction: Schema.NonEmptyString,
+  assumptions: Schema.Array(Schema.NonEmptyString),
+  riskAreas: Schema.Array(Schema.NonEmptyString),
+  targetUrls: Schema.Array(Schema.NonEmptyString),
+  cookieSync: Schema.Struct({
+    required: Schema.Boolean,
+    reason: Schema.NonEmptyString,
   }),
-  steps: z.array(
-    z.object({
-      id: z.string().min(1),
-      title: z.string().min(1),
-      instruction: z.string().min(1),
-      expectedOutcome: z.string().min(1),
-      routeHint: z.string().min(1).optional(),
-      changedFileEvidence: z.array(z.string().min(1)).optional(),
-    }),
-  ),
+  steps: Schema.Array(SavedFlowStepSchema),
 });
 
-const savedFlowFileSchema: z.ZodType<SavedFlowFileData> = z.object({
-  format_version: z.literal(SAVED_FLOW_FORMAT_VERSION),
-  title: z.string().min(1),
-  description: z.string().min(1),
-  slug: z.string().min(1),
-  saved_target_scope: z.enum(["unstaged", "branch", "commit"]),
-  saved_target_display_name: z.string().min(1),
-  plan: savedFlowPlanSchema,
-  environment: savedFlowEnvironmentSchema,
+const SavedFlowFileSchema = Schema.Struct({
+  format_version: Schema.Literals([SAVED_FLOW_FORMAT_VERSION] as const),
+  title: Schema.NonEmptyString,
+  description: Schema.NonEmptyString,
+  slug: Schema.NonEmptyString,
+  saved_target_scope: Schema.Literals(["unstaged", "branch", "changes", "commit"] as const),
+  saved_target_display_name: Schema.NonEmptyString,
+  plan: SavedFlowPlanSchema,
+  environment: SavedFlowEnvironmentSchema,
 });
 
 export const formatSavedFlowFrontmatter = (savedFlowFileData: SavedFlowFileData): string =>
@@ -92,10 +92,26 @@ export const parseSavedFlowFile = (content: string): SavedFlowFileData | null =>
     }
   }
 
-  const parsedSavedFlow = savedFlowFileSchema.safeParse(frontmatterValues);
-  if (!parsedSavedFlow.success) {
+  try {
+    const decodedSavedFlowFile = Schema.decodeUnknownSync(SavedFlowFileSchema)(frontmatterValues);
+
+    return {
+      ...decodedSavedFlowFile,
+      plan: {
+        ...decodedSavedFlowFile.plan,
+        assumptions: [...decodedSavedFlowFile.plan.assumptions],
+        riskAreas: [...decodedSavedFlowFile.plan.riskAreas],
+        targetUrls: [...decodedSavedFlowFile.plan.targetUrls],
+        steps: decodedSavedFlowFile.plan.steps.map((step) => ({
+          ...step,
+          changedFileEvidence: [...(step.changedFileEvidence ?? [])],
+        })),
+      },
+      environment: {
+        ...decodedSavedFlowFile.environment,
+      },
+    };
+  } catch {
     return null;
   }
-
-  return parsedSavedFlow.data;
 };

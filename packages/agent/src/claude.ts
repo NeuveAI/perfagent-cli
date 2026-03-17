@@ -71,9 +71,16 @@ export const createClaudeModel = (settings: AgentProviderSettings = {}): Languag
       }
     }
 
-    if (settings.permissionMode === "plan" && finalResultText) {
+    if (settings.permissionMode === "plan") {
+      const allAssistantText = content
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("\n");
+
+      const combinedText = [allAssistantText, finalResultText].filter(Boolean).join("\n");
+
       content.length = 0;
-      content.push({ type: "text", text: finalResultText });
+      content.push({ type: "text", text: combinedText });
     }
 
     return {
@@ -168,6 +175,5 @@ const buildQueryOptions = (
     env,
     ...(settings.mcpServers ? { mcpServers: settings.mcpServers } : {}),
     ...(explicitExecutablePath ? { pathToClaudeCodeExecutable: explicitExecutablePath } : {}),
-    ...(settings.tools !== undefined ? { tools: settings.tools } : {}),
   };
 };

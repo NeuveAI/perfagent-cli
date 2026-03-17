@@ -1,4 +1,4 @@
-import { Option, Order, Schema, SchemaGetter } from "effect";
+import { Order, Schema, SchemaGetter } from "effect";
 
 export const SameSitePolicy = Schema.Literals(["Strict", "Lax", "None"] as const);
 export type SameSitePolicy = typeof SameSitePolicy.Type;

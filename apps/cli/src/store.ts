@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import { create } from "zustand";
 import {
   checkoutBranch,
@@ -15,8 +16,12 @@ import {
 } from "./utils/browser-agent.js";
 import { getGitState, type GitState } from "./utils/get-git-state.js";
 import type { ContextOption } from "./utils/context-options.js";
-import { listSavedFlows, type SavedFlowSummary } from "./utils/list-saved-flows.js";
-import type { LoadedSavedFlow } from "./utils/load-saved-flow.js";
+import { CliRuntime } from "./runtime.js";
+import {
+  listSavedFlows,
+  type LoadedSavedFlow,
+  type SavedFlowSummary,
+} from "./utils/flow-storage.js";
 import type { EnvironmentOverrides } from "./utils/test-run-config.js";
 
 export type Screen =
@@ -150,7 +155,11 @@ export const useAppStore = create<AppStore>((set) => ({
   selectContext: (context) => set({ selectedContext: context }),
 
   loadSavedFlows: async () => {
-    const savedFlowSummaries = await listSavedFlows();
+    const savedFlowSummaries = await CliRuntime.runPromise(
+      listSavedFlows().pipe(
+        Effect.catchTag("FlowStorageError", () => Effect.succeed([] as SavedFlowSummary[])),
+      ),
+    );
     set({ savedFlowSummaries });
   },
 

@@ -1,12 +1,12 @@
 import { existsSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
+import { Effect, Stream } from "effect";
 import { describe, expect, it } from "vitest";
 import type {
   LanguageModelV3,
   LanguageModelV3CallOptions,
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
-import type { BrowserRunEvent } from "../src/events.js";
 import { buildExecutionModelSettings, executeBrowserFlow } from "../src/execute-browser-flow.js";
 import type { BrowserFlowPlan, TestTarget } from "../src/types.js";
 
@@ -181,26 +181,27 @@ describe("executeBrowserFlow", () => {
 
   it("streams structured events from model output and browser tool usage", async () => {
     let promptText = "";
-    const events: BrowserRunEvent[] = [];
     const videoOutputPath = "/tmp/browser-tester-run-test/browser-flow.webm";
 
-    for await (const event of executeBrowserFlow({
-      target: testTarget,
-      plan: testPlan,
-      environment: {
-        baseUrl: "http://localhost:3000",
-        cookies: true,
-      },
-      videoOutputPath,
-      model: createExecutionModel((options) => {
-        promptText =
-          options.prompt[0].role === "user" && options.prompt[0].content[0].type === "text"
-            ? options.prompt[0].content[0].text
-            : "";
-      }),
-    })) {
-      events.push(event);
-    }
+    const events = await Effect.runPromise(
+      Stream.runCollect(
+        executeBrowserFlow({
+          target: testTarget,
+          plan: testPlan,
+          environment: {
+            baseUrl: "http://localhost:3000",
+            cookies: true,
+          },
+          videoOutputPath,
+          model: createExecutionModel((options) => {
+            promptText =
+              options.prompt[0].role === "user" && options.prompt[0].content[0].type === "text"
+                ? options.prompt[0].content[0].text
+                : "";
+          }),
+        }),
+      ),
+    );
 
     expect(promptText).toContain("STEP_START|<step-id>|<step-title>");
     expect(promptText).toContain("Go through onboarding and click Import Projects.");
@@ -242,63 +243,63 @@ describe("executeBrowserFlow", () => {
         },
       ],
     });
-    const events: BrowserRunEvent[] = [];
-
-    for await (const event of executeBrowserFlow({
-      target: testTarget,
-      plan: testPlan,
-      model: createStreamModel(
-        [
-          { type: "stream-start", warnings: [] },
-          { type: "text-start", id: "t1" },
-          {
-            type: "text-delta",
-            id: "t1",
-            delta: "STEP_START|step-01|Open onboarding\n",
-          },
-          { type: "text-end", id: "t1" },
-          {
-            type: "tool-call",
-            toolCallId: "tool-1",
-            toolName: "mcp__browser__screenshot",
-            input: '{"fullPage":true}',
-            providerExecuted: true,
-          },
-          {
-            type: "tool-result",
-            toolCallId: "tool-1",
-            toolName: "mcp__browser__screenshot",
-            result: screenshotResult,
-            isError: false,
-          },
-          { type: "text-start", id: "t2" },
-          {
-            type: "text-delta",
-            id: "t2",
-            delta:
-              "STEP_DONE|step-01|Captured the UI\nRUN_COMPLETED|passed|Verified screenshot output\n",
-          },
-          { type: "text-end", id: "t2" },
-          {
-            type: "finish",
-            finishReason: { unified: "stop", raw: undefined },
-            usage: {
-              inputTokens: {
-                total: undefined,
-                noCache: undefined,
-                cacheRead: undefined,
-                cacheWrite: undefined,
+    const events = await Effect.runPromise(
+      Stream.runCollect(
+        executeBrowserFlow({
+          target: testTarget,
+          plan: testPlan,
+          model: createStreamModel(
+            [
+              { type: "stream-start", warnings: [] },
+              { type: "text-start", id: "t1" },
+              {
+                type: "text-delta",
+                id: "t1",
+                delta: "STEP_START|step-01|Open onboarding\n",
               },
-              outputTokens: { total: undefined, text: undefined, reasoning: undefined },
-            },
-            providerMetadata: {},
-          },
-        ],
-        () => {},
+              { type: "text-end", id: "t1" },
+              {
+                type: "tool-call",
+                toolCallId: "tool-1",
+                toolName: "mcp__browser__screenshot",
+                input: '{"fullPage":true}',
+                providerExecuted: true,
+              },
+              {
+                type: "tool-result",
+                toolCallId: "tool-1",
+                toolName: "mcp__browser__screenshot",
+                result: screenshotResult,
+                isError: false,
+              },
+              { type: "text-start", id: "t2" },
+              {
+                type: "text-delta",
+                id: "t2",
+                delta:
+                  "STEP_DONE|step-01|Captured the UI\nRUN_COMPLETED|passed|Verified screenshot output\n",
+              },
+              { type: "text-end", id: "t2" },
+              {
+                type: "finish",
+                finishReason: { unified: "stop", raw: undefined },
+                usage: {
+                  inputTokens: {
+                    total: undefined,
+                    noCache: undefined,
+                    cacheRead: undefined,
+                    cacheWrite: undefined,
+                  },
+                  outputTokens: { total: undefined, text: undefined, reasoning: undefined },
+                },
+                providerMetadata: {},
+              },
+            ],
+            () => {},
+          ),
+        }),
       ),
-    })) {
-      events.push(event);
-    }
+    );
 
     const screenshotToolResultEvent = events.find(
       (event) =>
@@ -331,66 +332,66 @@ describe("executeBrowserFlow", () => {
   });
 
   it("serializes object tool results instead of object Object", async () => {
-    const events: BrowserRunEvent[] = [];
-
-    for await (const event of executeBrowserFlow({
-      target: testTarget,
-      plan: testPlan,
-      model: createStreamModel(
-        [
-          { type: "stream-start", warnings: [] },
-          { type: "text-start", id: "t1" },
-          {
-            type: "text-delta",
-            id: "t1",
-            delta: "STEP_START|step-01|Open onboarding\n",
-          },
-          { type: "text-end", id: "t1" },
-          {
-            type: "tool-call",
-            toolCallId: "tool-1",
-            toolName: "mcp__browser__open",
-            input: '{"url":"http://localhost:3000/onboarding"}',
-            providerExecuted: true,
-          },
-          {
-            type: "tool-result",
-            toolCallId: "tool-1",
-            toolName: "mcp__browser__open",
-            result: {
-              ok: true,
-              url: "http://localhost:3000/onboarding",
-            },
-            isError: false,
-          },
-          { type: "text-start", id: "t2" },
-          {
-            type: "text-delta",
-            id: "t2",
-            delta:
-              "STEP_DONE|step-01|Opened onboarding successfully\nRUN_COMPLETED|passed|Verified object tool result serialization\n",
-          },
-          { type: "text-end", id: "t2" },
-          {
-            type: "finish",
-            finishReason: { unified: "stop", raw: undefined },
-            usage: {
-              inputTokens: {
-                total: undefined,
-                noCache: undefined,
-                cacheRead: undefined,
-                cacheWrite: undefined,
+    const events = await Effect.runPromise(
+      Stream.runCollect(
+        executeBrowserFlow({
+          target: testTarget,
+          plan: testPlan,
+          model: createStreamModel(
+            [
+              { type: "stream-start", warnings: [] },
+              { type: "text-start", id: "t1" },
+              {
+                type: "text-delta",
+                id: "t1",
+                delta: "STEP_START|step-01|Open onboarding\n",
               },
-              outputTokens: { total: undefined, text: undefined, reasoning: undefined },
-            },
-            providerMetadata: {},
-          },
-        ],
-        () => {},
+              { type: "text-end", id: "t1" },
+              {
+                type: "tool-call",
+                toolCallId: "tool-1",
+                toolName: "mcp__browser__open",
+                input: '{"url":"http://localhost:3000/onboarding"}',
+                providerExecuted: true,
+              },
+              {
+                type: "tool-result",
+                toolCallId: "tool-1",
+                toolName: "mcp__browser__open",
+                result: {
+                  ok: true,
+                  url: "http://localhost:3000/onboarding",
+                },
+                isError: false,
+              },
+              { type: "text-start", id: "t2" },
+              {
+                type: "text-delta",
+                id: "t2",
+                delta:
+                  "STEP_DONE|step-01|Opened onboarding successfully\nRUN_COMPLETED|passed|Verified object tool result serialization\n",
+              },
+              { type: "text-end", id: "t2" },
+              {
+                type: "finish",
+                finishReason: { unified: "stop", raw: undefined },
+                usage: {
+                  inputTokens: {
+                    total: undefined,
+                    noCache: undefined,
+                    cacheRead: undefined,
+                    cacheWrite: undefined,
+                  },
+                  outputTokens: { total: undefined, text: undefined, reasoning: undefined },
+                },
+                providerMetadata: {},
+              },
+            ],
+            () => {},
+          ),
+        }),
       ),
-    })) {
-      events.push(event);
-    }
+    );
 
     expect(
       events.find(

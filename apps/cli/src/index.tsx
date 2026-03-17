@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import { Command } from "commander";
 import { render } from "ink";
 import { App } from "./components/app.js";
@@ -15,7 +16,8 @@ import {
   resolveBrowserTarget,
   type TestAction,
 } from "./utils/browser-agent.js";
-import { loadSavedFlowBySlug } from "./utils/load-saved-flow.js";
+import { CliRuntime } from "./runtime.js";
+import { loadSavedFlowBySlug } from "./utils/flow-storage.js";
 import { setInkInstance } from "./utils/clear-ink-display.js";
 
 const program = new Command()
@@ -70,7 +72,13 @@ const seedStoreFromConfig = async (config: TestRunConfig): Promise<void> => {
       ? (getCommitSummary(process.cwd(), config.commitHash) ?? null)
       : null;
 
-  const savedFlow = config.flowSlug ? await loadSavedFlowBySlug(config.flowSlug) : null;
+  const savedFlow = config.flowSlug
+    ? await CliRuntime.runPromise(
+        loadSavedFlowBySlug(config.flowSlug).pipe(
+          Effect.catchTag("FlowNotFoundError", () => Effect.succeed(null)),
+        ),
+      )
+    : null;
 
   const screen = resolveInitialScreen(config, Boolean(savedFlow));
 

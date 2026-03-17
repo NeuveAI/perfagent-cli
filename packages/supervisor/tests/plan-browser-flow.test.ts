@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import type { LanguageModelV3, LanguageModelV3CallOptions } from "@ai-sdk/provider";
 import { BROWSER_TEST_MODEL } from "../src/constants.js";
@@ -99,35 +100,36 @@ describe("planBrowserFlow", () => {
 
     expect(settings.model).toBe(BROWSER_TEST_MODEL);
     expect(settings.permissionMode).toBe("plan");
-    expect(settings.tools).toEqual([]);
   });
 
   it("builds a scope-aware planning prompt and normalizes step ids", async () => {
     let promptText = "";
 
-    const plan = await planBrowserFlow({
-      target: baseTarget,
-      userInstruction:
-        "Go through onboarding at /onboarding and click Import Projects after selecting a workspace.",
-      environment: {
-        baseUrl: "http://localhost:3000",
-        cookies: true,
-        headed: true,
-      },
-      model: createPlannerModel((options) => {
-        promptText =
-          options.prompt[0].role === "user" && options.prompt[0].content[0].type === "text"
-            ? options.prompt[0].content[0].text
-            : "";
+    const plan = await Effect.runPromise(
+      planBrowserFlow({
+        target: baseTarget,
+        userInstruction:
+          "Go through onboarding at /onboarding and click Import Projects after selecting a workspace.",
+        environment: {
+          baseUrl: "http://localhost:3000",
+          cookies: true,
+          headed: true,
+        },
+        model: createPlannerModel((options) => {
+          promptText =
+            options.prompt[0].role === "user" && options.prompt[0].content[0].type === "text"
+              ? options.prompt[0].content[0].text
+              : "";
+        }),
       }),
-    });
+    );
 
     expect(promptText).toContain("Scope: branch");
     expect(promptText).toContain("Bias toward broader regression around neighboring flows");
     expect(promptText).toContain("Go through onboarding at /onboarding");
     expect(promptText).toContain("src/onboarding.tsx");
     expect(promptText).toContain("Base URL: http://localhost:3000");
-    expect(promptText).toContain("...truncated...");
+    expect(promptText).toContain("Retrieving diffs:");
     expect(promptText).toContain("cookieSync.required");
     expect(promptText).toContain("Which risk area is not covered by any step?");
     expect(plan.steps[0].id).toBe("step-01");
@@ -172,16 +174,18 @@ describe("planBrowserFlow", () => {
       ].join("\n"),
     };
 
-    await planBrowserFlow({
-      target: noisyTarget,
-      userInstruction: "Test the new task cards.",
-      model: createPlannerModel((options) => {
-        promptText =
-          options.prompt[0].role === "user" && options.prompt[0].content[0].type === "text"
-            ? options.prompt[0].content[0].text
-            : "";
+    await Effect.runPromise(
+      planBrowserFlow({
+        target: noisyTarget,
+        userInstruction: "Test the new task cards.",
+        model: createPlannerModel((options) => {
+          promptText =
+            options.prompt[0].role === "user" && options.prompt[0].content[0].type === "text"
+              ? options.prompt[0].content[0].text
+              : "";
+        }),
       }),
-    });
+    );
 
     expect(promptText).toContain("apps/frontend/components/task-card.tsx");
     expect(promptText).toContain("apps/frontend/components/task-detail.tsx");

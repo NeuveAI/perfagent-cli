@@ -1,96 +1,80 @@
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import type { AgentProviderSettings } from "@browser-tester/agent";
-import { z } from "zod";
+import { Effect, Option, Schema } from "effect";
 import {
   BROWSER_TEST_MODEL,
   DEFAULT_AGENT_PROVIDER,
   PLANNER_CHANGED_FILE_LIMIT,
   PLANNER_MAX_STEP_COUNT,
-  PLANNER_MODEL_EFFORT,
   PLANNER_MAX_TURNS,
+  PLANNER_MODEL_EFFORT,
   PLANNER_RECENT_COMMIT_LIMIT,
   STEP_ID_PAD_LENGTH,
 } from "./constants.js";
 import { createAgentModel } from "./create-agent-model.js";
+import { MemoryRetrievalError, PlanParseError, PlanningError } from "./errors.js";
 import { extractJsonObject } from "./json.js";
 import { retrievePlannerMemory } from "./memory/retrieve-planner-memory.js";
-import type { BrowserFlowPlan, PlanBrowserFlowOptions, PlanStep, TestTarget } from "./types.js";
+import type { PlanBrowserFlowOptions, PlanStep, TestTarget } from "./types.js";
 import { formatDiffStats } from "./utils/format-diff-stats.js";
-import { buildPlanningDiffPreview } from "./utils/build-planning-diff-preview.js";
 import { prioritizePlanningFiles } from "./utils/prioritize-planning-files.js";
 
-const nullableOptionalString = z
-  .string()
-  .min(1)
-  .nullable()
-  .optional()
-  .transform((value) => value ?? undefined);
+const NullableOptionalStringSchema = Schema.optional(Schema.NullOr(Schema.NonEmptyString));
 
-const planStepSchema = z.object({
-  id: nullableOptionalString,
-  title: z.string().min(1),
-  instruction: z.string().min(1),
-  expectedOutcome: z.string().min(1),
-  routeHint: nullableOptionalString,
-  changedFileEvidence: z.array(z.string().min(1)).default([]),
+const PlanStepSchema = Schema.Struct({
+  id: NullableOptionalStringSchema,
+  title: Schema.NonEmptyString,
+  instruction: Schema.NonEmptyString,
+  expectedOutcome: Schema.NonEmptyString,
+  routeHint: NullableOptionalStringSchema,
+  changedFileEvidence: Schema.optional(Schema.Array(Schema.NonEmptyString)),
 });
 
-const cookieSyncSchema = z.object({
-  required: z.boolean(),
-  reason: z.string().min(1),
-});
-
-const browserFlowPlanSchema = z.object({
-  title: z.string().min(1),
-  rationale: z.string().min(1),
-  targetSummary: z.string().min(1),
-  assumptions: z.array(z.string().min(1)).default([]),
-  riskAreas: z.array(z.string().min(1)).default([]),
-  targetUrls: z.array(z.string().min(1)).default([]),
-  cookieSync: cookieSyncSchema,
-  steps: z.array(planStepSchema).min(1).max(PLANNER_MAX_STEP_COUNT),
+const BrowserFlowPlanSchema = Schema.Struct({
+  title: Schema.NonEmptyString,
+  rationale: Schema.NonEmptyString,
+  targetSummary: Schema.NonEmptyString,
+  assumptions: Schema.optional(Schema.Array(Schema.NonEmptyString)),
+  riskAreas: Schema.optional(Schema.Array(Schema.NonEmptyString)),
+  targetUrls: Schema.optional(Schema.Array(Schema.NonEmptyString)),
+  cookieSync: Schema.Struct({
+    required: Schema.Boolean,
+    reason: Schema.NonEmptyString,
+  }),
+  steps: Schema.Array(PlanStepSchema),
 });
 
 export const buildPlannerModelSettings = (
   options: Pick<PlanBrowserFlowOptions, "provider" | "providerSettings" | "target">,
 ): AgentProviderSettings => {
   const provider = options.provider ?? DEFAULT_AGENT_PROVIDER;
-  const claudeOnlySettings =
-    provider === "claude"
-      ? { model: BROWSER_TEST_MODEL, permissionMode: "plan" as const, tools: [] }
-      : {};
+  const providerSpecificSetting =
+    provider === "claude" ? { model: BROWSER_TEST_MODEL, permissionMode: "plan" as const } : {};
 
   return {
     cwd: options.target.cwd,
     effort: PLANNER_MODEL_EFFORT,
     maxTurns: PLANNER_MAX_TURNS,
-    ...claudeOnlySettings,
+    ...providerSpecificSetting,
     ...(options.providerSettings ?? {}),
   };
 };
 
-const createPlannerModel = (
-  options: Pick<PlanBrowserFlowOptions, "model" | "provider" | "providerSettings" | "target">,
-): LanguageModelV3 => {
-  if (options.model) return options.model;
+const buildDiffRetrievalCommand = (target: TestTarget): string => {
+  if (target.scope === "commit" && target.selectedCommit) {
+    return `git show ${target.selectedCommit.shortHash} -- <filepath>`;
+  }
 
-  const provider = options.provider ?? DEFAULT_AGENT_PROVIDER;
+  if (target.scope === "branch" && target.branch.main) {
+    return `git diff ${target.branch.main}...HEAD -- <filepath>`;
+  }
 
-  return createAgentModel(provider, buildPlannerModelSettings(options));
+  if (target.scope === "changes" && target.branch.main) {
+    return `git diff ${target.branch.main} -- <filepath>`;
+  }
+
+  return "git diff -- <filepath>";
 };
-
-const formatChangedFiles = (changedFiles: TestTarget["changedFiles"]): string =>
-  changedFiles.length > 0
-    ? changedFiles.map((file) => `- [${file.status}] ${file.path}`).join("\n")
-    : "- No changed files detected";
-
-const formatRecentCommits = (target: TestTarget): string =>
-  target.recentCommits.length > 0
-    ? target.recentCommits
-        .slice(0, PLANNER_RECENT_COMMIT_LIMIT)
-        .map((commit) => `- ${commit.shortHash} ${commit.subject}`)
-        .join("\n")
-    : "- No recent commits available";
 
 const formatScopePlanningStrategy = (target: TestTarget): string => {
   if (target.scope === "unstaged") {
@@ -99,7 +83,7 @@ const formatScopePlanningStrategy = (target: TestTarget): string => {
       "- Bias toward fast smoke coverage of the touched surfaces.",
       "- Prefer the smallest set of steps that still checks each changed user-facing surface.",
       "- Cover the direct change and only the most obvious adjacent flow if it materially de-risks the diff.",
-      "- Avoid broad regression sweeps unless the diff preview clearly suggests a cross-cutting change.",
+      "- Avoid broad regression sweeps unless a retrieved diff clearly suggests a cross-cutting change.",
     ].join("\n");
   }
 
@@ -152,13 +136,23 @@ const buildPlanningPrompt = (options: PlanBrowserFlowOptions, memoryContext?: st
       : null,
     "",
     "Changed files:",
-    formatChangedFiles(displayedFiles),
+    displayedFiles.length > 0
+      ? displayedFiles.map((file) => `- [${file.status}] ${file.path}`).join("\n")
+      : "- No changed files detected",
     "",
     "Recent commits:",
-    formatRecentCommits(target),
+    target.recentCommits.length > 0
+      ? target.recentCommits
+          .slice(0, PLANNER_RECENT_COMMIT_LIMIT)
+          .map((commit) => `- ${commit.shortHash} ${commit.subject}`)
+          .join("\n")
+      : "- No recent commits available",
     "",
-    "Diff preview:",
-    buildPlanningDiffPreview(target.diffPreview, displayedFiles),
+    "Retrieving diffs:",
+    "- Do NOT retrieve all diffs at once. Inspect only the 2-3 files most relevant to the testing journey.",
+    `- To view a file's diff, run: ${buildDiffRetrievalCommand(target)}`,
+    "- Start with the highest-signal files (UI components, routes, pages), then decide if more context is needed.",
+    "- Stop retrieving once you have enough information to write a confident plan.",
     "",
     "User-requested browser journey:",
     userInstruction,
@@ -199,52 +193,91 @@ const buildPlanningPrompt = (options: PlanBrowserFlowOptions, memoryContext?: st
     .join("\n");
 };
 
-const normalizeSteps = (steps: z.infer<typeof planStepSchema>[]): PlanStep[] =>
-  steps.map((step, index) => ({
-    ...step,
-    id: step.id || `step-${String(index + 1).padStart(STEP_ID_PAD_LENGTH, "0")}`,
-  }));
+const findPlanCandidate = (parsedJson: unknown): unknown => {
+  const looksLikePlan = (value: unknown): value is Record<string, unknown> =>
+    Boolean(
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      ("title" in value || "steps" in value || "cookieSync" in value),
+    );
 
-const parsePlanJson = (parsedJson: unknown): z.infer<typeof browserFlowPlanSchema> => {
-  const directResult = browserFlowPlanSchema.safeParse(parsedJson);
-  if (directResult.success) return directResult.data;
+  if (looksLikePlan(parsedJson)) return parsedJson;
+  if (!parsedJson || typeof parsedJson !== "object" || Array.isArray(parsedJson)) return parsedJson;
 
-  if (parsedJson && typeof parsedJson === "object" && !Array.isArray(parsedJson)) {
-    for (const value of Object.values(parsedJson)) {
-      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
-      const nestedResult = browserFlowPlanSchema.safeParse(value);
-      if (nestedResult.success) return nestedResult.data;
-    }
+  for (const value of Object.values(parsedJson)) {
+    if (looksLikePlan(value)) return value;
   }
 
-  return browserFlowPlanSchema.parse(parsedJson);
+  return parsedJson;
 };
 
-export const planBrowserFlow = async (
+export const planBrowserFlow = Effect.fn("planBrowserFlow")(function* (
   options: PlanBrowserFlowOptions,
-): Promise<BrowserFlowPlan> => {
-  let memoryContext: string | undefined;
-  try {
-    memoryContext = retrievePlannerMemory(options.target.cwd, {
-      instruction: options.userInstruction,
-    });
-  } catch {}
+) {
+  yield* Effect.annotateCurrentSpan({
+    cwd: options.target.cwd,
+    scope: options.target.scope,
+  });
 
-  const prompt = buildPlanningPrompt(options, memoryContext);
-  const model = createPlannerModel(options);
-  const response = await model.doGenerate({
-    prompt: [{ role: "user", content: [{ type: "text", text: prompt }] }],
+  const memoryContext = yield* Effect.try({
+    try: () =>
+      retrievePlannerMemory(options.target.cwd, {
+        instruction: options.userInstruction,
+      }),
+    catch: (cause) => new MemoryRetrievalError({ stage: "planner", cause }),
+  }).pipe(
+    Effect.map(Option.some),
+    Effect.catchTag("MemoryRetrievalError", () => Effect.succeed(Option.none<string>())),
+  );
+
+  const prompt = buildPlanningPrompt(options, Option.getOrUndefined(memoryContext));
+  const model: LanguageModelV3 =
+    options.model ??
+    createAgentModel(
+      options.provider ?? DEFAULT_AGENT_PROVIDER,
+      buildPlannerModelSettings(options),
+    );
+  const response = yield* Effect.tryPromise({
+    try: () =>
+      model.doGenerate({
+        prompt: [{ role: "user", content: [{ type: "text", text: prompt }] }],
+      }),
+    catch: (cause) => new PlanningError({ stage: "model generation", cause }),
   });
 
   const text = response.content
     .filter((part) => part.type === "text")
     .map((part) => part.text)
     .join("\n");
-  const parsedPlan = parsePlanJson(JSON.parse(extractJsonObject(text)));
+
+  const parsedJson = yield* Effect.try({
+    try: () => JSON.parse(extractJsonObject(text)),
+    catch: (cause) => new PlanParseError({ stage: "json extraction", cause }),
+  });
+
+  const parsedPlan = yield* Schema.decodeUnknownEffect(BrowserFlowPlanSchema)(
+    findPlanCandidate(parsedJson),
+  ).pipe(Effect.mapError((cause) => new PlanParseError({ stage: "schema decode", cause })));
+
+  if (parsedPlan.steps.length === 0 || parsedPlan.steps.length > PLANNER_MAX_STEP_COUNT) {
+    return yield* new PlanParseError({
+      stage: "schema decode",
+      cause: `Expected between 1 and ${PLANNER_MAX_STEP_COUNT} steps.`,
+    }).asEffect();
+  }
 
   return {
     ...parsedPlan,
+    assumptions: [...(parsedPlan.assumptions ?? [])],
+    riskAreas: [...(parsedPlan.riskAreas ?? [])],
+    targetUrls: [...(parsedPlan.targetUrls ?? [])],
     userInstruction: options.userInstruction,
-    steps: normalizeSteps(parsedPlan.steps),
+    steps: parsedPlan.steps.map((step, index) => ({
+      ...step,
+      id: step.id ?? `step-${String(index + 1).padStart(STEP_ID_PAD_LENGTH, "0")}`,
+      routeHint: step.routeHint ?? undefined,
+      changedFileEvidence: [...(step.changedFileEvidence ?? [])],
+    })) satisfies PlanStep[],
   };
-};
+});

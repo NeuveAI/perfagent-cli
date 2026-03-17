@@ -1,3 +1,4 @@
+import { Cause, Effect, Fiber, Stream } from "effect";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Static, Text, useInput } from "ink";
 import figures from "figures";
@@ -61,7 +62,7 @@ export const TestingScreen = () => {
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
   const [exitRequested, setExitRequested] = useState(false);
   const [pendingLiveViewUrl, setPendingLiveViewUrl] = useState<string | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const runFiberRef = useRef<Fiber.Fiber<unknown, unknown> | null>(null);
 
   const derivedState = useMemo(
     () => (plan ? deriveTestingState(plan, events, toolCallDisplayMode, running) : null),
@@ -114,9 +115,7 @@ export const TestingScreen = () => {
   useEffect(() => {
     if (!target || !plan || !environment) return;
 
-    const abortController = new AbortController();
     const startedAt = Date.now();
-    abortControllerRef.current = abortController;
     setEvents([]);
     setRunning(true);
     setError(null);
@@ -126,15 +125,9 @@ export const TestingScreen = () => {
     setElapsedTimeMs(0);
     setShowCancelConfirmation(false);
     setExitRequested(false);
-
-    const run = async () => {
-      try {
-        for await (const event of executeBrowserFlow({
-          target,
-          plan,
-          environment,
-          signal: abortController.signal,
-        })) {
+    runFiberRef.current = Effect.runFork(
+      Stream.runForEach(executeBrowserFlow({ target, plan, environment }), (event) =>
+        Effect.sync(() => {
           if (event.type === "run-started" && event.liveViewUrl) {
             setPendingLiveViewUrl(event.liveViewUrl);
           }
@@ -154,25 +147,28 @@ export const TestingScreen = () => {
             }
           }
           setEvents((previous) => [...previous, event]);
-          if (abortController.signal.aborted) {
-            break;
-          }
-        }
-      } catch (caughtError) {
-        if (!(caughtError instanceof DOMException && caughtError.name === "AbortError")) {
-          const errorMessage = caughtError instanceof Error ? caughtError.message : "Unknown error";
-          setError(errorMessage);
-        }
-      } finally {
-        setShowCancelConfirmation(false);
-        setRunning(false);
-      }
-    };
-
-    run();
+        }),
+      ).pipe(
+        Effect.catchCause((cause) =>
+          Cause.hasInterruptsOnly(cause)
+            ? Effect.void
+            : Effect.sync(() => setError(Cause.pretty(cause))),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            runFiberRef.current = null;
+            setShowCancelConfirmation(false);
+            setRunning(false);
+          }),
+        ),
+      ),
+    );
 
     return () => {
-      abortController.abort();
+      const runFiber = runFiberRef.current;
+      if (runFiber) {
+        void Effect.runFork(Fiber.interrupt(runFiber));
+      }
     };
   }, [completeTestingRun, environment, plan, setLiveViewUrl, target]);
 
@@ -187,7 +183,10 @@ export const TestingScreen = () => {
       if (key.return || normalizedInput === "y") {
         setShowCancelConfirmation(false);
         setExitRequested(true);
-        abortControllerRef.current?.abort();
+        const runFiber = runFiberRef.current;
+        if (runFiber) {
+          void Effect.runFork(Fiber.interrupt(runFiber));
+        }
         return;
       }
 

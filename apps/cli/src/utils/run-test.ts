@@ -1,3 +1,4 @@
+import { Effect, Stream } from "effect";
 import {
   executeBrowserFlow,
   getCommitSummary,
@@ -15,8 +16,9 @@ import {
   type GenerateBrowserPlanResult,
   type TestAction,
 } from "./browser-agent.js";
+import { CliRuntime } from "../runtime.js";
 import type { TestRunConfig } from "./test-run-config.js";
-import { loadSavedFlowBySlug } from "./load-saved-flow.js";
+import { loadSavedFlowBySlug } from "./flow-storage.js";
 import { saveTestedFingerprint } from "./tested-state.js";
 
 const ACTION_LABELS: Record<TestAction, string> = {
@@ -64,7 +66,11 @@ const resolvePlan = async (
   const { action, environmentOverrides } = config;
 
   if (config.flowSlug) {
-    const savedFlow = await loadSavedFlowBySlug(config.flowSlug);
+    const savedFlow = await CliRuntime.runPromise(
+      loadSavedFlowBySlug(config.flowSlug).pipe(
+        Effect.catchTag("FlowNotFoundError", () => Effect.succeed(null)),
+      ),
+    );
     if (!savedFlow) {
       console.error(`Saved flow "${config.flowSlug}" not found.`);
       process.exit(1);
@@ -80,12 +86,14 @@ const resolvePlan = async (
 
   const userInstruction = config.message ?? DEFAULT_INSTRUCTIONS[action];
   console.error("Planning browser flow...");
-  const result = await generateBrowserPlan({
-    action,
-    commit: selectedCommit,
-    userInstruction,
-    environmentOverrides,
-  });
+  const result = await Effect.runPromise(
+    generateBrowserPlan({
+      action,
+      commit: selectedCommit,
+      userInstruction,
+      environmentOverrides,
+    }),
+  );
   console.error(`Plan: ${result.plan.title} (${result.plan.steps.length} steps)\n`);
   return result;
 };
@@ -112,20 +120,26 @@ export const runTest = async (config: TestRunConfig): Promise<void> => {
 
   try {
     const { target, plan, environment } = await resolvePlan(config, resolvedCommit);
-    let latestRunReport: BrowserRunReport | null = null;
+    const latestRunReportState: { current: BrowserRunReport | null } = { current: null };
 
-    for await (const event of executeBrowserFlow({ target, plan, environment })) {
-      if (event.type === "run-started" && event.liveViewUrl) {
-        process.stdout.write(`Live view: ${event.liveViewUrl}\n`);
-      }
-      if (event.type === "run-completed" && event.report) {
-        latestRunReport = event.report;
-      }
-      const line = formatRunEvent(event);
-      if (line) {
-        process.stdout.write(line + "\n");
-      }
-    }
+    await Effect.runPromise(
+      Stream.runForEach(executeBrowserFlow({ target, plan, environment }), (event) =>
+        Effect.sync(() => {
+          if (event.type === "run-started" && event.liveViewUrl) {
+            process.stdout.write(`Live view: ${event.liveViewUrl}\n`);
+          }
+          if (event.type === "run-completed" && event.report) {
+            latestRunReportState.current = event.report;
+          }
+          const line = formatRunEvent(event);
+          if (line) {
+            process.stdout.write(line + "\n");
+          }
+        }),
+      ),
+    );
+
+    const latestRunReport = latestRunReportState.current;
 
     if (latestRunReport?.status === "passed") {
       saveTestedFingerprint();
