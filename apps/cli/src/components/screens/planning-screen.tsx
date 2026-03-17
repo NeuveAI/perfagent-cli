@@ -63,7 +63,6 @@ const getProviderLabel = (provider: string | null | undefined): string => {
 export const PlanningScreen = () => {
   const COLORS = useColors();
   const flowInstruction = useAppStore((state) => state.flowInstruction);
-  const selectedContext = useAppStore((state) => state.selectedContext);
   const planningProvider = useAppStore((state) => state.planningProvider);
   const planningModel = useAppStore((state) => state.planningModel);
   const resolvedPlanningProvider = useAppStore((state) => state.resolvedPlanningProvider);
@@ -84,11 +83,8 @@ export const PlanningScreen = () => {
 
   return (
     <Box flexDirection="column" width="100%" paddingY={1}>
-      {selectedContext ? (
-        <Box paddingX={1}>
-          <Text color={COLORS.DIM}>{selectedContext.label}</Text>
-        </Box>
-      ) : null}
+      <DotField rows={3} dimColor="#1a1a1a" brightColor={COLORS.BORDER} />
+
       <RuledBox color={COLORS.BORDER}>
         <Text color={COLORS.DIM}>{flowInstruction}</Text>
       </RuledBox>
@@ -116,8 +112,6 @@ export const PlanningScreen = () => {
           </Text>
         </Text>
       </Box>
-
-      <DotField rows={2} dimColor="#0a0a0a" brightColor={COLORS.BORDER} />
 
       <Box paddingX={1} marginTop={1}>
         <Text color={COLORS.BORDER}>
