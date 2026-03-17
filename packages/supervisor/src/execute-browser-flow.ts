@@ -463,56 +463,19 @@ const createModelStreamResult = Effect.fn("createModelStreamResult")(function* (
   liveViewUrl?: string,
   abortController?: AbortController,
 ) {
-  let executionSettings: AgentProviderSettings | undefined;
-  try {
-    executionSettings = buildExecutionModelSettings({
-      provider,
-      providerSettings: options.providerSettings,
-      target: options.target,
-      browserMcpServerName,
-      videoOutputPath,
-      liveViewUrl,
-    });
-  } catch (buildError) {
-    const { writeFileSync, mkdirSync } = await import("node:fs");
-    const { join } = await import("node:path");
-    const debugDir = join(options.target.cwd, ".testie-agent-traces");
-    mkdirSync(debugDir, { recursive: true });
-    writeFileSync(
-      join(debugDir, "_debug-build-settings-error.json"),
-      JSON.stringify(
-        { error: String(buildError), provider, hasModel: Boolean(options.model) },
-        undefined,
-        2,
-      ),
-    );
-    throw buildError;
-  }
-
-  const { writeFileSync: writeFs, mkdirSync: mkFs } = await import("node:fs");
-  const { join: joinPath } = await import("node:path");
-  const dDir = joinPath(options.target.cwd, ".testie-agent-traces");
-  mkFs(dDir, { recursive: true });
-  writeFs(
-    joinPath(dDir, "_debug-execution-settings.json"),
-    JSON.stringify(
-      {
-        provider,
-        hasOptionsModel: Boolean(options.model),
-        settingsModel: executionSettings.model,
-        hasMcpServers: Boolean(executionSettings.mcpServers),
-        mcpServerKeys: executionSettings.mcpServers
-          ? Object.keys(executionSettings.mcpServers)
-          : [],
-        cwd: executionSettings.cwd,
-      },
-      undefined,
-      2,
-    ),
-  );
-
   const model: LanguageModelV3 =
-    options.model ?? createAgentModel(provider, executionSettings);
+    options.model ??
+    createAgentModel(
+      provider,
+      buildExecutionModelSettings({
+        provider,
+        providerSettings: options.providerSettings,
+        target: options.target,
+        browserMcpServerName,
+        videoOutputPath,
+        liveViewUrl,
+      }),
+    );
 
   return yield* Effect.tryPromise({
     try: () =>

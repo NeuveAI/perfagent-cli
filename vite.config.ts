@@ -5,6 +5,7 @@ export default defineConfig({
     "*.{js,ts,tsx}": "vp check --fix",
   },
   lint: {
+    ignorePatterns: ["archive"],
     plugins: ["typescript", "react", "import"],
     rules: {
       "require-yield": "off",
