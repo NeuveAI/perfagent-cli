@@ -6,6 +6,7 @@ import { useColors } from "../theme-context.js";
 import { RuledBox } from "../ui/ruled-box.js";
 import { DotField } from "../ui/dot-field.js";
 import { useAppStore } from "../../store.js";
+import { useStdoutDimensions } from "../../hooks/use-stdout-dimensions.js";
 import { formatElapsedTime } from "../../utils/format-elapsed-time.js";
 import { TESTING_TIMER_UPDATE_INTERVAL_MS } from "../../constants.js";
 
@@ -55,6 +56,7 @@ const getStageIndex = (elapsed: number): number => {
 
 export const PlanningScreen = () => {
   const COLORS = useColors();
+  const [columns] = useStdoutDimensions();
   const flowInstruction = useAppStore((state) => state.flowInstruction);
   const [startTime] = useState(() => Date.now());
   const [elapsed, setElapsed] = useState(0);
@@ -84,16 +86,24 @@ export const PlanningScreen = () => {
           <Text color={COLORS.DIM}>
             {` ${stageLabel.padEnd(STAGE_LABEL_WIDTH)}${figures.ellipsis} `}
             <Text color={COLORS.BORDER}>{formatElapsedTime(elapsed)}</Text>
-            {"  "}
-            {PLANNING_STAGES.map((_, index) => (
-              <Text key={index} color={index <= stageIndex ? COLORS.DIM : COLORS.BORDER}>
-                {index <= stageIndex ? "█" : "░"}
-              </Text>
-            ))}
           </Text>
         </Box>
         <Text color={COLORS.BORDER}>
           {"TIP "}<Text color={COLORS.DIM}>{TIPS[tipIndex]}</Text>
+        </Text>
+      </Box>
+
+      <Box paddingX={1}>
+        <Text>
+          {Array.from({ length: columns - 2 }, (_, index) => {
+            const progress = (stageIndex + 1) / PLANNING_STAGES.length;
+            const filled = Math.round(progress * (columns - 2));
+            return (
+              <Text key={index} color={index < filled ? COLORS.DIM : COLORS.BORDER}>
+                {index < filled ? "█" : "░"}
+              </Text>
+            );
+          })}
         </Text>
       </Box>
     </Box>
