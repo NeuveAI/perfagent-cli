@@ -4,6 +4,7 @@ import * as FileSystem from "effect/FileSystem";
 import { NodeServices } from "@effect/platform-node";
 import { CdpClient } from "./cdp-client.js";
 import { SqliteClient } from "./sqlite-client.js";
+import { ChromiumSqliteFallback } from "./chromium-sqlite.js";
 import { ExtractionError, RequiresFullDiskAccess, UnknownError } from "./errors.js";
 import { parseBinaryCookies } from "./utils/binary-cookies.js";
 import { SameSitePolicy, Cookie, type Browser } from "./types.js";
@@ -75,6 +76,7 @@ export class Cookies extends ServiceMap.Service<Cookies>()("@cookies/Cookies", {
   make: Effect.gen(function* () {
     const cdpClient = yield* CdpClient;
     const sqliteClient = yield* SqliteClient;
+    const sqliteFallback = yield* ChromiumSqliteFallback;
     const fs = yield* FileSystem.FileSystem;
 
     const extractChromium = (browser: Extract<Browser, { _tag: "ChromiumBrowser" }>) =>
@@ -97,6 +99,15 @@ export class Cookies extends ServiceMap.Service<Cookies>()("@cookies/Cookies", {
             PlatformError: (cause) =>
               new ExtractionError({ reason: new UnknownError({ cause }) }).asEffect(),
           }),
+          Effect.catchTag("ExtractionError", (cdpError) =>
+            Effect.gen(function* () {
+              yield* Effect.logWarning("CDP extraction failed, trying SQLite fallback", {
+                browser: browser.key,
+                error: cdpError.message,
+              });
+              return yield* sqliteFallback.extract(browser);
+            }).pipe(Effect.catchTag("ExtractionError", () => cdpError.asEffect())),
+          ),
         );
 
     const extractFirefox = (browser: Extract<Browser, { _tag: "FirefoxBrowser" }>) =>
@@ -162,12 +173,14 @@ export class Cookies extends ServiceMap.Service<Cookies>()("@cookies/Cookies", {
   static layer = Layer.effect(this, this.make).pipe(
     Layer.provide(CdpClient.layer),
     Layer.provide(SqliteClient.layer),
+    Layer.provide(ChromiumSqliteFallback.layer),
     Layer.provide(NodeServices.layer),
   );
 
   static layerTest = Layer.effect(this, this.make).pipe(
     Layer.provide(CdpClient.layerTest),
     Layer.provide(SqliteClient.layer),
+    Layer.provide(ChromiumSqliteFallback.layer),
     Layer.provide(NodeServices.layer),
   );
 }

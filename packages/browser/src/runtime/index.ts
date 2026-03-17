@@ -6,7 +6,7 @@ interface OverlayItem {
   y: number;
 }
 
-interface CursorInteractiveResult {
+export interface CursorInteractiveResult {
   selector: string;
   text: string;
   reason: string;

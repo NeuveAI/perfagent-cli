@@ -1,5 +1,6 @@
 import type { Page } from "playwright";
 import { Effect } from "effect";
+import type { BrowserTesterRuntime } from "../generated/runtime-types";
 
 // HACK: page.evaluate erases types across the serialization boundary; casts are confined here
 export const evaluateRuntime = <K extends keyof BrowserTesterRuntime>(
