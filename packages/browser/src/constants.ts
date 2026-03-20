@@ -1,8 +1,6 @@
 export const SNAPSHOT_TIMEOUT_MS = 30_000;
 export const REF_PREFIX = "e";
 export const EXCLUDED_ARIA_ROLE = "text";
-export const DEFAULT_VIDEO_WIDTH_PX = 1280;
-export const DEFAULT_VIDEO_HEIGHT_PX = 720;
 export const HEADLESS_CHROMIUM_ARGS = [
   "--enable-webgl",
   "--use-gl=angle",
@@ -50,3 +48,4 @@ export const ESTIMATED_CHARS_PER_TOKEN = 4;
 export const MAX_ELEMENT_TEXT_LENGTH = 100;
 export const MAX_CURSOR_INTERACTIVE_ELEMENTS = 100;
 export const OVERLAY_CONTAINER_ID = "__browser_tester_annotation_overlay__";
+export const EVENT_COLLECT_INTERVAL_MS = 500;

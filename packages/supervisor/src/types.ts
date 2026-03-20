@@ -76,8 +76,7 @@ export interface BrowserRunPullRequest {
 }
 
 export interface BrowserRunArtifacts {
-  rawVideoPath?: string;
-  highlightVideoPath?: string;
+  replaySessionPath?: string;
   screenshotPaths: string[];
   shareBundlePath?: string;
   shareSummaryPath?: string;
@@ -145,6 +144,5 @@ export interface ExecuteBrowserFlowOptions {
   providerSettings?: AgentProviderSettings;
   model?: LanguageModelV3;
   browserMcpServerName?: string;
-  videoOutputPath?: string;
   liveViewUrl?: string;
 }

@@ -1,3 +1,4 @@
+import type { eventWithTime } from "@rrweb/types";
 import type { Effect } from "effect";
 import type { Cookie } from "@browser-tester/cookies";
 import type { Locator, Page } from "playwright";
@@ -40,17 +41,11 @@ export interface SnapshotResult {
   locator: (ref: string) => Effect.Effect<Locator, RefNotFoundError>;
 }
 
-export interface VideoOptions {
-  dir: string;
-  size?: { width: number; height: number };
-}
-
 export interface CreatePageOptions {
   headed?: boolean;
   executablePath?: string;
   cookies?: boolean | Cookie[];
   waitUntil?: "load" | "domcontentloaded" | "networkidle" | "commit";
-  video?: boolean | VideoOptions;
 }
 
 export interface AnnotatedScreenshotOptions extends SnapshotOptions {
@@ -75,4 +70,9 @@ export interface SnapshotDiff {
   removals: number;
   unchanged: number;
   changed: boolean;
+}
+
+export interface CollectResult {
+  readonly events: ReadonlyArray<eventWithTime>;
+  readonly total: number;
 }

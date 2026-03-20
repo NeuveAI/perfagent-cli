@@ -1,199 +1,137 @@
-import * as http from "node:http";
-import type { CDPSession, Page } from "playwright";
-import {
-  LIVE_VIEW_MJPEG_BOUNDARY,
-  LIVE_VIEW_PAGE_POLL_INTERVAL_MS,
-  LIVE_VIEW_SCREENCAST_EVERY_NTH_FRAME,
-  LIVE_VIEW_SCREENCAST_MAX_HEIGHT_PX,
-  LIVE_VIEW_SCREENCAST_MAX_WIDTH_PX,
-  LIVE_VIEW_SCREENCAST_QUALITY,
-} from "./constants";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import type { Page } from "playwright";
+import type { eventWithTime } from "@rrweb/types";
+import { LIVE_VIEW_PAGE_POLL_INTERVAL_MS } from "./constants";
+import { EVENT_COLLECT_INTERVAL_MS } from "../constants";
+import { evaluateRuntime } from "../utils/evaluate-runtime";
+import { Effect } from "effect";
+import { buildReplayViewerHtml } from "../replay-viewer";
 
 export interface LiveViewServer {
   url: string;
   close: () => Promise<void>;
 }
 
-interface StartLiveViewServerOptions {
+export interface StartLiveViewServerOptions {
   liveViewUrl: string;
   getPage: () => Page | undefined;
+  onEventsCollected: (events: eventWithTime[]) => void;
 }
 
-interface ScreencastFrameParams {
-  data: string;
-  sessionId: number;
-  metadata: unknown;
-}
-
-type MjpegClient = http.ServerResponse<http.IncomingMessage>;
-
-const VIEWER_HTML = `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Browser Tester Live View</title>
-    <style>
-      :root { color-scheme: dark }
-      body { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; background: #111827; color: #f9fafb }
-      main { min-height: 100vh; display: grid; place-items: center; padding: 24px; box-sizing: border-box }
-      img { max-width: min(100%, 1200px); width: 100%; border-radius: 12px; background: #030712; box-shadow: 0 20px 60px rgba(0,0,0,.45) }
-    </style>
-  </head>
-  <body>
-    <main><img src="/stream.mjpeg" alt="Live browser stream" /></main>
-  </body>
-</html>`;
+type SseClient = ServerResponse<IncomingMessage>;
 
 const NO_CACHE_HEADERS = { "Cache-Control": "no-store" } as const;
-
-const respondText = (response: MjpegClient, status: number, body: string): void => {
-  response.writeHead(status, { "Content-Type": "text/plain; charset=utf-8", ...NO_CACHE_HEADERS });
-  response.end(body);
-};
-
-const writeMjpegFrame = (client: MjpegClient, frameBuffer: Buffer): void => {
-  client.write(
-    `--${LIVE_VIEW_MJPEG_BOUNDARY}\r\nContent-Type: image/jpeg\r\nContent-Length: ${frameBuffer.length}\r\n\r\n`,
-  );
-  client.write(frameBuffer);
-  client.write("\r\n");
-};
 
 export const startLiveViewServer = async ({
   liveViewUrl,
   getPage,
+  onEventsCollected,
 }: StartLiveViewServerOptions): Promise<LiveViewServer> => {
   const parsedUrl = new URL(liveViewUrl);
-  const viewers = new Set<MjpegClient>();
-  let latestFrame: Buffer | undefined;
-  let cdpSession: CDPSession | undefined;
-  let screencastPage: Page | undefined;
+  const sseClients = new Set<SseClient>();
+  const accumulatedEvents: eventWithTime[] = [];
+  let currentPage: Page | undefined;
 
-  const broadcastFrame = (frameBuffer: Buffer): void => {
-    latestFrame = frameBuffer;
-    for (const viewer of viewers) {
-      if (viewer.destroyed) {
-        viewers.delete(viewer);
+  const viewerHtml = buildReplayViewerHtml({
+    title: "Browser Tester Live View",
+    eventsSource: "sse",
+  });
+
+  const broadcastEvents = (events: eventWithTime[]): void => {
+    if (events.length === 0) return;
+    accumulatedEvents.push(...events);
+    onEventsCollected(events);
+
+    const data = `data: ${JSON.stringify(events)}\n\n`;
+    for (const client of sseClients) {
+      if (client.destroyed) {
+        sseClients.delete(client);
         continue;
       }
       try {
-        writeMjpegFrame(viewer, frameBuffer);
+        client.write(data);
       } catch {
-        viewers.delete(viewer);
-        viewer.end();
+        sseClients.delete(client);
+        client.end();
       }
     }
   };
 
-  const stopScreencast = async (): Promise<void> => {
-    if (!cdpSession) return;
-    const activeCdpSession = cdpSession;
-    cdpSession = undefined;
-    screencastPage = undefined;
+  const collectFromPage = async (page: Page): Promise<void> => {
     try {
-      await activeCdpSession.send("Page.stopScreencast");
-      await activeCdpSession.detach();
+      const events = await Effect.runPromise(evaluateRuntime(page, "getEvents"));
+      if (events && Array.isArray(events) && events.length > 0) {
+        broadcastEvents(events as eventWithTime[]);
+      }
     } catch {
-      // HACK: CDP session may already be detached if the page closed
+      // HACK: page may have closed or runtime not yet initialized
     }
   };
 
-  const startScreencast = async (page: Page): Promise<void> => {
-    if (screencastPage === page) return;
-    await stopScreencast();
-
-    screencastPage = page;
-    const cdp = await page.context().newCDPSession(page);
-    cdpSession = cdp;
-
-    cdp.on("Page.screencastFrame", (params: ScreencastFrameParams) => {
-      broadcastFrame(Buffer.from(params.data, "base64"));
-      // HACK: fire-and-forget ack — failure is non-critical and the CDP session may be gone
-      cdp.send("Page.screencastFrameAck", { sessionId: params.sessionId }).catch(() => {});
-    });
-
-    await cdp.send("Page.startScreencast", {
-      format: "jpeg",
-      quality: LIVE_VIEW_SCREENCAST_QUALITY,
-      maxWidth: LIVE_VIEW_SCREENCAST_MAX_WIDTH_PX,
-      maxHeight: LIVE_VIEW_SCREENCAST_MAX_HEIGHT_PX,
-      everyNthFrame: LIVE_VIEW_SCREENCAST_EVERY_NTH_FRAME,
-    });
-
-    page.once("close", () => {
-      if (screencastPage === page) void stopScreencast();
-    });
-  };
-
-  const syncScreencast = (): void => {
-    if (viewers.size === 0) {
-      if (screencastPage) void stopScreencast();
-      return;
-    }
+  const syncPage = (): void => {
     const page = getPage();
     if (!page || page.isClosed()) {
-      if (screencastPage) void stopScreencast();
+      currentPage = undefined;
       return;
     }
-    if (page !== screencastPage) {
-      // HACK: best-effort screencast start — page may close before setup completes
-      startScreencast(page).catch(() => {});
+    currentPage = page;
+  };
+
+  const pollEvents = (): void => {
+    syncPage();
+    if (currentPage) {
+      // HACK: fire-and-forget — next poll will catch up if this one fails
+      collectFromPage(currentPage).catch(() => {});
     }
   };
 
-  const pollInterval = setInterval(syncScreencast, LIVE_VIEW_PAGE_POLL_INTERVAL_MS);
+  const pollInterval = setInterval(pollEvents, EVENT_COLLECT_INTERVAL_MS);
+  const pageCheckInterval = setInterval(syncPage, LIVE_VIEW_PAGE_POLL_INTERVAL_MS);
 
-  const handleStreamRequest = (request: http.IncomingMessage, response: MjpegClient): void => {
+  const handleSseRequest = (request: IncomingMessage, response: SseClient): void => {
     response.writeHead(200, {
-      "Content-Type": `multipart/x-mixed-replace; boundary=${LIVE_VIEW_MJPEG_BOUNDARY}`,
+      "Content-Type": "text/event-stream",
       Connection: "keep-alive",
       ...NO_CACHE_HEADERS,
     });
     response.flushHeaders();
-    viewers.add(response);
-    syncScreencast();
-
-    if (latestFrame) writeMjpegFrame(response, latestFrame);
+    sseClients.add(response);
 
     request.on("close", () => {
-      viewers.delete(response);
-      if (viewers.size === 0) void stopScreencast();
+      sseClients.delete(response);
     });
   };
 
-  const routeRequest = (request: http.IncomingMessage, response: MjpegClient): void => {
+  const routeRequest = (request: IncomingMessage, response: SseClient): void => {
     const pathname = new URL(request.url ?? "/", parsedUrl).pathname;
 
     if (pathname === "/") {
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", ...NO_CACHE_HEADERS });
-      response.end(VIEWER_HTML);
+      response.end(viewerHtml);
       return;
     }
 
-    if (pathname === "/latest.jpg") {
-      if (!latestFrame) {
-        respondText(response, 503, "Waiting for the first browser frame.");
-        return;
-      }
+    if (pathname === "/events") {
+      handleSseRequest(request, response);
+      return;
+    }
+
+    if (pathname === "/latest.json") {
+      const body = JSON.stringify(accumulatedEvents);
       response.writeHead(200, {
-        "Content-Type": "image/jpeg",
-        "Content-Length": latestFrame.length,
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(body),
         ...NO_CACHE_HEADERS,
       });
-      response.end(latestFrame);
+      response.end(body);
       return;
     }
 
-    if (pathname === "/stream.mjpeg") {
-      handleStreamRequest(request, response);
-      return;
-    }
-
-    respondText(response, 404, "Not found");
+    response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", ...NO_CACHE_HEADERS });
+    response.end("Not found");
   };
 
-  const server = http.createServer(routeRequest);
+  const server = createServer(routeRequest);
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -207,11 +145,11 @@ export const startLiveViewServer = async ({
     url: parsedUrl.toString(),
     close: async () => {
       clearInterval(pollInterval);
-      await stopScreencast();
-      for (const viewer of viewers) viewer.end();
-      viewers.clear();
+      clearInterval(pageCheckInterval);
+      for (const client of sseClients) client.end();
+      sseClients.clear();
       await new Promise<void>((resolve, reject) => {
-        server.close((error: Error | undefined) => (error ? reject(error) : resolve()));
+        server.close((error) => (error ? reject(error) : resolve()));
       });
     },
   };

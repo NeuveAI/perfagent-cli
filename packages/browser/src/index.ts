@@ -1,5 +1,7 @@
 export { Browser, runBrowser } from "./browser";
+export { buildReplayViewerHtml } from "./replay-viewer";
 export { diffSnapshots } from "./diff";
+export { collectEvents, collectAllEvents, loadSession } from "./recorder";
 export type {
   Browser as BrowserProfile,
   BrowserKey,
@@ -11,10 +13,12 @@ export {
   ActionUnknownError,
   BrowserLaunchError,
   NavigationError,
+  RecorderInjectionError,
   RefAmbiguousError,
   RefBlockedError,
   RefNotFoundError,
   RefNotVisibleError,
+  SessionLoadError,
   SnapshotTimeoutError,
 } from "./errors";
 export type { ActionError } from "./errors";
@@ -23,6 +27,7 @@ export type {
   AnnotatedScreenshotOptions,
   AnnotatedScreenshotResult,
   AriaRole,
+  CollectResult,
   CreatePageOptions,
   RefEntry,
   RefMap,
@@ -30,5 +35,4 @@ export type {
   SnapshotOptions,
   SnapshotResult,
   SnapshotStats,
-  VideoOptions,
 } from "./types";

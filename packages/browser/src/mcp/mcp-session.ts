@@ -1,14 +1,17 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
+import { dirname } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
 import type { Browser as PlaywrightBrowser, BrowserContext, Page } from "playwright";
-import type { Cookie } from "@browser-tester/cookies";
-import { Config, Deferred, Effect, Layer, Option, ServiceMap } from "effect";
+import type { eventWithTime } from "@rrweb/types";
+import { Config, Effect, Layer, Option, ServiceMap } from "effect";
 import { Browser } from "../browser";
 import { NavigationError } from "../errors";
+import { collectAllEvents } from "../recorder";
+import { evaluateRuntime } from "../utils/evaluate-runtime";
+import { EVENT_COLLECT_INTERVAL_MS } from "../constants";
 import type { AnnotatedScreenshotOptions, SnapshotOptions, SnapshotResult } from "../types";
 import {
   BROWSER_TESTER_LIVE_VIEW_URL_ENV_NAME,
-  BROWSER_TESTER_VIDEO_OUTPUT_ENV_NAME,
+  BROWSER_TESTER_REPLAY_OUTPUT_ENV_NAME,
 } from "./constants";
 import { McpSessionNotOpenError } from "./errors";
 import { startLiveViewServer, type LiveViewServer } from "./live-view-server";
@@ -33,8 +36,8 @@ export interface BrowserSessionData {
   page: Page;
   consoleMessages: ConsoleEntry[];
   networkRequests: NetworkEntry[];
-  videoOutputPath: string | undefined;
-  savedVideoPath: string | undefined;
+  replayOutputPath: string | undefined;
+  accumulatedReplayEvents: eventWithTime[];
   trackedPages: Set<Page>;
   lastSnapshot: SnapshotResult | undefined;
 }
@@ -50,7 +53,7 @@ export interface OpenResult {
 }
 
 export interface CloseResult {
-  savedVideoPath: string | undefined;
+  replaySessionPath: string | undefined;
 }
 
 const setupPageTracking = (page: Page, sessionData: BrowserSessionData) => {
@@ -86,22 +89,14 @@ const setupPageTracking = (page: Page, sessionData: BrowserSessionData) => {
 export class McpSession extends ServiceMap.Service<McpSession>()("@browser/McpSession", {
   make: Effect.gen(function* () {
     const browserService = yield* Browser;
-    const videoOutputPath = yield* Config.option(
-      Config.string(BROWSER_TESTER_VIDEO_OUTPUT_ENV_NAME),
+    const replayOutputPath = yield* Config.option(
+      Config.string(BROWSER_TESTER_REPLAY_OUTPUT_ENV_NAME),
     );
     const liveViewUrl = yield* Config.option(Config.string(BROWSER_TESTER_LIVE_VIEW_URL_ENV_NAME));
 
-    const cookieCacheDeferred = yield* Deferred.make<readonly Cookie[]>();
-    yield* Effect.gen(function* () {
-      const cookies = yield* browserService.preExtractCookies();
-      yield* Deferred.succeed(cookieCacheDeferred, cookies);
-    }).pipe(
-      Effect.catchCause(() => Deferred.succeed(cookieCacheDeferred, [])),
-      Effect.forkDetach,
-    );
-
     let currentSession: BrowserSessionData | undefined;
     let currentLiveView: LiveViewServer | undefined;
+    let replayCollectInterval: ReturnType<typeof setInterval> | undefined;
 
     const requireSession = Effect.fn("McpSession.requireSession")(function* () {
       if (!currentSession) return yield* new McpSessionNotOpenError();
@@ -130,20 +125,10 @@ export class McpSession extends ServiceMap.Service<McpSession>()("@browser/McpSe
     const open = Effect.fn("McpSession.open")(function* (url: string, options: OpenOptions = {}) {
       yield* Effect.annotateCurrentSpan({ url });
 
-      const resolvedCookies = options.cookies
-        ? yield* Deferred.await(cookieCacheDeferred)
-        : undefined;
-
-      const videoDir = Option.map(videoOutputPath, (outputPath) => path.dirname(outputPath));
       const pageResult = yield* browserService.createPage(url, {
         headed: options.headed,
-        cookies:
-          resolvedCookies && resolvedCookies.length > 0 ? [...resolvedCookies] : options.cookies,
+        cookies: options.cookies,
         waitUntil: options.waitUntil,
-        video: Option.match(videoDir, {
-          onNone: () => undefined,
-          onSome: (dir) => ({ dir }),
-        }),
       });
 
       const sessionData: BrowserSessionData = {
@@ -152,21 +137,43 @@ export class McpSession extends ServiceMap.Service<McpSession>()("@browser/McpSe
         page: pageResult.page,
         consoleMessages: [],
         networkRequests: [],
-        videoOutputPath: Option.getOrUndefined(videoOutputPath),
-        savedVideoPath: undefined,
+        replayOutputPath: Option.getOrUndefined(replayOutputPath),
+        accumulatedReplayEvents: [],
         trackedPages: new Set(),
         lastSnapshot: undefined,
       };
       setupPageTracking(pageResult.page, sessionData);
       currentSession = sessionData;
 
+      yield* evaluateRuntime(pageResult.page, "startRecording").pipe(
+        Effect.catchCause((cause) => Effect.logDebug("rrweb recording failed to start", { cause })),
+      );
+
       if (Option.isSome(liveViewUrl) && !currentLiveView) {
         currentLiveView = yield* Effect.tryPromise(() =>
           startLiveViewServer({
             liveViewUrl: liveViewUrl.value,
             getPage: () => currentSession?.page,
+            onEventsCollected: (events) => {
+              currentSession?.accumulatedReplayEvents.push(...events);
+            },
           }),
         ).pipe(Effect.catchTag("UnknownError", () => Effect.succeed(undefined)));
+      }
+
+      if (!currentLiveView) {
+        replayCollectInterval = setInterval(() => {
+          const page = currentSession?.page;
+          if (!page || page.isClosed()) return;
+          // HACK: fire-and-forget — page may close mid-collect; next poll catches up
+          Effect.runPromise(evaluateRuntime(page, "getEvents"))
+            .then((events) => {
+              if (Array.isArray(events) && events.length > 0) {
+                currentSession?.accumulatedReplayEvents.push(...(events as eventWithTime[]));
+              }
+            })
+            .catch(() => {});
+        }, EVENT_COLLECT_INTERVAL_MS);
       }
 
       const injectedCookieCount = yield* Effect.tryPromise(() => pageResult.context.cookies()).pipe(
@@ -198,11 +205,16 @@ export class McpSession extends ServiceMap.Service<McpSession>()("@browser/McpSe
       sessionData.lastSnapshot = snapshotResult;
     });
 
-    const close = Effect.fn("McpSession.close")(function* (outputPath?: string) {
+    const close = Effect.fn("McpSession.close")(function* () {
       if (!currentSession) return undefined;
 
       const activeSession = currentSession;
       currentSession = undefined;
+
+      if (replayCollectInterval) {
+        clearInterval(replayCollectInterval);
+        replayCollectInterval = undefined;
+      }
 
       if (currentLiveView) {
         const activeLiveView = currentLiveView;
@@ -212,22 +224,39 @@ export class McpSession extends ServiceMap.Service<McpSession>()("@browser/McpSe
         );
       }
 
-      const resolvedOutputPath = outputPath ?? activeSession.videoOutputPath;
-      let savedVideoPath = activeSession.savedVideoPath;
-      if (resolvedOutputPath && !savedVideoPath) {
-        yield* Effect.sync(() =>
-          fs.mkdirSync(path.dirname(resolvedOutputPath), { recursive: true }),
-        );
-        savedVideoPath = yield* browserService
-          .saveVideo(activeSession.page, resolvedOutputPath)
-          .pipe(Effect.catchTag("BrowserLaunchError", () => Effect.succeed(undefined)));
-      }
+      const replaySessionPath = yield* Effect.gen(function* () {
+        if (!activeSession.page.isClosed()) {
+          const finalEvents = yield* collectAllEvents(activeSession.page).pipe(
+            Effect.catchCause(() => Effect.succeed([] as const)),
+          );
+          if (finalEvents.length > 0) {
+            activeSession.accumulatedReplayEvents.push(...finalEvents);
+          }
+        }
+
+        const resolvedReplayOutputPath = activeSession.replayOutputPath;
+        if (resolvedReplayOutputPath && activeSession.accumulatedReplayEvents.length > 0) {
+          yield* Effect.try({
+            try: () => {
+              mkdirSync(dirname(resolvedReplayOutputPath), { recursive: true });
+              const ndjson =
+                activeSession.accumulatedReplayEvents
+                  .map((event) => JSON.stringify(event))
+                  .join("\n") + "\n";
+              writeFileSync(resolvedReplayOutputPath, ndjson, "utf-8");
+            },
+            catch: (cause) => cause,
+          });
+          return resolvedReplayOutputPath;
+        }
+        return undefined;
+      }).pipe(Effect.catchCause(() => Effect.succeed(undefined)));
 
       yield* Effect.tryPromise(() => activeSession.browser.close()).pipe(
         Effect.catchTag("UnknownError", () => Effect.void),
       );
 
-      return { savedVideoPath } as CloseResult;
+      return { replaySessionPath } as CloseResult;
     });
 
     return {

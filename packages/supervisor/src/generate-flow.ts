@@ -114,5 +114,11 @@ export const generateFlow = async (options: GenerateFlowOptions): Promise<Genera
     .map((part) => part.text)
     .join("\n");
 
-  return Schema.decodeUnknownSync(GeneratedFlowSchema)(JSON.parse(extractJsonObject(text)));
+  try {
+    return Schema.decodeUnknownSync(GeneratedFlowSchema)(JSON.parse(extractJsonObject(text)));
+  } catch (cause) {
+    throw new Error(
+      `Failed to parse generated flow: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
+  }
 };

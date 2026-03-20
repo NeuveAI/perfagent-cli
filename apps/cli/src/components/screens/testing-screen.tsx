@@ -1,5 +1,5 @@
 import { Cause, Effect, Fiber, Stream } from "effect";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Static, Text, useInput } from "ink";
 import figures from "figures";
 import { executeBrowserFlow, type BrowserRunEvent } from "@browser-tester/supervisor";
@@ -20,34 +20,17 @@ import cliTruncate from "cli-truncate";
 import { formatElapsedTime } from "../../utils/format-elapsed-time";
 import { extractScreenshotPath } from "../../utils/extract-screenshot-path";
 import { Image } from "../ui/image";
-import { FileLink } from "../ui/file-link";
 import { ErrorMessage } from "../ui/error-message";
 import { deriveTestingState, saveTestedFingerprint } from "@browser-tester/supervisor";
 import { openUrl } from "../../utils/open-url";
-import { persistRunLearnings } from "../../utils/persist-run-learnings";
 
-const TOOL_CALL_DISPLAY_MODE_COMPACT = "compact";
-const TOOL_CALL_DISPLAY_MODE_DETAILED = "detailed";
-const TOOL_CALL_DISPLAY_MODE_HIDDEN = "hidden";
-const TRACE_DISPLAY_SHORTCUT_KEY = "v";
 const LIVE_VIEW_SHORTCUT_KEY = "o";
-
-const getNextToolCallDisplayMode = (toolCallDisplayMode: string): string => {
-  switch (toolCallDisplayMode) {
-    case TOOL_CALL_DISPLAY_MODE_COMPACT:
-      return TOOL_CALL_DISPLAY_MODE_DETAILED;
-    case TOOL_CALL_DISPLAY_MODE_DETAILED:
-      return TOOL_CALL_DISPLAY_MODE_HIDDEN;
-    default:
-      return TOOL_CALL_DISPLAY_MODE_COMPACT;
-  }
-};
 
 export const TestingScreen = () => {
   const target = useFlowSessionStore((state) => state.resolvedTarget);
-  const userInstruction = useFlowSessionStore((state) => state.flowInstruction);
-  const environment = useFlowSessionStore((state) => state.browserEnvironment);
+  const flowInstruction = useFlowSessionStore((state) => state.flowInstruction);
   const pendingSavedFlow = useFlowSessionStore((state) => state.pendingSavedFlow);
+  const environment = useFlowSessionStore((state) => state.browserEnvironment);
   const executionProvider = usePreferencesStore((state) => state.executionProvider);
   const executionModel = usePreferencesStore((state) => state.executionModel);
   const completeTestingRun = useFlowSessionStore((state) => state.completeTestingRun);
@@ -56,89 +39,84 @@ export const TestingScreen = () => {
   const setLiveViewUrl = useFlowSessionStore((state) => state.setLiveViewUrl);
   const COLORS = useColors();
   const [events, setEvents] = useState<BrowserRunEvent[]>([]);
+  const collectedEventsRef = useRef<BrowserRunEvent[]>([]);
   const [running, setRunning] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [videoPath, setVideoPath] = useState<string | null>(null);
   const [screenshotPaths, setScreenshotPaths] = useState<string[]>([]);
   const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
   const [elapsedTimeMs, setElapsedTimeMs] = useState(0);
-  const [toolCallDisplayMode, setToolCallDisplayMode] = useState(TOOL_CALL_DISPLAY_MODE_COMPACT);
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
   const [exitRequested, setExitRequested] = useState(false);
   const [pendingLiveViewUrl, setPendingLiveViewUrl] = useState<string | null>(null);
   const runFiberRef = useRef<Fiber.Fiber<unknown, unknown> | null>(null);
-  const emittedEventsRef = useRef<BrowserRunEvent[]>([]);
 
   const derivedState = useMemo(
-    () => deriveTestingState(events, toolCallDisplayMode),
-    [events, toolCallDisplayMode],
+    () => (events.length > 0 ? deriveTestingState(events, "hidden") : null),
+    [events],
   );
 
   const elapsedTimeLabel = useMemo(() => formatElapsedTime(elapsedTimeMs), [elapsedTimeMs]);
 
-  const exitTriggeredRef = useRef(false);
-  if (exitRequested && !running && !exitTriggeredRef.current) {
-    exitTriggeredRef.current = true;
+  useEffect(() => {
+    if (!exitRequested || running) return;
     exitTesting();
-  }
+  }, [exitRequested, exitTesting, running]);
 
-  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-  const previousTimerDepsRef = useRef({ running, runStartedAt });
-  if (
-    previousTimerDepsRef.current.running !== running ||
-    previousTimerDepsRef.current.runStartedAt !== runStartedAt
-  ) {
-    previousTimerDepsRef.current = { running, runStartedAt };
-    if (timerIntervalRef.current !== undefined) {
-      clearInterval(timerIntervalRef.current);
-      timerIntervalRef.current = undefined;
-    }
-    if (running && runStartedAt !== null) {
+  useEffect(() => {
+    if (!running || runStartedAt === null) return;
+
+    setElapsedTimeMs(Date.now() - runStartedAt);
+
+    const interval = setInterval(() => {
       setElapsedTimeMs(Date.now() - runStartedAt);
-      timerIntervalRef.current = setInterval(() => {
-        setElapsedTimeMs(Date.now() - runStartedAt);
-      }, TESTING_TIMER_UPDATE_INTERVAL_MS);
-    }
-  }
+    }, TESTING_TIMER_UPDATE_INTERVAL_MS);
 
-  const liveViewPollRef = useRef<{
-    url: string | null;
-    intervalId: ReturnType<typeof setInterval> | undefined;
-  }>({ url: null, intervalId: undefined });
-  if (liveViewPollRef.current.url !== pendingLiveViewUrl) {
-    if (liveViewPollRef.current.intervalId !== undefined) {
-      clearInterval(liveViewPollRef.current.intervalId);
-    }
-    liveViewPollRef.current.url = pendingLiveViewUrl;
-    liveViewPollRef.current.intervalId = undefined;
-    if (pendingLiveViewUrl) {
-      const url = pendingLiveViewUrl;
-      const intervalId = setInterval(async () => {
-        try {
-          const response = await fetch(url);
-          if (response.ok) {
-            setLiveViewUrl(url);
-            clearInterval(intervalId);
-            liveViewPollRef.current.intervalId = undefined;
-          }
-        } catch {
-          // HACK: server not ready yet, keep polling
+    return () => {
+      clearInterval(interval);
+    };
+  }, [runStartedAt, running]);
+
+  useEffect(() => {
+    if (!pendingLiveViewUrl) return;
+
+    let cancelled = false;
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(pendingLiveViewUrl);
+        if (response.ok && !cancelled) {
+          setLiveViewUrl(pendingLiveViewUrl);
+          clearInterval(interval);
         }
-      }, LIVE_VIEW_READY_POLL_INTERVAL_MS);
-      liveViewPollRef.current.intervalId = intervalId;
-    }
-  }
+      } catch {
+        // HACK: server not ready yet, keep polling
+      }
+    }, LIVE_VIEW_READY_POLL_INTERVAL_MS);
 
-  const flowStartedRef = useRef(false);
-  if (!flowStartedRef.current && target && userInstruction && environment) {
-    flowStartedRef.current = true;
-    setRunStartedAt(Date.now());
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [pendingLiveViewUrl, setLiveViewUrl]);
+
+  useEffect(() => {
+    if (!target || !flowInstruction || !environment) return;
+
+    const startedAt = Date.now();
+    setEvents([]);
+    collectedEventsRef.current = [];
+    setRunning(true);
+    setError(null);
+    setScreenshotPaths([]);
+    setRunStartedAt(startedAt);
+    setElapsedTimeMs(0);
+    setShowCancelConfirmation(false);
+    setExitRequested(false);
     useFlowSessionStore.setState({ resolvedExecutionProvider: executionProvider ?? null });
     runFiberRef.current = Effect.runFork(
       Stream.runForEach(
         executeBrowserFlow({
           target,
-          userInstruction,
+          userInstruction: flowInstruction,
           environment,
           savedFlow: pendingSavedFlow ?? undefined,
           provider: executionProvider,
@@ -146,23 +124,15 @@ export const TestingScreen = () => {
         }),
         (event) =>
           Effect.sync(() => {
-            const nextEvents = [...emittedEventsRef.current, event];
-            emittedEventsRef.current = nextEvents;
             if (event.type === "run-started" && event.liveViewUrl) {
               setPendingLiveViewUrl(event.liveViewUrl);
             }
             if (event.type === "run-completed") {
-              setVideoPath(event.report?.artifacts.rawVideoPath ?? event.videoPath ?? null);
               if (event.report) {
-                void persistRunLearnings({
-                  cwd: target.cwd,
-                  events: nextEvents,
-                  report: event.report,
-                });
                 if (event.report.status === "passed") {
                   saveTestedFingerprint();
                 }
-                completeTestingRun(event.report, nextEvents);
+                completeTestingRun(event.report, collectedEventsRef.current);
               }
             }
             if (event.type === "tool-result") {
@@ -171,7 +141,8 @@ export const TestingScreen = () => {
                 setScreenshotPaths((previous) => [...previous, screenshotPath]);
               }
             }
-            setEvents((previous) => [...previous, event]);
+            collectedEventsRef.current = [...collectedEventsRef.current, event];
+            setEvents(collectedEventsRef.current);
           }),
       ).pipe(
         Effect.catchCause((cause) =>
@@ -188,7 +159,23 @@ export const TestingScreen = () => {
         ),
       ),
     );
-  }
+
+    return () => {
+      const runFiber = runFiberRef.current;
+      if (runFiber) {
+        void Effect.runFork(Fiber.interrupt(runFiber));
+      }
+    };
+  }, [
+    completeTestingRun,
+    environment,
+    executionModel,
+    executionProvider,
+    flowInstruction,
+    pendingSavedFlow,
+    setLiveViewUrl,
+    target,
+  ]);
 
   useInput((input, key) => {
     const normalizedInput = input.toLowerCase();
@@ -220,11 +207,6 @@ export const TestingScreen = () => {
       return;
     }
 
-    if (input === TRACE_DISPLAY_SHORTCUT_KEY) {
-      setToolCallDisplayMode((previous) => getNextToolCallDisplayMode(previous));
-      return;
-    }
-
     if (key.escape) {
       if (running) {
         setShowCancelConfirmation(true);
@@ -235,9 +217,14 @@ export const TestingScreen = () => {
     }
   });
 
-  if (!target || !userInstruction || !environment) return null;
+  if (!target || !flowInstruction || !environment) return null;
 
-  const { steps, currentToolCallText, completedCount, totalCount, runStatusLabel } = derivedState;
+  const { steps, completedCount, totalCount, runStatusLabel } = derivedState ?? {
+    steps: [],
+    completedCount: 0,
+    totalCount: 0,
+    runStatusLabel: "Testing",
+  };
   const filledWidth =
     totalCount > 0 ? Math.round((completedCount / totalCount) * PROGRESS_BAR_WIDTH) : 0;
   const emptyWidth = PROGRESS_BAR_WIDTH - filledWidth;
@@ -254,8 +241,8 @@ export const TestingScreen = () => {
       <Box flexDirection="column" width="100%" paddingY={1}>
         <Box paddingX={1}>
           <ScreenHeading
-            title="Executing browser test"
-            subtitle={`${userInstruction} │ ${target.displayName}`}
+            title="Executing browser plan"
+            subtitle={`${flowInstruction} │ ${target.displayName}`}
           />
         </Box>
 
@@ -295,11 +282,6 @@ export const TestingScreen = () => {
                         highlightColor={COLORS.PRIMARY}
                       />
                     </Box>
-                    {currentToolCallText ? (
-                      <Text color={COLORS.DIM}>
-                        {`    ${figures.pointerSmall} ${currentToolCallText}`}
-                      </Text>
-                    ) : null}
                   </>
                 ) : (
                   <Text color={COLORS.DIM}>{`  ○ ${stepPrefix} ${step.label}`}</Text>
@@ -339,11 +321,6 @@ export const TestingScreen = () => {
             <Text color={COLORS.GREEN} bold>
               Done
             </Text>
-            {videoPath ? (
-              <Text color={COLORS.DIM}>
-                Video saved to <FileLink path={videoPath} />
-              </Text>
-            ) : null}
           </Box>
         ) : null}
 

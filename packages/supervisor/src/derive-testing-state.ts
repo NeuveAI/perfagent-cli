@@ -6,7 +6,6 @@ const TOOL_CALL_DETAILED = "detailed";
 const RUN_STATUS_LABELS = new Set([
   "Analyzing results",
   "Looking up pull request",
-  "Generating highlight video",
   "Building report",
 ]);
 

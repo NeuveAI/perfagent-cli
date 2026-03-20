@@ -12,15 +12,19 @@
       "persistent": true
     },
     "lint": {
-      "dependsOn": ["^lint"],
+      "dependsOn": ["^build", "^lint"],
       "outputs": ["*.ts"]
     },
     "format": {
       "dependsOn": ["^format"],
       "outputs": ["*.ts"]
     },
+    "format:check": {
+      "dependsOn": ["^format:check"],
+      "outputs": ["*.ts"]
+    },
     "check": {
-      "dependsOn": ["^check"],
+      "dependsOn": ["^build", "^check"],
       "outputs": ["*.ts"]
     },
     "test": {

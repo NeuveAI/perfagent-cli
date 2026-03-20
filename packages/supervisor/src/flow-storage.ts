@@ -161,7 +161,7 @@ export const listFlows = async (cwd: string = process.cwd()): Promise<SavedFlowS
   const markdownEntries = directoryEntries.filter(
     (entry) => MARKDOWN_FILE_PATTERN.test(entry) && entry !== FLOW_DIRECTORY_INDEX_FILE_NAME,
   );
-  const savedFlows = await Promise.all(
+  const settledResults = await Promise.allSettled(
     markdownEntries.map(async (entry) => {
       const filePath = path.join(flowDirectoryPath, entry);
       const parsedFlow = await loadFlow(filePath);
@@ -169,7 +169,13 @@ export const listFlows = async (cwd: string = process.cwd()): Promise<SavedFlowS
     }),
   );
 
-  return savedFlows.sort((leftFlow, rightFlow) => rightFlow.modifiedAtMs - leftFlow.modifiedAtMs);
+  return settledResults
+    .filter(
+      (result): result is PromiseSettledResult<SavedFlowSummary> & { status: "fulfilled" } =>
+        result.status === "fulfilled",
+    )
+    .map((result) => result.value)
+    .sort((leftFlow, rightFlow) => rightFlow.modifiedAtMs - leftFlow.modifiedAtMs);
 };
 
 export const removeFlow = async (filePath: string, cwd: string = process.cwd()): Promise<void> => {

@@ -1,5 +1,5 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
+import { existsSync, rmSync } from "node:fs";
+import { dirname } from "node:path";
 import { Effect, Stream } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import type {
@@ -132,7 +132,7 @@ describe("executeBrowserFlow", () => {
           },
         },
       },
-      videoOutputPath: "/tmp/browser-tester-run-test/browser-flow.webm",
+      replayOutputPath: "/tmp/browser-tester-run-test/browser-flow.ndjson",
     });
 
     expect(settings.effort).toBe("medium");
@@ -150,7 +150,7 @@ describe("executeBrowserFlow", () => {
         args: expect.any(Array),
         env: {
           EXISTING_BROWSER_ENV: "1",
-          BROWSER_TESTER_VIDEO_OUTPUT_PATH: "/tmp/browser-tester-run-test/browser-flow.webm",
+          BROWSER_TESTER_REPLAY_OUTPUT_PATH: "/tmp/browser-tester-run-test/browser-flow.ndjson",
         },
       },
     });
@@ -158,7 +158,6 @@ describe("executeBrowserFlow", () => {
 
   it("streams structured events from model output and browser tool usage", async () => {
     let promptText = "";
-    const videoOutputPath = "/tmp/browser-tester-run-test/browser-flow.webm";
 
     const events = await Effect.runPromise(
       Stream.runCollect(
@@ -169,7 +168,6 @@ describe("executeBrowserFlow", () => {
             baseUrl: "http://localhost:3000",
             cookies: true,
           },
-          videoOutputPath,
           model: createExecutionModel((options) => {
             promptText =
               options.prompt[0].role === "user" && options.prompt[0].content[0].type === "text"
@@ -186,7 +184,6 @@ describe("executeBrowserFlow", () => {
     expect(promptText).toContain("First master the primary flow the developer asked for.");
     expect(promptText).toContain("test 1-2 additional nearby flows");
     expect(promptText).toContain("Allowed failure categories: app-bug");
-    expect(promptText).toContain(videoOutputPath);
     expect(events.some((event) => event.type === "step-started")).toBe(true);
     expect(events.some((event) => event.type === "browser-log")).toBe(true);
     expect(events.some((event) => event.type === "tool-result")).toBe(true);
@@ -204,7 +201,6 @@ describe("executeBrowserFlow", () => {
     expect(events.find((event) => event.type === "run-completed")).toMatchObject({
       type: "run-completed",
       status: "passed",
-      videoPath: videoOutputPath,
       report: {
         status: "passed",
         summary: "Verified onboarding import path",
@@ -215,6 +211,39 @@ describe("executeBrowserFlow", () => {
           },
         ],
       },
+    });
+  });
+
+  it("surfaces agent stream errors as a failed run", async () => {
+    const events = await Effect.runPromise(
+      Stream.runCollect(
+        executeBrowserFlow({
+          target: testTarget,
+          userInstruction: "Test error handling",
+          model: createStreamModel(
+            [
+              { type: "stream-start", warnings: [] },
+              { type: "text-start", id: "t1" },
+              { type: "text-delta", id: "t1", delta: "Starting up..." },
+              { type: "text-end", id: "t1" },
+              {
+                type: "error",
+                error: new Error("Model not available"),
+              } as LanguageModelV3StreamPart,
+            ],
+            () => {},
+          ),
+        }),
+      ),
+    );
+
+    const errorEvent = events.find((event) => event.type === "error");
+    expect(errorEvent).toBeDefined();
+
+    const completionEvent = events.find((event) => event.type === "run-completed");
+    expect(completionEvent).toMatchObject({
+      type: "run-completed",
+      status: "failed",
     });
   });
 
@@ -304,7 +333,7 @@ describe("executeBrowserFlow", () => {
 
     const screenshotPath = screenshotToolResultEvent.result.replace("Screenshot saved to ", "");
 
-    expect(fs.existsSync(screenshotPath)).toBe(true);
+    expect(existsSync(screenshotPath)).toBe(true);
     expect(events.find((event) => event.type === "run-completed")).toMatchObject({
       type: "run-completed",
       report: {
@@ -314,7 +343,7 @@ describe("executeBrowserFlow", () => {
       },
     });
 
-    fs.rmSync(path.dirname(screenshotPath), { recursive: true, force: true });
+    rmSync(dirname(screenshotPath), { recursive: true, force: true });
   });
 
   it("serializes object tool results instead of object Object", async () => {
