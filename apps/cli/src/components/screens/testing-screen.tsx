@@ -98,8 +98,7 @@ export const TestingScreen = ({ changesFor, instruction }: TestingScreenProps) =
     return () => clearInterval(interval);
   }, [runStartedAt, isExecutingPlan, isPlanning]);
 
-  const hasExecutionTriggered = !AsyncResult.isInitial(executionResult);
-  const awaitingApproval = Boolean(testPlan) && !hasExecutionTriggered;
+  const awaitingApproval = Boolean(testPlan) && !executionResult.waiting;
 
   async function executePlan(plan: TestPlan) {
     const exit = await triggerExecute({
