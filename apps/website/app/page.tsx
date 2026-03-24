@@ -34,10 +34,18 @@ const INPUT_STATUS_EXIT_RING_GROW_DURATION_S = 0.5;
 const TERMINAL_SUCCESS_GREEN = "#27C840";
 const TERMINAL_FAILURE_RED = "#FC272F";
 const TERMINAL_FAILURE_RED_DARK = "color(display-p3 1 0.447 0.369)";
+const REPLAY_ICON_COLOR = "#B9B9B9";
+const REPLAY_ICON_COLOR_DARK = "#444444";
 const TERMINAL_SPINNER_TRACK = "#E3E3E3";
 const TERMINAL_SPINNER_ACTIVE = "#8E8E8E";
 /** Stroke width for the terminal loading ring (viewBox units). */
 const TERMINAL_SPINNER_STROKE = 2.1;
+const TERMINAL_STEP_LABEL_BASE_CLASS = "relative w-fit h-4.5 [letter-spacing:0em] font-bold shrink-0 text-[13px]/4.5";
+
+function getFailureColor(isDark: boolean) {
+  return isDark ? TERMINAL_FAILURE_RED_DARK : TERMINAL_FAILURE_RED;
+}
+
 const CURSOR_ART_WIDTH = 39;
 const CURSOR_ART_HEIGHT = 41;
 const CURSOR_HOTSPOT_X = 19;
@@ -74,13 +82,15 @@ const FIRST_FIELD_FOCUS_PULSE_DURATION_S = 0.1;
 const FIRST_FIELD_TOUCH_EARLY_PX = 3;
 const SECOND_FIELD_MOVE_AFTER_DISMISS_DELAY_MS = 110;
 const SECOND_FIELD_MOVE_DURATION_S = 0.32;
-const SUBMIT_BUTTON_MOVE_AFTER_SUCCESS_DELAY_MS = 220;
-const SUBMIT_BUTTON_PRESS_AFTER_TOUCH_DELAY_MS = 120;
+const SUBMIT_BUTTON_MOVE_AFTER_SUCCESS_DELAY_MS = 140;
+const SUBMIT_BUTTON_PRESS_AFTER_TOUCH_DELAY_MS = 90;
 const SUBMIT_BUTTON_MOVE_DURATION_S = 0.46;
-const SUBMIT_BUTTON_PRESS_HOLD_MS = 150;
+const SUBMIT_BUTTON_PRESS_HOLD_MS = 120;
 const SUBMIT_BUTTON_PRESS_SCALE = 0.965;
-const SUBMIT_SEQUENCE_FADE_MS = LOAD_SEQUENCE_FADE_MS + 120;
-const REDIRECT_STEP_MORPH_DELAY_MS = FIRST_FIELD_POST_TYPE_CHECK_DELAY_MS + 260;
+const SUBMIT_SEQUENCE_FADE_MS = LOAD_SEQUENCE_FADE_MS + 40;
+const REDIRECT_STEP_START_DELAY_MS = 320;
+const REDIRECT_FAILURE_MORPH_HOLD_MS = 280;
+const REPLAY_ICON_APPEAR_DELAY_MS = 280;
 const FIRST_FIELD_IDLE_SHADOW =
   "color(display-p3 0 0 0 / 16%) 0px 0px 0px 0.5px, color(display-p3 0 0 0 / 3%) 0px 1px 5px";
 const FIRST_FIELD_FOCUS_SHADOW =
@@ -222,6 +232,8 @@ function TerminalSyncSpinner({
   animateInitialSuccess?: boolean;
   isDark?: boolean;
 }) {
+  const failureColor = getFailureColor(isDark);
+
   return (
     <div
       className={cn("relative flex shrink-0 items-center justify-center overflow-visible pointer-events-none", className)}
@@ -328,7 +340,7 @@ function TerminalSyncSpinner({
                 viewBox="0 0 24 24"
                 width="24"
                 height="24"
-                color={isDark ? TERMINAL_FAILURE_RED_DARK : TERMINAL_FAILURE_RED}
+                color={failureColor}
                 fill="none"
                 style={{
                   width: "18px",
@@ -338,7 +350,7 @@ function TerminalSyncSpinner({
               >
                 <path
                   d="M12 1.25C17.937 1.25 22.75 6.063 22.75 12C22.75 17.937 17.937 22.75 12 22.75C6.063 22.75 1.25 17.937 1.25 12C1.25 6.063 6.063 1.25 12 1.25ZM9.631 8.225C9.238 7.904 8.659 7.927 8.293 8.293C7.927 8.659 7.904 9.238 8.225 9.631L8.293 9.707L10.586 12L8.294 14.293C7.904 14.684 7.903 15.317 8.294 15.707C8.684 16.097 9.318 16.097 9.708 15.707L12 13.414L14.292 15.707L14.368 15.775C14.761 16.096 15.34 16.073 15.706 15.707C16.072 15.341 16.095 14.762 15.775 14.369L15.706 14.293L13.413 12L15.707 9.707L15.775 9.631C16.096 9.238 16.073 8.659 15.707 8.293C15.341 7.927 14.762 7.904 14.369 8.225L14.293 8.293L12 10.586L9.707 8.293L9.631 8.225Z"
-                  fill={isDark ? TERMINAL_FAILURE_RED_DARK : TERMINAL_FAILURE_RED}
+                  fill={failureColor}
                 />
               </svg>
             ) : (
@@ -428,17 +440,21 @@ function TerminalStepCheck({
 function TerminalStepLabel({
   complete,
   showStrikeThrough = true,
+  className,
   children,
 }: {
   complete: boolean;
   showStrikeThrough?: boolean;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
     <div
       className={cn(
         berkeleyMonoRegular.className,
-        "relative w-fit h-4.5 [letter-spacing:0em] text-[#696969] dark:text-[#999999] font-bold shrink-0 text-[13px]/4.5",
+        TERMINAL_STEP_LABEL_BASE_CLASS,
+        "text-[color(display-p3_0.195_0.195_0.195)] dark:text-[color(display-p3_0.881_0.881_0.881)]",
+        className,
       )}
     >
       {children}
@@ -468,6 +484,53 @@ function TerminalStepLabel({
         />
       ) : null}
     </div>
+  );
+}
+
+function SignUpErrorCallout({
+  isDark = false,
+}: {
+  isDark?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        restartHardRegular.className,
+        "size-fit whitespace-nowrap [letter-spacing:0em] text-[13px]/5.25",
+      )}
+      style={{
+        color: isDark ? TERMINAL_FAILURE_RED_DARK : "#E30000",
+        fontVariationSettings: '"CONN" 50, "wght" 400, "ital" 0',
+      }}
+    >
+      Error
+    </div>
+  );
+}
+
+function ReplayIcon({
+  isDark = false,
+}: {
+  isDark?: boolean;
+}) {
+  const iconColor = isDark ? REPLAY_ICON_COLOR_DARK : REPLAY_ICON_COLOR;
+
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      width="24"
+      height="24"
+      color={iconColor}
+      fill="none"
+      style={{ width: "16px", height: "16px" }}
+      aria-hidden="true"
+    >
+      <path
+        d="M2.25 12C2.25 6.615 6.615 2.25 12 2.25C15.191 2.25 18.021 3.784 19.799 6.151L19.8 6.15V3.225C19.8 2.687 20.236 2.25 20.775 2.25C21.314 2.25 21.75 2.687 21.75 3.225V6.15C21.75 6.812 21.752 7.406 21.688 7.885C21.62 8.391 21.461 8.91 21.036 9.336C20.61 9.761 20.091 9.92 19.585 9.988C19.107 10.052 18.512 10.05 17.85 10.05H14.925C14.386 10.05 13.95 9.613 13.95 9.075C13.95 8.537 14.386 8.1 14.925 8.1H17.85C18.215 8.1 18.509 8.099 18.751 8.092C17.4 5.764 14.882 4.2 12 4.2C7.692 4.2 4.2 7.692 4.2 12C4.2 16.308 7.692 19.8 12 19.8C15.395 19.8 18.285 17.631 19.356 14.6C19.536 14.093 20.093 13.827 20.601 14.006C21.108 14.186 21.374 14.742 21.195 15.25C19.857 19.035 16.247 21.75 12 21.75C6.615 21.75 2.25 17.385 2.25 12Z"
+        fill={iconColor}
+      />
+    </svg>
   );
 }
 
@@ -527,6 +590,7 @@ export default function Home() {
   const [editableFocusedField, setEditableFocusedField] = useState<"first" | "second" | null>(null);
   const [editableFirstFieldValue, setEditableFirstFieldValue] = useState("");
   const [editableSecondFieldValue, setEditableSecondFieldValue] = useState("");
+  const [animationRunId, setAnimationRunId] = useState(0);
 
   useMountEffect(() => {
     const element = new Audio(drawKnife1Sound.dataUri);
@@ -550,29 +614,99 @@ export default function Home() {
     void element.play().catch(() => {});
   };
 
-  const firstFieldFocused = useDelayedFlag(firstFieldTouched, FIRST_FIELD_FOCUS_DELAY_MS);
-  const firstFieldTypingReady = useDelayedFlag(firstFieldFocused, FIRST_FIELD_TYPE_AFTER_FOCUS_DELAY_MS);
+  const resetAnimation = () => {
+    firstEditableInputRef.current?.blur();
+    secondEditableInputRef.current?.blur();
+    setCursorTravels(null);
+    setFirstFieldBounds(null);
+    setSecondFieldBounds(null);
+    setSubmitButtonBounds(null);
+    setFirstFieldTouched(false);
+    setTypedFieldLength(0);
+    setSecondFieldTouched(false);
+    setSecondTypedFieldLength(0);
+    setSubmitButtonTouched(false);
+    setTerminalLabelDismissed(false);
+    setTerminalDragging(false);
+    setCursorFieldPressScale(1);
+    setFirstFieldUnlocked(false);
+    setSecondFieldUnlocked(false);
+    setPendingEditableFocusField(null);
+    setEditableFocusedField(null);
+    setEditableFirstFieldValue("");
+    setEditableSecondFieldValue("");
+    terminalKnifeSoundLastPlayAtRef.current = 0;
+    setAnimationRunId((current) => current + 1);
+  };
+
+  const firstFieldFocused = useDelayedFlag(firstFieldTouched, FIRST_FIELD_FOCUS_DELAY_MS, animationRunId);
+  const firstFieldTypingReady = useDelayedFlag(firstFieldFocused, FIRST_FIELD_TYPE_AFTER_FOCUS_DELAY_MS, animationRunId);
   const firstFieldTypingComplete = typedFieldLength >= FIRST_FIELD_VALUE.length;
-  const terminalIndicatorMorphReady = useDelayedFlag(firstFieldTouched && firstFieldTypingComplete, FIRST_FIELD_POST_TYPE_CHECK_DELAY_MS);
-  const terminalIndicatorSuccessReady = useDelayedFlag(terminalIndicatorMorphReady, LOAD_SEQUENCE_FADE_MS);
-  const terminalRowIndicatorSuccessReady = useDelayedFlag(terminalIndicatorSuccessReady, TERMINAL_ROW_INDICATOR_DELAY_MS);
-  const cursorIndicatorSuccessDismissed = useDelayedFlag(terminalRowIndicatorSuccessReady, TERMINAL_NEXT_ROW_DELAY_MS + CURSOR_INDICATOR_SUCCESS_DISMISS_DELAY_MS);
-  const cursorStageIsSecond = useDelayedFlag(cursorIndicatorSuccessDismissed, SECOND_FIELD_MOVE_AFTER_DISMISS_DELAY_MS);
-  const secondFieldFocused = useDelayedFlag(secondFieldTouched, FIRST_FIELD_FOCUS_DELAY_MS);
-  const secondFieldTypingReady = useDelayedFlag(secondFieldFocused, FIRST_FIELD_TYPE_AFTER_FOCUS_DELAY_MS);
+  const terminalIndicatorMorphReady = useDelayedFlag(
+    firstFieldTouched && firstFieldTypingComplete,
+    FIRST_FIELD_POST_TYPE_CHECK_DELAY_MS,
+    animationRunId,
+  );
+  const terminalIndicatorSuccessReady = useDelayedFlag(terminalIndicatorMorphReady, LOAD_SEQUENCE_FADE_MS, animationRunId);
+  const terminalRowIndicatorSuccessReady = useDelayedFlag(
+    terminalIndicatorSuccessReady,
+    TERMINAL_ROW_INDICATOR_DELAY_MS,
+    animationRunId,
+  );
+  const cursorIndicatorSuccessDismissed = useDelayedFlag(
+    terminalRowIndicatorSuccessReady,
+    TERMINAL_NEXT_ROW_DELAY_MS + CURSOR_INDICATOR_SUCCESS_DISMISS_DELAY_MS,
+    animationRunId,
+  );
+  const cursorStageIsSecond = useDelayedFlag(cursorIndicatorSuccessDismissed, SECOND_FIELD_MOVE_AFTER_DISMISS_DELAY_MS, animationRunId);
+  const secondFieldFocused = useDelayedFlag(secondFieldTouched, FIRST_FIELD_FOCUS_DELAY_MS, animationRunId);
+  const secondFieldTypingReady = useDelayedFlag(secondFieldFocused, FIRST_FIELD_TYPE_AFTER_FOCUS_DELAY_MS, animationRunId);
   const secondFieldTypingComplete = secondTypedFieldLength >= SECOND_FIELD_VALUE.length;
-  const passwordCursorIndicatorMorphReady = useDelayedFlag(secondFieldTouched && secondFieldTypingComplete, FIRST_FIELD_POST_TYPE_CHECK_DELAY_MS);
-  const passwordCursorIndicatorSuccessReady = useDelayedFlag(passwordCursorIndicatorMorphReady, LOAD_SEQUENCE_FADE_MS);
-  const passwordTerminalIndicatorMorphReady = useDelayedFlag(passwordCursorIndicatorMorphReady, TERMINAL_ROW_INDICATOR_DELAY_MS);
-  const passwordTerminalIndicatorSuccessReady = useDelayedFlag(passwordCursorIndicatorSuccessReady, TERMINAL_ROW_INDICATOR_DELAY_MS);
-  const cursorStageIsThird = useDelayedFlag(passwordTerminalIndicatorSuccessReady && cursorStageIsSecond, SUBMIT_BUTTON_MOVE_AFTER_SUCCESS_DELAY_MS);
-  const submitPressStarted = useDelayedFlag(submitButtonTouched, SUBMIT_BUTTON_PRESS_AFTER_TOUCH_DELAY_MS);
-  const submitButtonClicked = useDelayedFlag(submitPressStarted, SUBMIT_BUTTON_PRESS_HOLD_MS);
+  const passwordCursorIndicatorMorphReady = useDelayedFlag(
+    secondFieldTouched && secondFieldTypingComplete,
+    FIRST_FIELD_POST_TYPE_CHECK_DELAY_MS,
+    animationRunId,
+  );
+  const passwordCursorIndicatorSuccessReady = useDelayedFlag(passwordCursorIndicatorMorphReady, LOAD_SEQUENCE_FADE_MS, animationRunId);
+  const passwordTerminalIndicatorMorphReady = useDelayedFlag(
+    passwordCursorIndicatorMorphReady,
+    TERMINAL_ROW_INDICATOR_DELAY_MS,
+    animationRunId,
+  );
+  const passwordTerminalIndicatorSuccessReady = useDelayedFlag(
+    passwordCursorIndicatorSuccessReady,
+    TERMINAL_ROW_INDICATOR_DELAY_MS,
+    animationRunId,
+  );
+  const cursorStageIsThird = useDelayedFlag(
+    passwordTerminalIndicatorSuccessReady && cursorStageIsSecond,
+    SUBMIT_BUTTON_MOVE_AFTER_SUCCESS_DELAY_MS,
+    animationRunId,
+  );
+  const submitPressStarted = useDelayedFlag(submitButtonTouched, SUBMIT_BUTTON_PRESS_AFTER_TOUCH_DELAY_MS, animationRunId);
+  const submitButtonClicked = useDelayedFlag(submitPressStarted, SUBMIT_BUTTON_PRESS_HOLD_MS, animationRunId);
   const submitButtonPressed = submitPressStarted && !submitButtonClicked;
-  const submitTerminalIndicatorMorphReady = useDelayedFlag(submitButtonClicked, FIRST_FIELD_POST_TYPE_CHECK_DELAY_MS);
-  const submitTerminalIndicatorSuccessReady = useDelayedFlag(submitTerminalIndicatorMorphReady, SUBMIT_SEQUENCE_FADE_MS);
-  const redirectTerminalIndicatorMorphReady = useDelayedFlag(submitTerminalIndicatorSuccessReady, REDIRECT_STEP_MORPH_DELAY_MS);
-  const redirectTerminalIndicatorSuccessReady = useDelayedFlag(redirectTerminalIndicatorMorphReady, LOAD_SEQUENCE_FADE_MS);
+  const submitTerminalIndicatorMorphReady = useDelayedFlag(
+    submitButtonClicked,
+    FIRST_FIELD_POST_TYPE_CHECK_DELAY_MS,
+    animationRunId,
+  );
+  const submitTerminalIndicatorSuccessReady = useDelayedFlag(
+    submitTerminalIndicatorMorphReady,
+    SUBMIT_SEQUENCE_FADE_MS,
+    animationRunId,
+  );
+  const redirectStepStarted = useDelayedFlag(submitTerminalIndicatorSuccessReady, REDIRECT_STEP_START_DELAY_MS, animationRunId);
+  const redirectTerminalIndicatorMorphReady = useDelayedFlag(
+    redirectStepStarted,
+    REDIRECT_FAILURE_MORPH_HOLD_MS,
+    animationRunId,
+  );
+  const redirectTerminalIndicatorSuccessReady = useDelayedFlag(
+    redirectTerminalIndicatorMorphReady,
+    LOAD_SEQUENCE_FADE_MS,
+    animationRunId,
+  );
   const cursorMoveStage = cursorStageIsThird ? "third" : cursorStageIsSecond ? "second" : "first";
   const typedFieldValue = FIRST_FIELD_VALUE.slice(0, typedFieldLength);
   const secondTypedFieldValue = SECOND_FIELD_VALUE.slice(0, secondTypedFieldLength);
@@ -604,7 +738,9 @@ export default function Home() {
   const terminalRedirectStepComplete = redirectTerminalIndicatorSuccessReady;
   const showTextCursor = firstFieldTouched && cursorMoveStage !== "third";
   const showSubmitButtonIndicator = cursorMoveStage === "third" && !submitTerminalIndicatorSuccessReady;
-  const showRedirectStepIndicator = submitTerminalIndicatorSuccessReady && !redirectTerminalIndicatorSuccessReady;
+  const showRedirectStepIndicator = redirectStepStarted && !redirectTerminalIndicatorSuccessReady;
+  const showSignUpErrorCallout = redirectStepStarted;
+  const showReplayIcon = useDelayedFlag(redirectTerminalIndicatorSuccessReady, REPLAY_ICON_APPEAR_DELAY_MS, animationRunId);
   const cursorInteractionScale = submitButtonPressed ? CURSOR_BUTTON_PRESS_SCALE : cursorFieldPressScale;
   const showFirstFieldCaret = !firstFieldInputActive && firstFieldVisuallyFocused;
   const showSecondFieldCaret = !secondFieldInputActive && secondFieldVisuallyFocused;
@@ -767,15 +903,43 @@ export default function Home() {
       cancelAnimationFrame(raf1);
       if (raf2) cancelAnimationFrame(raf2);
     };
-  }, []);
+  }, [animationRunId]);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-start pt-20 px-5 bg-[linear-gradient(180deg,#FFFFFF_0%,rgb(247,247,247)_100%)] dark:bg-[radial-gradient(ellipse_at_center,rgb(14,14,14)_0%,#000000_100%)]">
       <div
+        key={animationRunId}
         ref={mainContainerRef}
         className="relative w-164.5 h-91.5 rounded-2xl flex items-center justify-center"
         style={{ backgroundImage: isDark ? "linear-gradient(in oklab 180deg, oklab(16% 0 0) 0%, oklab(6% 0 0 / 0%) 100%)" : "linear-gradient(in oklab 180deg, oklab(95.5% 0 0) 0%, oklab(100% 0 0 / 0%) 100%)" }}
       >
+        <AnimatePresence>
+          {showReplayIcon ? (
+            <motion.button
+              key="replay-icon"
+              type="button"
+              aria-label="Restart animation"
+              onClick={resetAnimation}
+              className="absolute left-4 top-4 z-20 cursor-pointer appearance-none border-0 bg-transparent p-0 text-inherit"
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.985 }}
+              transition={{
+                opacity: {
+                  duration: 0.38,
+                  ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
+                },
+                scale: {
+                  duration: 0.46,
+                  ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
+                },
+              }}
+              style={{ willChange: "transform, opacity" }}
+            >
+              <ReplayIcon isDark={isDark} />
+            </motion.button>
+          ) : null}
+        </AnimatePresence>
         <div
           className="pointer-events-none absolute inset-0 rounded-2xl"
           style={{
@@ -946,6 +1110,27 @@ export default function Home() {
               </div>
               {/* from Paper — https://app.paper.design/file/01KKVJZGYDH7NE03PKQE86N5EK?page=01KMAQWMFAADNQS52G7NJNERWY&node=J0Y-0 (Mar 23, 2026) */}
               <div className="relative mt-[13px] w-fit">
+                <AnimatePresence>
+                  {showSignUpErrorCallout ? (
+                    <motion.div
+                      key="sign-up-error"
+                      className="pointer-events-none absolute top-1/2 z-0 w-fit -translate-y-1/2"
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -6 }}
+                      transition={{
+                        duration: 0.18,
+                        ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
+                      }}
+                      style={{
+                        left: "calc(100% + 10px)",
+                        willChange: "transform, opacity",
+                      }}
+                    >
+                      <SignUpErrorCallout isDark={isDark} />
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
                 <motion.div
                   ref={submitButtonRef}
                   className={cn(
@@ -1318,7 +1503,10 @@ export default function Home() {
                     successIcon="close"
                     isDark={isDark}
                   />
-                  <TerminalStepLabel complete={terminalRedirectStepComplete} showStrikeThrough={false}>
+                  <TerminalStepLabel
+                    complete={terminalRedirectStepComplete}
+                    showStrikeThrough={false}
+                  >
                     Redirect page
                   </TerminalStepLabel>
                 </div>
