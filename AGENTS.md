@@ -827,7 +827,6 @@ All tooling is run through pnpm scripts defined in the root `package.json`.
 - `pnpm check` — run format, lint, and type checks
 - `pnpm test` — run tests
 
-
 ## Verification Steps
 
 Before considering work complete, run these checks:
