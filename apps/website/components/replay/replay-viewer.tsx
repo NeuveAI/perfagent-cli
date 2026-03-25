@@ -14,6 +14,7 @@ import type { ViewerRunState, ViewerStepEvent } from "@/lib/replay-types";
 
 const SPEEDS = [1, 2, 4, 8] as const;
 const TIMER_INTERVAL_MS = 100;
+const LIVE_EDGE_THRESHOLD_MS = 2000;
 const IDLE_THRESHOLD_MS = 4000;
 const IDLE_SPEED_TIERS = [
   { afterMs: 0, speed: 2 },
@@ -412,6 +413,7 @@ export const ReplayViewer = ({
     events.length > 0 ? events[0].timestamp : (steps?.steps[0]?.startedAtMs ?? 0);
   const hasEvents = events.length > 1;
   const canPlay = hasEvents;
+  const isAtLiveEdge = live && totalTime - currentTime < LIVE_EDGE_THRESHOLD_MS;
   const timeLabel = formatPaperTime(currentTime);
   const totalTimeLabel = formatPaperTime(totalTime);
   const playbackBarMax = totalTime || 1;
@@ -432,24 +434,21 @@ export const ReplayViewer = ({
 
   const stepLabel = currentStepForLabel ? `Step ${currentStepForLabel.index + 1}` : "";
   const stepTitle = currentStepForLabel ? currentStepForLabel.step.title : "";
-  let playbackBarBackground: string | undefined;
-  if (!live && hasEvents) {
-    playbackBarBackground = `linear-gradient(to right, oklch(0.345 0 0) 0%, oklch(0.431 0 0) ${playbackBarProgress}%, ${PLAYBACK_BAR_TRACK_COLOR} ${playbackBarProgress}%, ${PLAYBACK_BAR_TRACK_COLOR} 100%)`;
-  }
-  const livePlaybackBarFillVisible = live && hasEvents && playbackBarValue > 0;
-  const livePlaybackBarFillClassName =
+  const playbackBarFillVisible = hasEvents && playbackBarValue > 0;
+  const playbackBarFillClassName =
     playbackBarValue >= playbackBarMax ? "rounded-full" : "rounded-l-full";
-  const livePlaybackBarMarkerCount = live
-    ? Math.max(0, Math.floor((playbackBarMax - 1) / LIVE_PLAYBACK_BAR_MARKER_INTERVAL_MS))
-    : 0;
-  const livePlaybackBarMarkerPositions = Array.from(
-    { length: livePlaybackBarMarkerCount },
-    (_, index) =>
-      `${(((index + 1) / (livePlaybackBarMarkerCount + 1)) * 100).toFixed(2)}%`,
+  const playbackBarMarkerCount = Math.max(
+    0,
+    Math.floor((playbackBarMax - 1) / LIVE_PLAYBACK_BAR_MARKER_INTERVAL_MS),
   );
-  const visibleLivePlaybackBarMarkerPositions = livePlaybackBarMarkerPositions.slice(1);
-  const livePlaybackStepMarkers =
-    live && steps && replayStartMs !== 0
+  const playbackBarMarkerPositions = Array.from(
+    { length: playbackBarMarkerCount },
+    (_, index) =>
+      `${(((index + 1) / (playbackBarMarkerCount + 1)) * 100).toFixed(2)}%`,
+  );
+  const visiblePlaybackBarMarkerPositions = playbackBarMarkerPositions.slice(1);
+  const playbackStepMarkers =
+    steps && replayStartMs !== 0
       ? steps.steps.flatMap((step, index) => {
           if (step.status !== "passed" && step.status !== "failed") return [];
 
@@ -474,13 +473,7 @@ export const ReplayViewer = ({
           ];
         })
       : [];
-  const showFirstStepLabel = live && Boolean(steps && steps.steps.length > 0);
-  const playbackBarClassName = [
-    "w-full cursor-pointer appearance-none rounded-full outline-none disabled:cursor-default",
-    live
-      ? "absolute inset-0 z-10 h-full bg-transparent [&::-moz-range-thumb]:size-0 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:border-0 [&::-moz-range-track]:h-full [&::-moz-range-track]:rounded-full [&::-moz-range-track]:border-0 [&::-moz-range-track]:bg-transparent [&::-webkit-slider-thumb]:size-0 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-runnable-track]:h-full [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-transparent"
-      : "h-1.5 rounded-full bg-[color(display-p3_0.897_0.897_0.897)] [&::-moz-range-thumb]:size-0 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:border-0 [&::-moz-range-track]:h-1.5 [&::-moz-range-track]:rounded-full [&::-webkit-slider-thumb]:size-0 [&::-webkit-slider-thumb]:appearance-none",
-  ].join(" ");
+  const showFirstStepLabel = Boolean(steps && steps.steps.length > 0);
   const playbackBar = (
     <input
       type="range"
@@ -490,8 +483,7 @@ export const ReplayViewer = ({
       step={100}
       disabled={!hasEvents}
       onChange={handleSeek}
-      className={playbackBarClassName}
-      style={playbackBarBackground ? { background: playbackBarBackground } : undefined}
+      className="absolute inset-0 z-10 h-full w-full cursor-pointer appearance-none rounded-full bg-transparent outline-none disabled:cursor-default [&::-moz-range-thumb]:size-0 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:border-0 [&::-moz-range-track]:h-full [&::-moz-range-track]:rounded-full [&::-moz-range-track]:border-0 [&::-moz-range-track]:bg-transparent [&::-webkit-slider-thumb]:size-0 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-runnable-track]:h-full [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-transparent"
     />
   );
 
@@ -522,176 +514,47 @@ export const ReplayViewer = ({
         className="flex flex-col gap-3 rounded-[28px] px-6 py-5"
         style={{ fontFamily: CONTROL_FONT_FAMILY }}
       >
-        {(stepLabel || stepTitle || live) && (
-          <div className="mt-1.5 flex items-center justify-between gap-4 p-0 antialiased [font-synthesis:none]">
-            <div className="flex min-w-0 items-center gap-1.5">
-              {stepLabel && (
-                <Calligraph
-                  as="div"
-                  autoSize={false}
-                  className="h-4.5 shrink-0 font-['SFProDisplay-Medium','SF_Pro_Display',system-ui,sans-serif] text-base/4.5 font-medium tracking-[0em] text-[color(display-p3_0.587_0.587_0.587)]"
-                >
-                  {stepLabel}
-                </Calligraph>
-              )}
-              {stepTitle && (
-                <div className="h-4.5 shrink-0 font-['SFProDisplay-Medium','SF_Pro_Display',system-ui,sans-serif] text-base/4.5 font-medium tracking-[0em] text-[color(display-p3_0.188_0.188_0.188)]">
-                  {stepTitle}
-                </div>
-              )}
-            </div>
-            {live && (
-              <div className="flex shrink-0 items-center gap-3">
-                <span className="inline-flex items-center gap-2.5 text-[15px] leading-4.5 font-medium tracking-[0em] tabular-nums text-[color(display-p3_0.361_0.361_0.361)]">
-                  <Calligraph variant="number" autoSize={false} className="tabular-nums">
-                    {timeLabel}
-                  </Calligraph>
-                  <span className="text-[color(display-p3_0.727_0.727_0.727)]">
-                    /
-                  </span>
+        <div className="mt-1.5 flex items-center justify-between gap-4 p-0 antialiased [font-synthesis:none]">
+          <div className="flex min-w-0 items-center gap-1.5">
+            {stepLabel && (
+              <Calligraph
+                as="div"
+                autoSize={false}
+                className="h-4.5 shrink-0 font-['SFProDisplay-Medium','SF_Pro_Display',system-ui,sans-serif] text-base/4.5 font-medium tracking-[0em] text-[color(display-p3_0.587_0.587_0.587)]"
+              >
+                {stepLabel}
+              </Calligraph>
+            )}
+            {stepTitle && (
+              <div className="h-4.5 shrink-0 font-['SFProDisplay-Medium','SF_Pro_Display',system-ui,sans-serif] text-base/4.5 font-medium tracking-[0em] text-[color(display-p3_0.188_0.188_0.188)]">
+                {stepTitle}
+              </div>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            <span className="inline-flex items-center gap-2.5 text-[15px] leading-4.5 font-medium tracking-[0em] tabular-nums text-[color(display-p3_0.361_0.361_0.361)]">
+              <Calligraph variant="number" autoSize={false} className="tabular-nums">
+                {timeLabel}
+              </Calligraph>
+              {(!live || !isAtLiveEdge) && (
+                <>
+                  <span className="text-[color(display-p3_0.727_0.727_0.727)]">/</span>
                   <span>{totalTimeLabel}</span>
-                </span>
-                <div className="flex items-center gap-1">
-                  <select
-                    value={`${speed}`}
-                    onChange={handleSpeedChange}
-                    disabled={!hasEvents}
-                    aria-label="Replay speed"
-                    className="cursor-pointer appearance-none rounded-full bg-transparent px-2 py-1 text-[15px] font-medium text-[color(display-p3_0.361_0.361_0.361)] outline-none disabled:cursor-default disabled:opacity-40"
-                    style={{ fontFamily: CONTROL_FONT_FAMILY }}
-                  >
-                    {SPEEDS.map((supportedSpeed) => (
-                      <option key={supportedSpeed} value={`${supportedSpeed}`}>
-                        {supportedSpeed}x
-                      </option>
-                    ))}
-                  </select>
-
-                  <button
-                    type="button"
-                    onClick={handleFullscreen}
-                    aria-label="Toggle fullscreen"
-                    className="flex size-9 items-center justify-center rounded-full text-[#919191] transition-transform duration-150 ease-out active:scale-[0.97]"
-                  >
-                    <FullscreenIcon className="h-auto w-5 shrink-0" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {live && (
-          <div className="relative pb-6">
-            <div
-              className="relative h-9.75 overflow-hidden rounded-full"
-              style={{
-                backgroundColor: LIVE_PLAYBACK_BAR_SURFACE_COLOR,
-                boxShadow: LIVE_PLAYBACK_BAR_SHADOW,
-              }}
-            >
-              <div className="absolute inset-0 overflow-hidden rounded-full">
-                {livePlaybackBarFillVisible && (
-                  <div
-                    className={`pointer-events-none absolute inset-y-0 left-0 ${livePlaybackBarFillClassName}`}
-                    style={{
-                      width: `${playbackBarProgress}%`,
-                      boxShadow: LIVE_PLAYBACK_PROGRESS_SHADOW,
-                      backgroundImage: LIVE_PLAYBACK_PROGRESS_BACKGROUND_IMAGE,
-                    }}
-                  />
-                )}
-                {visibleLivePlaybackBarMarkerPositions.map((markerPosition) => (
-                  <div
-                    key={markerPosition}
-                    className="pointer-events-none absolute top-1/2 z-[1] h-2.75 w-px -translate-x-1/2 -translate-y-1/2 rounded-full bg-[color(display-p3_0.882_0.882_0.882)]"
-                    style={{ left: markerPosition }}
-                  />
-                ))}
-                {livePlaybackStepMarkers.map((marker) => (
-                  <Tooltip key={marker.stepId}>
-                    <TooltipTrigger
-                      type="button"
-                      data-step-status-marker={marker.status}
-                      aria-label={marker.title}
-                      onClick={() => {
-                        seekTo(marker.timeMs)
-                      }}
-                      className="pointer-events-auto absolute top-1/2 z-[15] size-4 -translate-x-1/2 -translate-y-1/2 appearance-none rounded-[4.5px] border-[3px] border-solid border-[color(display-p3_1_1_1)] bg-origin-border p-0 outline-none transition-transform duration-150 ease-out will-change-transform hover:scale-[1.08]"
-                      style={{
-                        left: marker.left,
-                        rotate: "315deg",
-                        outline:
-                          marker.status === "passed"
-                            ? LIVE_PASSED_STEP_MARKER_OUTLINE
-                            : LIVE_FAILED_STEP_MARKER_OUTLINE,
-                        backgroundImage:
-                          marker.status === "passed"
-                            ? LIVE_PASSED_STEP_MARKER_BACKGROUND_IMAGE
-                            : LIVE_FAILED_STEP_MARKER_BACKGROUND_IMAGE,
-                      }}
-                    />
-                    <TooltipContent side="top" sideOffset={12}>
-                      {marker.title}
-                    </TooltipContent>
-                  </Tooltip>
-                ))}
-                {playbackBar}
-              </div>
+                </>
+              )}
+            </span>
+            {live && (
               <button
                 type="button"
-                onClick={handlePlay}
-                disabled={!canPlay}
-                aria-label={playing ? "Pause replay" : "Play replay"}
-                className="absolute inset-y-1.5 left-1.5 z-[30] flex w-12.75 items-center justify-center gap-0 rounded-full bg-white px-2.75 py-0.75 text-[#2F2F2F] transition-transform duration-150 ease-out disabled:opacity-40 active:scale-[0.97]"
-                style={{ boxShadow: LIVE_PLAYBACK_BAR_BUTTON_SHADOW }}
+                onClick={() => seekTo(totalTime)}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-red-500/10 px-2.5 py-1 transition-opacity hover:bg-red-500/20 active:scale-[0.97]"
               >
-                {playing && <PauseIcon className="h-[12px] w-auto" />}
-                {!playing && <PlayIcon className="h-[21px] w-auto" />}
-              </button>
-            </div>
-            {livePlaybackStepMarkers.map((marker) => (
-              <div
-                key={`${marker.stepId}-label`}
-                className="pointer-events-none absolute top-full -mt-[17px] -translate-x-1/2 [letter-spacing:0em] h-4.5 font-['SFProDisplay-Semibold','SF_Pro_Display',system-ui,sans-serif] text-[11.5px]/4.5 font-semibold text-[color(display-p3_0.553_0.553_0.553)]"
-                style={{ left: marker.left }}
-              >
-                {marker.label}
-              </div>
-            ))}
-            {showFirstStepLabel && (
-              <div className="pointer-events-none absolute top-full left-0 -mt-[17px] [letter-spacing:0em] h-4.5 font-['SFProDisplay-Semibold','SF_Pro_Display',system-ui,sans-serif] text-[11.5px]/4.5 font-semibold text-[color(display-p3_0.553_0.553_0.553)]">
-                1
-              </div>
-            )}
-          </div>
-        )}
-        {!live && playbackBar}
-
-        {!live && (
-          <div className="flex items-center justify-between gap-6">
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={handlePlay}
-                disabled={!canPlay}
-                aria-label={playing ? "Pause replay" : "Play replay"}
-                className="flex h-[35px] w-[60px] items-center justify-center rounded-full bg-white text-[color(display-p3_0.196_0.196_0.196)] transition-transform duration-150 ease-out disabled:opacity-40 active:scale-[0.97]"
-                style={{ boxShadow: CONTROL_BUTTON_SHADOW }}
-              >
-                {playing && <PauseIcon className="h-[12px] w-auto" />}
-                {!playing && <PlayIcon className="size-[22px]" />}
-              </button>
-
-              <span className="inline-flex items-center gap-2.5 pl-2 text-[15px] leading-4.5 font-medium tracking-[0em] tabular-nums text-[color(display-p3_0.361_0.361_0.361)]">
-                <span>{timeLabel}</span>
-                <span className="text-[color(display-p3_0.727_0.727_0.727)]">
-                  /
+                <span className={`size-1.5 rounded-full bg-red-500 ${isAtLiveEdge ? "animate-pulse" : ""}`} />
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-red-500">
+                  Live
                 </span>
-                <span>{totalTimeLabel}</span>
-              </span>
-            </div>
-
+              </button>
+            )}
             <div className="flex items-center gap-1">
               <select
                 value={`${speed}`}
@@ -718,7 +581,91 @@ export const ReplayViewer = ({
               </button>
             </div>
           </div>
-        )}
+        </div>
+
+        <div className="relative pb-6">
+          <div
+            className="relative h-9.75 overflow-hidden rounded-full"
+            style={{
+              backgroundColor: LIVE_PLAYBACK_BAR_SURFACE_COLOR,
+              boxShadow: LIVE_PLAYBACK_BAR_SHADOW,
+            }}
+          >
+            <div className="absolute inset-0 overflow-hidden rounded-full">
+              {playbackBarFillVisible && (
+                <div
+                  className={`pointer-events-none absolute inset-y-0 left-0 ${playbackBarFillClassName}`}
+                  style={{
+                    width: `${playbackBarProgress}%`,
+                    boxShadow: LIVE_PLAYBACK_PROGRESS_SHADOW,
+                    backgroundImage: LIVE_PLAYBACK_PROGRESS_BACKGROUND_IMAGE,
+                  }}
+                />
+              )}
+              {visiblePlaybackBarMarkerPositions.map((markerPosition) => (
+                <div
+                  key={markerPosition}
+                  className="pointer-events-none absolute top-1/2 z-[1] h-2.75 w-px -translate-x-1/2 -translate-y-1/2 rounded-full bg-[color(display-p3_0.882_0.882_0.882)]"
+                  style={{ left: markerPosition }}
+                />
+              ))}
+              {playbackStepMarkers.map((marker) => (
+                <Tooltip key={marker.stepId}>
+                  <TooltipTrigger
+                    type="button"
+                    data-step-status-marker={marker.status}
+                    aria-label={marker.title}
+                    onClick={() => {
+                      seekTo(marker.timeMs)
+                    }}
+                    className="pointer-events-auto absolute top-1/2 z-[15] size-4 -translate-x-1/2 -translate-y-1/2 appearance-none rounded-[4.5px] border-[3px] border-solid border-[color(display-p3_1_1_1)] bg-origin-border p-0 outline-none transition-transform duration-150 ease-out will-change-transform hover:scale-[1.08]"
+                    style={{
+                      left: marker.left,
+                      rotate: "315deg",
+                      outline:
+                        marker.status === "passed"
+                          ? LIVE_PASSED_STEP_MARKER_OUTLINE
+                          : LIVE_FAILED_STEP_MARKER_OUTLINE,
+                      backgroundImage:
+                        marker.status === "passed"
+                          ? LIVE_PASSED_STEP_MARKER_BACKGROUND_IMAGE
+                          : LIVE_FAILED_STEP_MARKER_BACKGROUND_IMAGE,
+                    }}
+                  />
+                  <TooltipContent side="top" sideOffset={12}>
+                    {marker.title}
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+              {playbackBar}
+            </div>
+            <button
+              type="button"
+              onClick={handlePlay}
+              disabled={!canPlay}
+              aria-label={playing ? "Pause replay" : "Play replay"}
+              className="absolute inset-y-1.5 left-1.5 z-[30] flex w-12.75 items-center justify-center gap-0 rounded-full bg-white px-2.75 py-0.75 text-[#2F2F2F] transition-transform duration-150 ease-out disabled:opacity-40 active:scale-[0.97]"
+              style={{ boxShadow: LIVE_PLAYBACK_BAR_BUTTON_SHADOW }}
+            >
+              {playing && <PauseIcon className="h-[12px] w-auto" />}
+              {!playing && <PlayIcon className="h-[21px] w-auto" />}
+            </button>
+          </div>
+          {playbackStepMarkers.map((marker) => (
+            <div
+              key={`${marker.stepId}-label`}
+              className="pointer-events-none absolute top-full -mt-[17px] -translate-x-1/2 [letter-spacing:0em] h-4.5 font-['SFProDisplay-Semibold','SF_Pro_Display',system-ui,sans-serif] text-[11.5px]/4.5 font-semibold text-[color(display-p3_0.553_0.553_0.553)]"
+              style={{ left: marker.left }}
+            >
+              {marker.label}
+            </div>
+          ))}
+          {showFirstStepLabel && (
+            <div className="pointer-events-none absolute top-full left-0 -mt-[17px] [letter-spacing:0em] h-4.5 font-['SFProDisplay-Semibold','SF_Pro_Display',system-ui,sans-serif] text-[11.5px]/4.5 font-semibold text-[color(display-p3_0.553_0.553_0.553)]">
+              1
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

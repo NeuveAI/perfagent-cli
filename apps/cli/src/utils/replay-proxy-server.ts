@@ -66,7 +66,13 @@ export const startReplayProxy = Effect.fn("startReplayProxy")(function* (
   let cachedEvents: unknown[] = [];
   let cachedSteps: unknown = { title: "", status: "running", steps: [] };
 
+  const isTerminalStatus = () => {
+    const status = (cachedSteps as Record<string, unknown>)?.status;
+    return status === "passed" || status === "failed";
+  };
+
   app.get("/latest.json", async (context) => {
+    if (isTerminalStatus()) return context.json(cachedEvents);
     try {
       const upstream = await fetch(`${options.liveViewUrl}/latest.json`);
       if (!upstream.ok) return context.json(cachedEvents);
@@ -89,6 +95,7 @@ export const startReplayProxy = Effect.fn("startReplayProxy")(function* (
   });
 
   app.get("/steps", async (context) => {
+    if (isTerminalStatus()) return context.json(cachedSteps);
     try {
       const upstream = await fetch(`${options.liveViewUrl}/steps`);
       if (!upstream.ok) return context.json(cachedSteps);

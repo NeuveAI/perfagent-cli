@@ -5,13 +5,23 @@ import type { ViewerRunState, ViewerStepEvent } from "@expect/browser/mcp";
 const optionDateTimeToMs = (value: Option.Option<DateTime.DateTime>): number | undefined =>
   Option.isSome(value) ? Number(DateTime.toEpochMillis(value.value)) : undefined;
 
+const deriveStatusFromSteps = (steps: ExecutedTestPlan["steps"]): ViewerRunState["status"] => {
+  if (steps.length === 0) return "running";
+  const allDone = steps.every(
+    (step) => step.status === "passed" || step.status === "failed",
+  );
+  if (!allDone) return "running";
+  const anyFailed = steps.some((step) => step.status === "failed");
+  return anyFailed ? "failed" : "passed";
+};
+
 export const toViewerRunState = (executed: ExecutedTestPlan): ViewerRunState => {
   const runFinishedEvent = executed.events.find((event) => event._tag === "RunFinished");
 
   const status: ViewerRunState["status"] =
     runFinishedEvent && runFinishedEvent._tag === "RunFinished"
       ? runFinishedEvent.status
-      : "running";
+      : deriveStatusFromSteps(executed.steps);
 
   const summary =
     runFinishedEvent && runFinishedEvent._tag === "RunFinished"
