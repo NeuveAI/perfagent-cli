@@ -1,0 +1,396 @@
+"use client";
+
+import { useRef, useState } from "react";
+import type { eventWithTime } from "@posthog/rrweb";
+import type { Replayer } from "@posthog/rrweb";
+import { formatTime } from "@/lib/format-time";
+import { createCursorZoom } from "@/lib/cursor-zoom";
+import { useMountEffect } from "@/hooks/use-mount-effect";
+import { MacWindow } from "@/components/replay/mac-window";
+
+const SPEEDS = [1, 2, 4, 8] as const;
+const TIMER_INTERVAL_MS = 100;
+const CONTROL_BUTTON_SHADOW = [
+  "color(display-p3 0 0 0 / 12%) 0px 0px 0px 1px",
+  "color(display-p3 0.752 0.752 0.752 / 12%) 0px 2px 2px",
+].join(", ");
+const VIEWER_SHELL_SHADOW = [
+  "color(display-p3 1 1 1 / 88%) 0px 1px 0px inset",
+  "color(display-p3 0 0 0 / 6%) 0px 0px 0px 1px",
+].join(", ");
+const CONTROL_FONT_FAMILY =
+  '"SF Pro Display", "SFProDisplay-Medium", "Inter Variable", system-ui, sans-serif';
+const PAPER_TIME_LENGTH = 5;
+
+const getReplayDuration = (replayEvents: eventWithTime[]) => {
+  if (replayEvents.length < 2) return 0;
+
+  return Math.max(
+    replayEvents[replayEvents.length - 1].timestamp - replayEvents[0].timestamp,
+    0,
+  );
+};
+
+const formatPaperTime = (timeMs: number) =>
+  formatTime(timeMs).padStart(PAPER_TIME_LENGTH, "0");
+
+interface ControlIconProps {
+  className?: string;
+}
+
+const PlayIcon = ({ className }: ControlIconProps) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    className={className}
+  >
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M8.5 6.75C8.5 5.63 9.73 4.95 10.67 5.55L17.5 10.8C18.36 11.34 18.36 12.66 17.5 13.2L10.67 18.45C9.73 19.05 8.5 18.37 8.5 17.25V6.75Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
+const PauseIcon = ({ className }: ControlIconProps) => (
+  <svg
+    version="1.1"
+    xmlns="http://www.w3.org/2000/svg"
+    xmlnsXlink="http://www.w3.org/1999/xlink"
+    viewBox="0 0 13.251 17.087"
+    className={className}
+  >
+    <g>
+      <path
+        d="M1.47 17.078L3.811 17.078C4.776 17.078 5.278 16.576 5.278 15.601L5.278 1.47C5.278 0.481 4.776 0 3.811 0L1.47 0C0.502 0 0 0.495 0 1.47L0 15.601C0 16.576 0.49 17.078 1.47 17.078ZM9.085 17.078L11.419 17.078C12.394 17.078 12.889 16.576 12.889 15.601L12.889 1.47C12.889 0.481 12.394 0 11.419 0L9.085 0C8.11 0 7.608 0.495 7.608 1.47L7.608 15.601C7.608 16.576 8.101 17.078 9.085 17.078Z"
+        fill="#000000D9"
+      />
+    </g>
+  </svg>
+);
+
+const FullscreenIcon = ({ className }: ControlIconProps) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    className={className}
+  >
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M2 2H9.5V4H4V9.5H2V2ZM14.5 2H22V9.5H20V4H14.5V2ZM4 14.5V20H9.5V22H2V14.5H4ZM22 14.5V22H14.5V20H20V14.5H22Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
+interface ReplayViewerProps {
+  events: eventWithTime[];
+  stepLabel?: string;
+  stepTitle?: string;
+}
+
+export const ReplayViewer = ({
+  events,
+  stepLabel = "Step 1",
+  stepTitle = "Open homepage",
+}: ReplayViewerProps) => {
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const replayRef = useRef<HTMLDivElement>(null);
+  const viewerShellRef = useRef<HTMLDivElement>(null);
+  const replayerRef = useRef<Replayer | undefined>(undefined);
+  const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
+  const cleanupZoomRef = useRef<(() => void) | undefined>(undefined);
+
+  const destroyReplay = () => {
+    clearInterval(timerRef.current);
+    timerRef.current = undefined;
+    cleanupZoomRef.current?.();
+    cleanupZoomRef.current = undefined;
+    replayerRef.current?.destroy();
+    replayerRef.current = undefined;
+  };
+
+  const startTimer = () => {
+    clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      const replayer = replayerRef.current;
+      if (!replayer) return;
+
+      const time = replayer.getCurrentTime();
+      const meta = replayer.getMetaData();
+      const duration = meta.endTime - meta.startTime;
+
+      setCurrentTime(time);
+
+      if (time >= duration) {
+        clearInterval(timerRef.current);
+        setPlaying(false);
+      }
+    }, TIMER_INTERVAL_MS);
+  };
+
+  useMountEffect(() => {
+    return () => {
+      destroyReplay();
+    };
+  });
+
+  const setupScalingAndZoom = () => {
+    if (!replayRef.current || !backdropRef.current) return;
+
+    const replayContainer = replayRef.current;
+    const wrapper = replayContainer.querySelector(
+      ".replayer-wrapper",
+    ) as HTMLElement | undefined;
+    if (!wrapper) return;
+
+    const iframe = wrapper.querySelector("iframe");
+    if (!iframe) return;
+
+    const recordedWidth =
+      Number(iframe.getAttribute("width")) || iframe.offsetWidth;
+    const recordedHeight =
+      Number(iframe.getAttribute("height")) || iframe.offsetHeight;
+
+    if (!recordedWidth || !recordedHeight) return;
+
+    const fitScale = Math.min(
+      replayContainer.clientWidth / recordedWidth,
+      replayContainer.clientHeight / recordedHeight,
+    );
+
+    wrapper.style.position = "absolute";
+    wrapper.style.top = "0";
+    wrapper.style.left = "0";
+    wrapper.style.transformOrigin = "top left";
+    wrapper.style.transform = `scale(${fitScale})`;
+    wrapper.style.width = `${recordedWidth}px`;
+    wrapper.style.height = `${recordedHeight}px`;
+
+    const cursorEl = wrapper.querySelector(
+      ".replayer-mouse",
+    ) as HTMLElement | undefined;
+    if (!cursorEl) return;
+
+    const backdrop = backdropRef.current;
+    const zoomContainer = backdrop.parentElement;
+    if (!zoomContainer) return;
+
+    const backdropRect = backdrop.getBoundingClientRect();
+    const replayRect = replayContainer.getBoundingClientRect();
+    const offsetX = replayRect.left - backdropRect.left;
+    const offsetY = replayRect.top - backdropRect.top;
+
+    cleanupZoomRef.current = createCursorZoom(
+      zoomContainer,
+      backdrop,
+      cursorEl,
+      {
+        mapCursor: (x, y) => ({
+          x: x * fitScale + offsetX,
+          y: y * fitScale + offsetY,
+        }),
+      },
+    );
+  };
+
+  const handlePlay = async () => {
+    if (!replayRef.current || events.length < 2) return;
+
+    const replayDuration = getReplayDuration(events);
+
+    if (replayerRef.current) {
+      if (playing) {
+        replayerRef.current.pause();
+        clearInterval(timerRef.current);
+        setPlaying(false);
+      } else {
+        const resumeTime = currentTime >= replayDuration ? 0 : currentTime;
+        replayerRef.current.play(resumeTime);
+        setCurrentTime(resumeTime);
+        startTimer();
+        setPlaying(true);
+      }
+      return;
+    }
+
+    replayRef.current.innerHTML = "";
+
+    const { Replayer } = await import("@posthog/rrweb");
+    await import("@posthog/rrweb/dist/style.css");
+
+    const replayer = new Replayer(events, {
+      root: replayRef.current,
+      skipInactive: false,
+      mouseTail: false,
+      speed,
+    });
+    replayerRef.current = replayer;
+
+    const startTime = Math.min(currentTime, replayDuration);
+    setCurrentTime(startTime);
+
+    replayer.play(startTime);
+    setPlaying(true);
+    startTimer();
+
+    // HACK: defer scaling until rrweb sets iframe dimensions after first frame
+    requestAnimationFrame(() => {
+      requestAnimationFrame(setupScalingAndZoom);
+    });
+  };
+
+  const handleSeek = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const nextTime = Number(event.target.value);
+    setCurrentTime(nextTime);
+
+    const replayer = replayerRef.current;
+    if (!replayer) return;
+
+    if (playing) {
+      replayer.play(nextTime);
+      startTimer();
+      return;
+    }
+
+    replayer.pause(nextTime);
+  };
+
+  const handleSpeedChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextSpeed = SPEEDS.find((supportedSpeed) => {
+      return `${supportedSpeed}` === event.target.value;
+    });
+
+    if (!nextSpeed) return;
+
+    setSpeed(nextSpeed);
+    replayerRef.current?.setConfig({ speed: nextSpeed });
+  };
+
+  const handleFullscreen = async () => {
+    const viewerShell = viewerShellRef.current;
+    if (!viewerShell) return;
+
+    if (document.fullscreenElement === viewerShell) {
+      await document.exitFullscreen();
+      return;
+    }
+
+    await viewerShell.requestFullscreen();
+  };
+
+  const totalTime = getReplayDuration(events);
+  const hasEvents = events.length > 1;
+  const canPlay = hasEvents;
+  const timeLabel = formatPaperTime(currentTime);
+  const totalTimeLabel = formatPaperTime(totalTime);
+
+  return (
+    <div data-rrweb-block className="flex h-screen flex-col gap-6 p-6">
+      <div
+        className="flex flex-col gap-4 rounded-[28px] bg-white/90 px-6 py-5 backdrop-blur-xl"
+        style={{ fontFamily: CONTROL_FONT_FAMILY }}
+      >
+        <div className="flex items-start gap-1.5 p-0 antialiased [font-synthesis:none]">
+          <div className="h-4.5 shrink-0 font-['SFProDisplay-Medium','SF_Pro_Display',system-ui,sans-serif] text-base/4.5 font-medium tracking-[0em] text-[color(display-p3_0.587_0.587_0.587)]">
+            {stepLabel}
+          </div>
+          <div className="h-4.5 shrink-0 font-['SFProDisplay-Medium','SF_Pro_Display',system-ui,sans-serif] text-base/4.5 font-medium tracking-[0em] text-[color(display-p3_0.188_0.188_0.188)]">
+            {stepTitle}
+          </div>
+        </div>
+
+        <input
+          type="range"
+          value={Math.min(currentTime, totalTime || 1)}
+          min={0}
+          max={totalTime || 1}
+          step={100}
+          disabled={!hasEvents}
+          onChange={handleSeek}
+          className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[color(display-p3_0.897_0.897_0.897)] outline-none disabled:cursor-default [&::-moz-range-thumb]:size-0 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:border-0 [&::-moz-range-track]:h-1.5 [&::-moz-range-track]:rounded-full [&::-webkit-slider-thumb]:size-0 [&::-webkit-slider-thumb]:appearance-none"
+          style={{
+            background: hasEvents
+              ? `linear-gradient(to right, oklch(0.345 0 0) 0%, oklch(0.431 0 0) ${((Math.min(currentTime, totalTime || 1) / (totalTime || 1)) * 100).toFixed(1)}%, color(display-p3 0.897 0.897 0.897) ${((Math.min(currentTime, totalTime || 1) / (totalTime || 1)) * 100).toFixed(1)}%, color(display-p3 0.897 0.897 0.897) 100%)`
+              : undefined,
+          }}
+        />
+
+        <div className="flex items-center justify-between gap-6">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={handlePlay}
+              disabled={!canPlay}
+              aria-label={playing ? "Pause replay" : "Play replay"}
+              className="flex h-[35px] w-[60px] items-center justify-center rounded-full bg-white text-[color(display-p3_0.196_0.196_0.196)] transition-transform duration-150 ease-out disabled:opacity-40 active:scale-[0.97]"
+              style={{ boxShadow: CONTROL_BUTTON_SHADOW }}
+            >
+              {playing && <PauseIcon className="h-[12px] w-auto" />}
+              {!playing && <PlayIcon className="size-[22px]" />}
+            </button>
+
+            <span className="inline-flex items-center gap-2.5 pl-2 text-[15px] leading-4.5 font-medium tracking-[0em] tabular-nums text-[color(display-p3_0.361_0.361_0.361)]">
+              <span>{timeLabel}</span>
+              <span className="text-[color(display-p3_0.727_0.727_0.727)]">
+                /
+              </span>
+              <span>{totalTimeLabel}</span>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <select
+              value={`${speed}`}
+              onChange={handleSpeedChange}
+              disabled={!hasEvents}
+              aria-label="Replay speed"
+              className="cursor-pointer appearance-none rounded-full bg-transparent px-2 py-1 text-[15px] font-medium text-[color(display-p3_0.361_0.361_0.361)] outline-none disabled:cursor-default disabled:opacity-40"
+              style={{ fontFamily: CONTROL_FONT_FAMILY }}
+            >
+              {SPEEDS.map((supportedSpeed) => (
+                <option key={supportedSpeed} value={`${supportedSpeed}`}>
+                  {supportedSpeed}x
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              onClick={handleFullscreen}
+              aria-label="Toggle fullscreen"
+              className="flex size-9 items-center justify-center rounded-full text-black transition-transform duration-150 ease-out active:scale-[0.97]"
+            >
+              <FullscreenIcon className="size-[18px]" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div
+        ref={viewerShellRef}
+        className="relative h-0 grow overflow-hidden rounded-[32px] bg-white/50"
+        style={{ boxShadow: VIEWER_SHELL_SHADOW }}
+      >
+        <div
+          ref={backdropRef}
+          className="absolute inset-0 bg-linear-to-br from-sky-200 to-blue-400 p-6"
+        >
+          <MacWindow>
+            <div
+              ref={replayRef}
+              className="relative h-full w-full overflow-hidden"
+            />
+          </MacWindow>
+        </div>
+      </div>
+    </div>
+  );
+};
