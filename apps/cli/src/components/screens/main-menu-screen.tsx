@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useInput } from "ink";
-import { Option } from "effect";
-import { TestPlanDraft, ChangesFor, checkoutBranch, DraftId } from "@expect/supervisor";
+import { ChangesFor, checkoutBranch } from "@expect/supervisor";
 import type { GitState, TestContext } from "@expect/shared/models";
 import { usePreferencesStore } from "../../stores/use-preferences";
-import { usePlanStore, Plan } from "../../stores/use-plan-store";
 import { useNavigationStore, Screen } from "../../stores/use-navigation";
 import { useColors } from "../theme-context";
 import { Clickable } from "../ui/clickable";
@@ -25,14 +23,10 @@ interface MainMenuProps {
 export const MainMenu = ({ gitState }: MainMenuProps) => {
   const COLORS = useColors();
   const [columns] = useStdoutDimensions();
-  const toggleSkipPlanning = usePreferencesStore((state) => state.toggleSkipPlanning);
   const instructionHistory = usePreferencesStore((state) => state.instructionHistory);
   const setScreen = useNavigationStore((state) => state.setScreen);
-  const plan = usePlanStore((state) => state.plan);
   const [selectedContext, setSelectedContext] = useState<TestContext | undefined>(undefined);
-  const savedInstruction =
-    plan?._tag === "draft" ? plan.instruction : plan?._tag === "plan" ? plan.instruction : "";
-  const [value, setValue] = useState(savedInstruction);
+  const [value, setValue] = useState("");
   const [inputKey, setInputKey] = useState(0);
   const [suggestionIndex, setSuggestionIndex] = useState(0);
   const [hasCycled, setHasCycled] = useState(false);
@@ -113,21 +107,7 @@ export const MainMenu = ({ gitState }: MainMenuProps) => {
 
       console.error("[main-menu] changesFor:", changesFor._tag);
 
-      const draft = new TestPlanDraft({
-        id: DraftId.makeUnsafe(crypto.randomUUID()),
-        changesFor,
-        currentBranch: gitState.currentBranch ?? "",
-        diffPreview: "",
-        fileStats: [],
-        instruction: trimmed,
-        baseUrl: Option.none(),
-        isHeadless: true,
-        requiresCookies: false,
-      });
-
-      console.error("[main-menu] draft created, navigating");
       usePreferencesStore.getState().rememberInstruction(trimmed);
-      usePlanStore.getState().setPlan(Plan.draft(draft));
       setScreen(Screen.Testing({ changesFor, instruction: trimmed }));
     },
     [value, activeContext, gitState, setScreen],
@@ -159,7 +139,6 @@ export const MainMenu = ({ gitState }: MainMenuProps) => {
         return;
       }
       if (key.tab && key.shift) {
-        toggleSkipPlanning();
         return;
       }
       if (!showSuggestion) return;
@@ -184,7 +163,7 @@ export const MainMenu = ({ gitState }: MainMenuProps) => {
           <Text bold color={COLORS.TEXT}>
             {"Expect CLI"}
           </Text>
-          <Text color={COLORS.DIM}>{" v0.0.1"}</Text>
+          <Text color={COLORS.DIM}>{" v0.0.2"}</Text>
         </Text>
         <Text color={COLORS.BORDER}>{"─".repeat(Math.max(0, columns - 2))}</Text>
       </Box>

@@ -1,15 +1,4 @@
-export interface SavedFlowStep {
-  id: string;
-  title: string;
-  instruction: string;
-  expectedOutcome: string;
-}
-
-export interface SavedFlow {
-  title: string;
-  userInstruction: string;
-  steps: SavedFlowStep[];
-}
+export type { SavedFlow, SavedFlowStep } from "@expect/shared/models";
 
 export interface SavedFlowEnvironment {
   baseUrl: string;
@@ -24,6 +13,15 @@ export interface SavedFlowFileData {
   savedTargetScope: string;
   savedTargetDisplayName: string;
   selectedCommit?: string;
-  flow: SavedFlow;
+  flow: {
+    title: string;
+    userInstruction: string;
+    steps: Array<{
+      id: string;
+      title: string;
+      instruction: string;
+      expectedOutcome: string;
+    }>;
+  };
   environment: SavedFlowEnvironment;
 }

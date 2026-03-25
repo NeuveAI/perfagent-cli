@@ -6,13 +6,9 @@ import { FLOW_INPUT_HISTORY_LIMIT } from "../constants";
 
 interface PreferencesStore {
   agentBackend: AgentBackend;
-  autoRunAfterPlanning: boolean;
-  skipPlanning: boolean;
   autoSaveFlows: boolean;
   instructionHistory: string[];
   setAgentBackend: (backend: AgentBackend) => void;
-  toggleAutoRun: () => void;
-  toggleSkipPlanning: () => void;
   toggleAutoSave: () => void;
   rememberInstruction: (instruction: string) => void;
 }
@@ -21,13 +17,9 @@ export const usePreferencesStore = create<PreferencesStore>()(
   persist(
     (set) => ({
       agentBackend: "claude",
-      autoRunAfterPlanning: false,
-      skipPlanning: true,
       autoSaveFlows: true,
       instructionHistory: [],
       setAgentBackend: (backend: AgentBackend) => set({ agentBackend: backend }),
-      toggleAutoRun: () => set((state) => ({ autoRunAfterPlanning: !state.autoRunAfterPlanning })),
-      toggleSkipPlanning: () => set((state) => ({ skipPlanning: !state.skipPlanning })),
       toggleAutoSave: () => set((state) => ({ autoSaveFlows: !state.autoSaveFlows })),
       rememberInstruction: (instruction) => {
         if (!instruction) return;

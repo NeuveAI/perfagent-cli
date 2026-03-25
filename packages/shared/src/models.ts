@@ -1,5 +1,17 @@
-import { DateTime, Match, Option, Predicate, Schema, Struct } from "effect";
-import { getExecutionPrompt, getPlanningPrompt } from "./prompts";
+import { DateTime, Match, Option, Predicate, Schema } from "effect";
+
+export interface SavedFlowStep {
+  id: string;
+  title: string;
+  instruction: string;
+  expectedOutcome: string;
+}
+
+export interface SavedFlow {
+  title: string;
+  userInstruction: string;
+  steps: SavedFlowStep[];
+}
 
 const AcpToolCallStatus = Schema.Literals([
   "pending",
@@ -375,24 +387,6 @@ export class TestPlanDraft extends Schema.Class<TestPlanDraft>("@supervisor/Test
   isHeadless: Schema.Boolean,
   requiresCookies: Schema.Boolean,
 }) {
-  get prompt(): string {
-    return getPlanningPrompt({
-      ...this,
-      testPlanJsonSchema: JSON.stringify(Schema.toJsonSchemaDocument(TestPlanJson), null, 2),
-    });
-  }
-
-  get planFileName(): string {
-    const slug = this.instruction
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-      .slice(0, 10)
-      .replace(/-$/, "");
-    const shortId = this.id.slice(0, 6);
-    return `plan-${slug || "draft"}-${shortId}.json`;
-  }
-
   update(
     fields: Partial<
       Pick<TestPlanDraft, "instruction" | "baseUrl" | "isHeadless" | "requiresCookies">
@@ -408,10 +402,6 @@ export class TestPlan extends TestPlanDraft.extend<TestPlan>("@supervisor/TestPl
   rationale: Schema.String,
   steps: Schema.Array(TestPlanStep),
 }) {
-  get prompt(): string {
-    return getExecutionPrompt(this);
-  }
-
   update(
     fields: Partial<
       Pick<TestPlanDraft, "instruction" | "baseUrl" | "isHeadless" | "requiresCookies">
@@ -443,10 +433,6 @@ export class TestPlan extends TestPlanDraft.extend<TestPlan>("@supervisor/TestPl
     });
   }
 }
-
-export const TestPlanJson = Schema.toCodecJson(
-  TestPlan.mapFields(Struct.pick(["id", "title", "rationale", "steps", "requiresCookies"])),
-);
 
 export class RunStarted extends Schema.TaggedClass<RunStarted>()("RunStarted", {
   plan: TestPlan,
@@ -788,16 +774,37 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
 
   applyMarker(marker: ExecutionEvent): ExecutedTestPlan {
     if (marker._tag === "StepStarted") {
+      const stepExists = this.steps.some((step) => step.id === marker.stepId);
+      if (stepExists) {
+        return new ExecutedTestPlan({
+          ...this,
+          steps: this.steps.map((step) =>
+            step.id === marker.stepId
+              ? step.update({
+                  status: "active",
+                  title: marker.title,
+                  startedAt: Option.some(DateTime.nowUnsafe()),
+                })
+              : step,
+          ),
+        });
+      }
       return new ExecutedTestPlan({
         ...this,
-        steps: this.steps.map((step) =>
-          step.id === marker.stepId
-            ? step.update({
-                status: "active",
-                startedAt: Option.some(DateTime.nowUnsafe()),
-              })
-            : step,
-        ),
+        steps: [
+          ...this.steps,
+          new TestPlanStep({
+            id: marker.stepId,
+            title: marker.title,
+            instruction: marker.title,
+            expectedOutcome: "",
+            routeHint: Option.none(),
+            status: "active",
+            summary: Option.none(),
+            startedAt: Option.some(DateTime.nowUnsafe()),
+            endedAt: Option.none(),
+          }),
+        ],
       });
     }
     if (marker._tag === "StepCompleted") {
@@ -808,6 +815,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
             ? step.update({
                 status: "passed",
                 summary: Option.some(marker.summary),
+                expectedOutcome: marker.summary,
                 endedAt: Option.some(DateTime.nowUnsafe()),
               })
             : step,
@@ -822,6 +830,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
             ? step.update({
                 status: "failed",
                 summary: Option.some(marker.message),
+                expectedOutcome: marker.message,
                 endedAt: Option.some(DateTime.nowUnsafe()),
               })
             : step,

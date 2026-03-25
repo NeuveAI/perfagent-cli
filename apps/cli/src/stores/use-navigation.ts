@@ -1,13 +1,12 @@
 import { create } from "zustand";
 import * as Data from "effect/Data";
-import type { ChangesFor, TestPlan, TestReport } from "@expect/shared/models";
+import type { ChangesFor, SavedFlow, TestReport } from "@expect/shared/models";
 
 export type Screen = Data.TaggedEnum<{
   Main: {};
   SelectPr: {};
-  ReviewPlan: { plan: TestPlan };
-  CookieSyncConfirm: { plan: TestPlan };
-  Testing: { changesFor: ChangesFor; instruction: string; existingPlan?: TestPlan };
+  CookieSyncConfirm: { changesFor: ChangesFor; instruction: string; savedFlow?: SavedFlow };
+  Testing: { changesFor: ChangesFor; instruction: string; savedFlow?: SavedFlow };
   Results: { report: TestReport };
   SavedFlowPicker: {};
 }>;

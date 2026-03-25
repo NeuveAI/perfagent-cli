@@ -12,7 +12,6 @@ import { Image } from "../ui/image";
 import { Clickable } from "../ui/clickable";
 import { usePostPrComment } from "../../data/github-mutations";
 import { useNavigationStore, Screen } from "../../stores/use-navigation";
-import { usePlanStore } from "../../stores/use-plan-store";
 import { usePlanExecutionStore } from "../../stores/use-plan-execution-store";
 import { saveFlowFn } from "../../data/flow-storage-atom";
 
@@ -61,13 +60,11 @@ export const ResultsScreen = ({ report }: ResultsScreenProps) => {
   };
 
   const handleRestartFlow = () => {
-    usePlanStore.getState().setPlan(undefined);
     usePlanExecutionStore.getState().setExecutedPlan(undefined);
     setScreen(
       Screen.Testing({
         changesFor: report.changesFor,
         instruction: report.instruction,
-        existingPlan: report.resetForRerun,
       }),
     );
   };
@@ -100,7 +97,7 @@ export const ResultsScreen = ({ report }: ResultsScreenProps) => {
 
       <RuledBox color={report.status === "passed" ? COLORS.GREEN : COLORS.RED} marginTop={1}>
         <Text color={report.status === "passed" ? COLORS.GREEN : COLORS.RED} bold>
-          {report.status === "passed" ? "Plan completed" : "Issues found"}
+          {report.status === "passed" ? "Test completed" : "Issues found"}
         </Text>
         <Text color={COLORS.TEXT}>{report.summary}</Text>
         {Option.isSome(report.pullRequest) ? (

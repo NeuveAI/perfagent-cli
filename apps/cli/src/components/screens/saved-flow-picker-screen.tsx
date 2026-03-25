@@ -1,11 +1,8 @@
 import { Box, Text, useInput } from "ink";
-import { Option } from "effect";
 import figures from "figures";
 import cliTruncate from "cli-truncate";
-import { ChangesFor, TestPlan, TestPlanStep, type SavedFlowFileData } from "@expect/supervisor";
-import { PlanId, StepId } from "@expect/shared/models";
+import { ChangesFor, type SavedFlowFileData } from "@expect/supervisor";
 import { useNavigationStore, Screen } from "../../stores/use-navigation";
-import { usePlanStore, Plan } from "../../stores/use-plan-store";
 import { useColors } from "../theme-context";
 import { useStdoutDimensions } from "../../hooks/use-stdout-dimensions";
 import { useScrollableList } from "../../hooks/use-scrollable-list";
@@ -18,43 +15,22 @@ import { visualPadEnd } from "../../utils/visual-pad-end";
 
 const SAVED_FLOW_VISIBLE_COUNT = 15;
 
+const getSavedFlowSteps = (flow: SavedFlowFileData) =>
+  Array.isArray(flow.flow?.steps) ? flow.flow.steps : [];
+
 const selectFlow = (flow: SavedFlowFileData, mainBranch: string) => {
   const changesFor = ChangesFor.makeUnsafe({ _tag: "Changes", mainBranch });
+  const steps = getSavedFlowSteps(flow);
 
-  const testPlan = new TestPlan({
-    id: PlanId.makeUnsafe(crypto.randomUUID()),
-    changesFor,
-    currentBranch: "",
-    diffPreview: "",
-    fileStats: [],
-    instruction: flow.flow.userInstruction,
-    baseUrl: flow.environment.baseUrl ? Option.some(flow.environment.baseUrl) : Option.none(),
-    isHeadless: true,
-    requiresCookies: flow.environment.cookies,
-    title: flow.flow.title,
-    rationale: flow.description,
-    steps: flow.flow.steps.map(
-      (step) =>
-        new TestPlanStep({
-          id: StepId.makeUnsafe(step.id),
-          title: step.title,
-          instruction: step.instruction,
-          expectedOutcome: step.expectedOutcome,
-          routeHint: Option.none(),
-          status: "pending",
-          summary: Option.none(),
-          startedAt: Option.none(),
-          endedAt: Option.none(),
-        }),
-    ),
-  });
-
-  usePlanStore.getState().setPlan(Plan.plan(testPlan));
   useNavigationStore.getState().setScreen(
     Screen.Testing({
       changesFor,
       instruction: flow.flow.userInstruction,
-      existingPlan: testPlan,
+      savedFlow: {
+        title: flow.flow.title,
+        userInstruction: flow.flow.userInstruction,
+        steps,
+      },
     }),
   );
 };
@@ -128,7 +104,7 @@ export const SavedFlowPickerScreen = () => {
           {visibleItems.map((flow, index) => {
             const actualIndex = index + scrollOffset;
             const isSelected = actualIndex === highlightedIndex;
-            const stepCount = flow.flow.steps.length;
+            const stepCount = getSavedFlowSteps(flow).length;
 
             return (
               <Clickable

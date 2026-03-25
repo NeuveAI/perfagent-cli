@@ -1,15 +1,6 @@
-import * as crypto from "node:crypto";
-import { Channel, Effect, Option, Stream } from "effect";
+import { Effect, Stream } from "effect";
 import { changesForDisplayName, type ChangesFor } from "@expect/shared/models";
-import {
-  DraftId,
-  Executor,
-  ExecutedTestPlan,
-  Git,
-  Planner,
-  Reporter,
-  TestPlanDraft,
-} from "@expect/supervisor";
+import { Executor, ExecutedTestPlan, Reporter } from "@expect/supervisor";
 import { Analytics } from "@expect/shared/observability";
 import type { AgentBackend } from "@expect/agent";
 import figures from "figures";
@@ -26,8 +17,6 @@ interface HeadlessRunOptions {
 
 export const runHeadless = (options: HeadlessRunOptions) =>
   Effect.gen(function* () {
-    const planner = yield* Planner;
-    const git = yield* Git;
     const executor = yield* Executor;
     const reporter = yield* Reporter;
     const analytics = yield* Analytics;
@@ -35,66 +24,66 @@ export const runHeadless = (options: HeadlessRunOptions) =>
     const sessionStartedAt = Date.now();
     yield* analytics.capture("session:started", {
       mode: "headless",
-      skip_planning: true,
+      skip_planning: false,
     });
 
     console.log(`expect v${VERSION}`);
     console.log(`Testing ${changesForDisplayName(options.changesFor)}`);
-    console.log("Planning browser flow...");
-
-    const currentBranch = yield* git.getCurrentBranch;
-    const fileStats = yield* git.getFileStats(options.changesFor);
-    const diffPreview = yield* git.getDiffPreview(options.changesFor);
-
-    const draft = new TestPlanDraft({
-      id: DraftId.makeUnsafe(crypto.randomUUID()),
-      changesFor: options.changesFor,
-      currentBranch,
-      diffPreview,
-      fileStats: [...fileStats],
-      instruction: options.instruction,
-      baseUrl: Option.none(),
-      isHeadless: false,
-      requiresCookies: false,
-    });
-
-    const testPlan = yield* Channel.runDrain(planner.plan(draft));
-    yield* analytics.capture("plan:generated", {
-      plan_id: testPlan.id,
-      step_count: testPlan.steps.length,
-    });
-    yield* Effect.logInfo(`Plan: ${testPlan.title} (${testPlan.steps.length} steps)`);
+    console.log("Starting browser test...");
 
     const runStartedAt = Date.now();
     const seenEvents = new Set<string>();
-    const finalExecuted = yield* executor.executePlan(testPlan).pipe(
-      Stream.tap((executed) =>
-        Effect.sync(() => {
-          for (const event of executed.events) {
-            if (seenEvents.has(event.id)) continue;
-            seenEvents.add(event.id);
-            switch (event._tag) {
-              case "RunStarted":
-                console.log(`Starting ${event.plan.title}`);
-                break;
-              case "StepStarted":
-                console.log(`${figures.arrowRight} ${event.stepId} ${event.title}`);
-                break;
-              case "StepCompleted":
-                console.log(`  ${figures.tick} ${event.stepId} ${event.summary}`);
-                break;
-              case "StepFailed":
-                console.log(`  ${figures.cross} ${event.stepId} ${event.message}`);
-                break;
+    const finalExecuted = yield* executor
+      .execute({
+        changesFor: options.changesFor,
+        instruction: options.instruction,
+        isHeadless: true,
+        requiresCookies: false,
+      })
+      .pipe(
+        Stream.tap((executed) =>
+          Effect.sync(() => {
+            for (const event of executed.events) {
+              if (seenEvents.has(event.id)) continue;
+              seenEvents.add(event.id);
+              switch (event._tag) {
+                case "RunStarted":
+                  console.log(`Starting ${event.plan.title}`);
+                  break;
+                case "StepStarted":
+                  console.log(`${figures.arrowRight} ${event.stepId} ${event.title}`);
+                  break;
+                case "StepCompleted":
+                  console.log(`  ${figures.tick} ${event.stepId} ${event.summary}`);
+                  break;
+                case "StepFailed":
+                  console.log(`  ${figures.cross} ${event.stepId} ${event.message}`);
+                  break;
+              }
             }
-          }
-        }),
-      ),
-      Stream.runLast,
-      Effect.map((option) =>
-        option._tag === "Some" ? option.value : new ExecutedTestPlan({ ...testPlan, events: [] }),
-      ),
-    );
+          }),
+        ),
+        Stream.runLast,
+        Effect.map((option) =>
+          option._tag === "Some"
+            ? option.value
+            : new ExecutedTestPlan({
+                id: "" as never,
+                changesFor: options.changesFor,
+                currentBranch: "",
+                diffPreview: "",
+                fileStats: [],
+                instruction: options.instruction,
+                baseUrl: undefined as never,
+                isHeadless: true,
+                requiresCookies: false,
+                title: options.instruction,
+                rationale: "Direct execution",
+                steps: [],
+                events: [],
+              }),
+        ),
+      );
 
     const report = yield* reporter.report(finalExecuted);
 
@@ -106,11 +95,11 @@ export const runHeadless = (options: HeadlessRunOptions) =>
     ).length;
 
     yield* analytics.capture("run:completed", {
-      plan_id: testPlan.id,
+      plan_id: finalExecuted.id ?? "direct",
       passed: passedCount,
       failed: failedCount,
-      step_count: testPlan.steps.length,
-      file_count: fileStats.length,
+      step_count: finalExecuted.steps.length,
+      file_count: 0,
       duration_ms: Date.now() - runStartedAt,
     });
 

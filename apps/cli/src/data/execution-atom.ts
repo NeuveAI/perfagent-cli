@@ -1,13 +1,13 @@
 import { Effect, Stream } from "effect";
 import * as Atom from "effect/unstable/reactivity/Atom";
-import { ExecutedTestPlan, Executor, Git, Reporter } from "@expect/supervisor";
+import { ExecutedTestPlan, Executor, Git, Reporter, type ExecuteOptions } from "@expect/supervisor";
 import { Analytics } from "@expect/shared/observability";
 import type { AgentBackend } from "@expect/agent";
-import type { TestPlan, TestReport } from "@expect/shared/models";
+import type { TestReport } from "@expect/shared/models";
 import { cliAtomRuntime } from "./runtime";
 
-interface ExecutePlanInput {
-  readonly testPlan: TestPlan;
+interface ExecuteInput {
+  readonly options: ExecuteOptions;
   readonly agentBackend: AgentBackend;
   readonly onUpdate: (executed: ExecutedTestPlan) => void;
 }
@@ -19,22 +19,38 @@ export interface ExecutionResult {
 
 export const screenshotPathsAtom = Atom.make<readonly string[]>([]);
 
-export const executePlanFn = cliAtomRuntime.fn(
+export const executeFn = cliAtomRuntime.fn(
   Effect.fnUntraced(
-    function* (input: ExecutePlanInput, _ctx: Atom.FnContext) {
+    function* (input: ExecuteInput, _ctx: Atom.FnContext) {
       const reporter = yield* Reporter;
       const executor = yield* Executor;
       const analytics = yield* Analytics;
+      const git = yield* Git;
 
       const runStartedAt = Date.now();
 
-      const finalExecuted = yield* executor.executePlan(input.testPlan).pipe(
+      const finalExecuted = yield* executor.execute(input.options).pipe(
         Stream.tap((executed) => Effect.sync(() => input.onUpdate(executed))),
         Stream.runLast,
         Effect.map((option) =>
           option._tag === "Some"
             ? option.value
-            : new ExecutedTestPlan({ ...input.testPlan, events: [] }),
+            : new ExecutedTestPlan({
+                ...input.options,
+                id: "" as never,
+                changesFor: input.options.changesFor,
+                currentBranch: "",
+                diffPreview: "",
+                fileStats: [],
+                instruction: input.options.instruction,
+                baseUrl: undefined as never,
+                isHeadless: input.options.isHeadless,
+                requiresCookies: input.options.requiresCookies,
+                title: input.options.instruction,
+                rationale: "Direct execution",
+                steps: [],
+                events: [],
+              }),
         ),
       );
 
@@ -48,21 +64,20 @@ export const executePlanFn = cliAtomRuntime.fn(
       ).length;
 
       yield* analytics.capture("run:completed", {
-        plan_id: input.testPlan.id,
+        plan_id: finalExecuted.id ?? "direct",
         passed: passedCount,
         failed: failedCount,
-        step_count: input.testPlan.steps.length,
-        file_count: input.testPlan.fileStats.length,
+        step_count: finalExecuted.steps.length,
+        file_count: 0,
         duration_ms: Date.now() - runStartedAt,
       });
 
       if (report.status === "passed") {
-        const git = yield* Git;
         yield* git.saveTestedFingerprint();
       }
 
       return { executedPlan: finalExecuted, report } satisfies ExecutionResult;
     },
-    Effect.annotateLogs({ fn: "executePlanFn" }),
+    Effect.annotateLogs({ fn: "executeFn" }),
   ),
 );

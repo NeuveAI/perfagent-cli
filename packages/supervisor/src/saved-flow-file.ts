@@ -1,3 +1,4 @@
+import { Predicate } from "effect";
 import type { SavedFlowFileData } from "./types";
 
 export const formatSavedFlowFrontmatter = (data: SavedFlowFileData): string => {
@@ -30,6 +31,47 @@ const parseStringValue = (value: string): string => {
   return value;
 };
 
+const isSavedFlowStep = (
+  value: unknown,
+): value is SavedFlowFileData["flow"]["steps"][number] =>
+  Predicate.isObject(value) &&
+  typeof value.id === "string" &&
+  typeof value.title === "string" &&
+  typeof value.instruction === "string" &&
+  typeof value.expectedOutcome === "string";
+
+const normalizeSavedFlow = (value: unknown): SavedFlowFileData["flow"] => {
+  if (!Predicate.isObject(value)) {
+    return {
+      title: "",
+      userInstruction: "",
+      steps: [],
+    };
+  }
+
+  return {
+    title: typeof value.title === "string" ? value.title : "",
+    userInstruction: typeof value.userInstruction === "string" ? value.userInstruction : "",
+    steps: Array.isArray(value.steps) ? value.steps.filter(isSavedFlowStep) : [],
+  };
+};
+
+const normalizeSavedFlowEnvironment = (
+  value: unknown,
+): SavedFlowFileData["environment"] => {
+  if (!Predicate.isObject(value)) {
+    return {
+      baseUrl: "",
+      cookies: false,
+    };
+  }
+
+  return {
+    baseUrl: typeof value.baseUrl === "string" ? value.baseUrl : "",
+    cookies: typeof value.cookies === "boolean" ? value.cookies : false,
+  };
+};
+
 export const parseSavedFlowFile = (content: string): SavedFlowFileData => {
   const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
   if (!frontmatterMatch) throw new Error("Invalid saved flow file: no frontmatter found");
@@ -55,8 +97,8 @@ export const parseSavedFlowFile = (content: string): SavedFlowFileData => {
     slug: parseStringValue(fields.get("slug") ?? ""),
     savedTargetScope: parseStringValue(fields.get("saved_target_scope") ?? ""),
     savedTargetDisplayName: parseStringValue(fields.get("saved_target_display_name") ?? ""),
-    flow: JSON.parse(fields.get("flow") ?? "{}"),
-    environment: JSON.parse(fields.get("environment") ?? "{}"),
+    flow: normalizeSavedFlow(JSON.parse(fields.get("flow") ?? "{}")),
+    environment: normalizeSavedFlowEnvironment(JSON.parse(fields.get("environment") ?? "{}")),
   };
 
   const selectedCommit = fields.get("selected_commit");

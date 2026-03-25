@@ -1,130 +1,212 @@
-import { Match, Option } from "effect";
-import type { ChangesFor, FileStat, TestPlanStep } from "./models";
+import type { ChangedFile, ChangesFor, CommitSummary, SavedFlow } from "./models";
 
-const PLANNER_CHANGED_FILE_LIMIT = 12;
-const PLANNER_MAX_STEP_COUNT = 8;
-const STEP_ID_PAD_LENGTH = 2;
+const EXECUTION_CONTEXT_FILE_LIMIT = 12;
+const EXECUTION_RECENT_COMMIT_LIMIT = 5;
 const DIFF_PREVIEW_CHAR_LIMIT = 12_000;
+const DEFAULT_BROWSER_MCP_SERVER_NAME = "browser";
 
-interface PlanningPromptOptions {
-  readonly changesFor: ChangesFor;
+export interface ExecutionPromptOptions {
+  readonly userInstruction: string;
+  readonly scope: ChangesFor["_tag"];
   readonly currentBranch: string;
-  readonly instruction: string;
-  readonly fileStats: readonly FileStat[];
+  readonly mainBranch: string | undefined;
+  readonly changedFiles: readonly ChangedFile[];
+  readonly recentCommits: readonly CommitSummary[];
   readonly diffPreview: string;
-  readonly baseUrl: Option.Option<string>;
+  readonly baseUrl: string | undefined;
   readonly isHeadless: boolean;
   readonly requiresCookies: boolean;
-  readonly testPlanJsonSchema: string;
+  readonly browserMcpServerName?: string;
+  readonly savedFlow?: SavedFlow;
+  readonly learnings?: string;
 }
 
-export const getPlanningPrompt = (options: PlanningPromptOptions) => {
-  const scopeDescription = Match.value(options.changesFor).pipe(
-    Match.tagsExhaustive({
-      WorkingTree: () => "working tree (unstaged/staged changes)",
-      Branch: ({ mainBranch }) => `branch diff (${mainBranch}..${options.currentBranch})`,
-      Changes: ({ mainBranch }) => `changes (${mainBranch}..${options.currentBranch})`,
-      Commit: ({ hash }) => `commit ${hash}`,
-    }),
-  );
+const formatSavedFlowGuidance = (savedFlow: SavedFlow | undefined): string[] => {
+  if (!savedFlow) return [];
 
-  const fileStatsText =
-    options.fileStats.length > 0
-      ? options.fileStats
-          .slice(0, PLANNER_CHANGED_FILE_LIMIT)
-          .map((stat) => `  ${stat.relativePath} (+${stat.added} -${stat.removed})`)
-          .join("\n")
-      : "  (no changed files)";
+  return [
+    "Saved flow guidance:",
+    "You are replaying a previously saved flow. Follow these steps as guidance, but adapt if the UI has changed.",
+    `Saved flow title: ${savedFlow.title}`,
+    `Saved flow request: ${savedFlow.userInstruction}`,
+    "",
+    ...savedFlow.steps.flatMap((step, index) => [
+      `Step ${index + 1}: ${step.title}`,
+      `Instruction: ${step.instruction}`,
+      `Expected: ${step.expectedOutcome}`,
+      "",
+    ]),
+  ];
+};
 
-  const rawDiff = options.diffPreview || "(no diffs available)";
-  const diffsText =
+const getScopeStrategy = (scope: ChangesFor["_tag"]): string[] => {
+  switch (scope) {
+    case "Commit":
+      return [
+        "- Start narrow and prove the selected commit's intended change works first.",
+        "- Treat the selected commit and its touched files as the primary testing hypothesis.",
+        "- After the primary flow, test 2-4 adjacent flows that could regress from the same change. Think about what else touches the same components, routes, or data.",
+        "- For UI changes, verify related views that render the same data or share the same components.",
+      ];
+    case "WorkingTree":
+      return [
+        "- Start with the exact user-requested flow against the local in-progress changes.",
+        "- After the primary flow, test related flows that exercise the same code paths — aim for 2-3 follow-ups.",
+        "- Pay extra attention to partially-implemented features: check that incomplete states don't break existing behavior.",
+      ];
+    case "Changes":
+      return [
+        "- Treat committed and uncommitted work as one body of change.",
+        "- Cover the requested flow first, then the highest-risk adjacent flows.",
+        "- Test 2-4 follow-up flows, prioritizing paths that share components or data with the changed files.",
+        "- If the changes touch shared utilities or layouts, verify multiple pages that use them.",
+      ];
+    default:
+      return [
+        "- This is a branch-level review — be thorough. The goal is to catch regressions before merge, not to do a quick spot-check.",
+        "- Cover the requested flow first, then systematically test each area affected by the changed files.",
+        "- Aim for 5-8 total tested flows. Derive them from the changed files: each changed route, component, or data path should get its own verification.",
+        "- Test cross-cutting concerns: if shared components, layouts, or utilities changed, verify them on multiple pages that consume them.",
+        "- Include at least one negative/edge-case flow (e.g. invalid input, empty state, unauthorized access, broken link) relevant to the changes.",
+        "- Do not stop after the happy path passes. The value of a branch review is catching what the developer might have missed.",
+      ];
+  }
+};
+
+export const buildExecutionPrompt = (options: ExecutionPromptOptions): string => {
+  const mcpName = options.browserMcpServerName ?? DEFAULT_BROWSER_MCP_SERVER_NAME;
+  const changedFiles = options.changedFiles.slice(0, EXECUTION_CONTEXT_FILE_LIMIT);
+  const recentCommits = options.recentCommits.slice(0, EXECUTION_RECENT_COMMIT_LIMIT);
+  const rawDiff = options.diffPreview || "";
+  const diffPreview =
     rawDiff.length > DIFF_PREVIEW_CHAR_LIMIT
       ? rawDiff.slice(0, DIFF_PREVIEW_CHAR_LIMIT) + "\n... (truncated)"
       : rawDiff;
 
-  return `You are planning a browser-based regression test for a developer.
-
-Testing context:
-- Scope: ${scopeDescription}
-- Current branch: ${options.currentBranch}
-- User instruction: ${options.instruction}
-
-Changed files (${options.fileStats.length}):
-${fileStatsText}
-
-Diffs:
-${diffsText}
-
-Environment:
-- Base URL: ${Option.isSome(options.baseUrl) ? options.baseUrl.value : "not provided"}
-- Headless: ${options.isHeadless ? "yes" : "no"}
-
-Requirements:
-- Blend the user instruction with the code changes to plan realistic browser test steps.
-- Each step must be executable and verifiable by a browser agent.
-- Use expectedOutcome as a concrete browser assertion target, not a vague goal.
-- Maximum ${PLANNER_MAX_STEP_COUNT} steps.
-- Pad step IDs to ${STEP_ID_PAD_LENGTH} digits (e.g. step-01, step-02).
-- Set requiresCookies to true if the test requires an authenticated session or logged-in state.
-
-Once you have planned the steps, WRITE the plan as a JSON file.
-The JSON file path will be provided at the end of this prompt.
-You MUST follow this exact JSON schema:
-
-${options.testPlanJsonSchema}`;
-};
-
-interface ExecutionPromptOptions {
-  readonly title: string;
-  readonly rationale: string;
-  readonly steps: readonly TestPlanStep[];
-  readonly baseUrl: Option.Option<string>;
-  readonly isHeadless: boolean;
-  readonly requiresCookies: boolean;
-}
-
-export const getExecutionPrompt = (options: ExecutionPromptOptions) => {
-  const stepsText = options.steps
-    .map(
-      (step) =>
-        `- ${step.id}: ${step.title}
-  instruction: ${step.instruction}
-  expected outcome: ${step.expectedOutcome}
-  route hint: ${Option.isSome(step.routeHint) ? step.routeHint.value : "none"}`,
-    )
-    .join("\n");
-
-  return `You are executing an approved browser test plan.
-You have browser tools via the MCP server named "browser":
-
-1. open — Launch a browser and navigate to a URL.
-2. playwright — Execute Playwright code in Node. Globals: page, context, browser, ref(id).
-3. screenshot — Capture page state. Use mode: 'snapshot' (ARIA tree, preferred), 'screenshot' (PNG), 'annotated' (PNG with labels).
-4. console_logs — Get browser console messages. Filter by type ('error', 'warning', 'log'). Use after navigation or interactions to catch errors.
-5. network_requests — Get captured network requests. Filter by method, URL substring, or resource type ('xhr', 'fetch', 'document').
-6. close — Close the browser and flush the session.
-
-Strongly prefer screenshot with mode 'snapshot' for observing page state.
-Only use 'screenshot' or 'annotated' for purely visual assertions.
-After each step, check console_logs with type 'error' to catch unexpected errors.
-
-Before and after each step, emit these exact status lines on their own lines:
-STEP_START|<step-id>|<step-title>
-STEP_DONE|<step-id>|<short-summary>
-ASSERTION_FAILED|<step-id>|<why-it-failed>
-RUN_COMPLETED|passed|<final-summary>
-RUN_COMPLETED|failed|<final-summary>
-
-Before emitting RUN_COMPLETED, call the close tool exactly once.
-
-Environment:
-- Base URL: ${Option.isSome(options.baseUrl) ? options.baseUrl.value : "not provided"}
-- Headed mode: ${options.isHeadless ? "headless" : "headed"}
-- Reuse browser cookies: ${options.requiresCookies ? "yes" : "no"}
-
-Approved plan:
-Title: ${options.title}
-Rationale: ${options.rationale}
-
-${stepsText}`;
+  return [
+    "You are executing a browser regression test directly from repository context.",
+    `You have browser tools via the MCP server named "${mcpName}":`,
+    "",
+    "1. open — Launch a browser and navigate to a URL.",
+    "2. playwright — Execute Playwright code in Node. Globals: page (Page), context (BrowserContext), browser (Browser), ref(id) (resolves a snapshot ref like 'e4' to a Playwright Locator). Supports await. Return a value to get it back as JSON.",
+    "3. screenshot — Capture page state. Set mode: 'snapshot' (ARIA accessibility tree, default and preferred), 'screenshot' (PNG image), or 'annotated' (PNG with numbered labels on interactive elements).",
+    "4. console_logs — Get browser console messages. Filter by type ('error', 'warning', 'log'). Use after navigation or interactions to catch errors.",
+    "5. network_requests — Get captured network requests. Filter by method, URL substring, or resource type ('xhr', 'fetch', 'document').",
+    "6. close — Close the browser and end the session.",
+    "",
+    "Strongly prefer screenshot with mode 'snapshot' for observing page state — the ARIA tree is fast, cheap, and sufficient for almost all assertions.",
+    "Only use mode 'screenshot' or 'annotated' when you need to verify something purely visual (layout, colors, images) that the accessibility tree cannot capture.",
+    "After each step, check console_logs with type 'error' to catch unexpected errors.",
+    "",
+    "Snapshot-driven workflow:",
+    "1. Call screenshot with mode 'snapshot' to get the ARIA tree with refs.",
+    "2. Read the tree to find your target elements. Every interactive element has a ref like [ref=e4].",
+    "3. Use ref() in one playwright call to perform multiple actions using the refs from the snapshot — fill forms, click buttons, wait, and return results all in one block.",
+    "4. Only take a new snapshot when the page structure has changed significantly (navigation, modal open, new content loaded) and you need fresh refs.",
+    "",
+    "Example snapshot tree:",
+    "  - navigation",
+    '    - link "Home" [ref=e1]',
+    '    - link "About" [ref=e2]',
+    "  - main",
+    '    - heading "Welcome"',
+    '    - textbox "Email" [ref=e3]',
+    '    - button "Submit" [ref=e4]',
+    "",
+    "Acting on refs — use ref() to get a Locator directly from the snapshot ref ID:",
+    "  await ref('e3').fill('test@example.com');",
+    "  await ref('e4').click();",
+    "  await ref('e1').click();",
+    "",
+    "Always snapshot first, then use ref() to act. Never guess CSS selectors.",
+    "",
+    "Batch as many actions as possible into a single playwright call to minimize round trips:",
+    "  playwright: await ref('e3').fill('test@example.com'); await ref('e5').fill('secret'); await ref('e6').click(); await page.waitForLoadState('networkidle'); return await page.innerText('.result');",
+    "  playwright: await ref('e1').click(); await page.waitForURL('**/about');",
+    "  playwright: return { url: page.url(), title: await page.title() };",
+    "",
+    "Execution strategy:",
+    "- First master the primary flow the developer asked for. Verify it thoroughly before moving on.",
+    "- Once the primary flow passes, test additional related flows suggested by the changed files and route context. The scope strategy below specifies how many — follow it.",
+    "- For each flow, test both the happy path AND at least one edge case or negative path (e.g. empty input, missing data, back-navigation, double-click, refresh mid-flow).",
+    "- Use the same browser session throughout unless the app forces you into a different path.",
+    "- Execution style is assertion-first: navigate, act, validate, recover once, then fail with evidence if still blocked.",
+    "- Create your own step structure while executing. Use stable sequential IDs like step-01, step-02, step-03.",
+    "- Take your time. A thorough run that catches real issues is more valuable than a fast run that misses them. Do not rush to RUN_COMPLETED.",
+    "",
+    "Assertion depth — do not just confirm the page loaded. For each step, verify that the action produced the expected state change:",
+    "- Before acting, note what should change. After acting, confirm it actually changed.",
+    "- Check at least two independent signals per step (e.g. URL changed AND new content appeared, or item was added AND count updated).",
+    "- Verify absence when relevant: after a delete, the item is gone; after dismissing a modal, it no longer appears in the tree.",
+    "- Use playwright to return structured evidence rather than eyeballing snapshots: return { url: page.url(), title: await page.title(), visible: await ref('e5').isVisible() };",
+    "- If the changed files suggest specific behavior (e.g. a validation rule, a redirect, a computed value), test that specific behavior rather than just the surrounding UI.",
+    "",
+    "Before and after each step, emit these exact status lines on their own lines:",
+    "STEP_START|<step-id>|<step-title>",
+    "STEP_DONE|<step-id>|<short-summary>",
+    "ASSERTION_FAILED|<step-id>|<why-it-failed>",
+    "RUN_COMPLETED|passed|<final-summary>",
+    "RUN_COMPLETED|failed|<final-summary>",
+    "",
+    "Allowed failure categories: app-bug, env-issue, auth-blocked, missing-test-data, selector-drift, agent-misread.",
+    "When a step fails, gather structured evidence before emitting ASSERTION_FAILED:",
+    "- Call screenshot with mode 'snapshot' to capture the ARIA tree.",
+    "- Use playwright to gather diagnostics: return { url: page.url(), title: await page.title(), text: await page.innerText('body').then(t => t.slice(0, 500)) };",
+    "- Only take a visual screenshot if the failure might be layout/rendering related.",
+    "- Summarize the failure category and the most important evidence inside <why-it-failed>.",
+    "",
+    "Stability heuristics:",
+    "- After navigation or major UI changes, use playwright to wait for the page to settle (e.g. await page.waitForLoadState('networkidle')).",
+    "- Use screenshot with mode 'snapshot' to inspect the accessibility tree before interactions that depend on current UI state.",
+    "- Avoid interacting while the UI is visibly loading or transitioning.",
+    "- Confirm you reached the expected page or route before continuing.",
+    "- When waiting for page changes (navigation, content loading, animations), prefer short incremental waits (1-3 seconds) with snapshot checks in between rather than a single long wait. For example, instead of waiting 10 seconds: wait 2s, take a snapshot, check if ready, if not wait 2s more and snapshot again. This lets you proceed as soon as the page is ready.",
+    "",
+    "Recovery policy for each blocked step:",
+    "- Take a new snapshot to re-inspect the page and get fresh refs.",
+    "- Use playwright with ref() to scroll the target into view or retry the interaction once.",
+    "- If still blocked, classify the blocker with one allowed failure category and include that classification in ASSERTION_FAILED.",
+    "",
+    "Avoid rabbit holes:",
+    "- Do not repeat the same failing action more than once without new evidence such as a fresh snapshot, a different ref, a changed page state, or a clear new hypothesis.",
+    "- If four attempts fail or progress stalls, stop acting and report what you observed, what blocked progress, and the most likely next step.",
+    "- Prefer gathering evidence over brute force. If the page is confusing, use screenshot with mode 'snapshot', playwright for console or network diagnostics, or a visual screenshot to understand it before trying more actions.",
+    "- If you encounter a blocker such as login, passkey/manual user interaction, permissions, captchas, destructive confirmations, missing data, or an unexpected state, stop and report it instead of improvising repeated actions.",
+    "- Do not get stuck in wait-action-wait loops. Every retry should be justified by something newly observed.",
+    "",
+    "Before emitting RUN_COMPLETED, call the close tool exactly once so the browser session flushes the video to disk.",
+    "",
+    "Environment:",
+    `- Base URL: ${options.baseUrl ?? "not provided"}`,
+    `- Headed mode preference: ${options.isHeadless ? "headless" : "headed"}`,
+    `- Reuse browser cookies: ${options.requiresCookies ? "yes" : "no"}`,
+    "",
+    "Testing target context:",
+    `- Scope: ${options.scope}`,
+    `- Current branch: ${options.currentBranch}`,
+    `- Main branch: ${options.mainBranch ?? "unknown"}`,
+    "",
+    "Developer request:",
+    options.userInstruction,
+    "",
+    ...formatSavedFlowGuidance(options.savedFlow),
+    "Project learnings from previous runs:",
+    options.learnings?.trim() || "No learnings yet.",
+    "",
+    "Changed files:",
+    changedFiles.length > 0
+      ? changedFiles.map((file) => `- [${file.status}] ${file.path}`).join("\n")
+      : "- No changed files detected",
+    "",
+    "Recent commits:",
+    recentCommits.length > 0
+      ? recentCommits.map((commit) => `- ${commit.shortHash} ${commit.subject}`).join("\n")
+      : "- No recent commits available",
+    "",
+    "Diff preview:",
+    diffPreview || "No diff preview available",
+    "",
+    "Scope strategy:",
+    ...getScopeStrategy(options.scope),
+  ].join("\n");
 };

@@ -1,10 +1,10 @@
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 import { Command } from "commander";
 import { render } from "ink";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./components/app";
 import { ALT_SCREEN_OFF, ALT_SCREEN_ON, VERSION } from "./constants";
-import { ChangesFor, Git, TestPlanDraft, DraftId } from "@expect/supervisor";
+import { ChangesFor, Git } from "@expect/supervisor";
 import { runHeadless } from "./utils/run-test";
 import { runInit } from "./commands/init";
 import { isRunningInAgent } from "./utils/is-running-in-agent";
@@ -12,15 +12,13 @@ import { isHeadless } from "./utils/is-headless";
 import type { AgentBackend } from "@expect/agent";
 import { useNavigationStore, Screen } from "./stores/use-navigation";
 import { usePreferencesStore } from "./stores/use-preferences";
-import { usePlanStore, Plan } from "./stores/use-plan-store";
 import { queryClient } from "./query-client";
 import { setInkInstance } from "./utils/clear-ink-display";
 import { RegistryProvider } from "@effect/atom-react";
 import { agentProviderAtom } from "./data/runtime";
 import { flushSession, trackSessionStarted } from "./utils/session-analytics";
 import { playSound } from "./utils/play-sound";
-
-const DEFAULT_SKIP_PLANNING = true;
+import { Option } from "effect";
 
 const DEFAULT_INSTRUCTION =
   "Test all changes from main in the browser and verify they work correctly.";
@@ -44,7 +42,7 @@ const program = new Command()
   .version(VERSION, "-v, --version")
   .option("-m, --message <instruction>", "natural language instruction for what to test")
   .option("-f, --flow <slug>", "reuse a saved flow by its slug")
-  .option("-y, --yes", "skip plan review and run immediately")
+  .option("-y, --yes", "run immediately without confirmation")
   .option("-a, --agent <provider>", "agent provider to use (claude or codex)")
   .option("-t, --target <target>", "what to test: unstaged, branch, or changes", "changes")
   .option("--verbose", "enable verbose logging")
@@ -53,14 +51,14 @@ const program = new Command()
     `
 Examples:
   $ expect                                          open interactive TUI
-  $ expect -m "test the login flow" -y              plan and run immediately
+  $ expect -m "test the login flow" -y              run immediately
   $ expect --target branch                          test all branch changes
   $ expect --target unstaged                        test unstaged changes`,
   );
 
 const renderApp = async (agent: AgentBackend) => {
   const sessionStartedAt = Date.now();
-  await trackSessionStarted(DEFAULT_SKIP_PLANNING);
+  await trackSessionStarted();
 
   process.stdout.write(ALT_SCREEN_ON);
   process.on("exit", () => process.stdout.write(ALT_SCREEN_OFF));
@@ -106,26 +104,12 @@ const resolveChangesFor = async (target: Target) => {
   );
 };
 
-const seedStores = (opts: CommanderOpts, changesFor: ChangesFor, currentBranch: string) => {
+const seedStores = (opts: CommanderOpts, changesFor: ChangesFor) => {
   usePreferencesStore.setState({
     ...(opts.agent ? { agentBackend: opts.agent } : {}),
-    autoRunAfterPlanning: opts.yes ?? false,
-    skipPlanning: DEFAULT_SKIP_PLANNING,
   });
 
   if (opts.message) {
-    const draft = new TestPlanDraft({
-      id: DraftId.makeUnsafe(crypto.randomUUID()),
-      changesFor,
-      currentBranch,
-      diffPreview: "",
-      fileStats: [],
-      instruction: opts.message,
-      baseUrl: Option.none(),
-      isHeadless: true,
-      requiresCookies: false,
-    });
-    usePlanStore.setState({ plan: Plan.draft(draft) });
     useNavigationStore.setState({
       screen: Screen.Testing({ changesFor, instruction: opts.message }),
     });
@@ -145,8 +129,8 @@ const runHeadlessForTarget = async (target: Target, opts: CommanderOpts) => {
 };
 
 const runInteractiveForTarget = async (target: Target, opts: CommanderOpts) => {
-  const { changesFor, currentBranch } = await resolveChangesFor(target);
-  seedStores(opts, changesFor, currentBranch);
+  const { changesFor } = await resolveChangesFor(target);
+  seedStores(opts, changesFor);
   renderApp(opts.agent ?? "claude");
 };
 

@@ -20,7 +20,6 @@ import { Spinner } from "../ui/spinner";
 import cliTruncate from "cli-truncate";
 import { visualPadEnd } from "../../utils/visual-pad-end";
 import { useScrollableList } from "../../hooks/use-scrollable-list";
-import { usePlanStore } from "../../stores/use-plan-store";
 import { useNavigationStore, Screen } from "../../stores/use-navigation";
 import { checkoutBranch } from "@expect/supervisor";
 import { queryClient } from "../../query-client";
@@ -28,7 +27,6 @@ import { ScreenHeading } from "../ui/screen-heading";
 
 export const PrPickerScreen = () => {
   const [columns] = useStdoutDimensions();
-  const planState = usePlanStore((state) => state.plan);
   const setScreen = useNavigationStore((state) => state.setScreen);
   const COLORS = useColors();
   const [confirmBranch, setConfirmBranch] = useState<RemoteBranch | null>(null);
@@ -37,8 +35,6 @@ export const PrPickerScreen = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | undefined>(undefined);
   const { data: remoteBranches = [], isLoading } = useRemoteBranches();
-
-  const hasPlan = planState !== undefined;
 
   const filteredBranches = RemoteBranch.filterBranches(remoteBranches, activeFilter, searchQuery);
 
@@ -68,7 +64,6 @@ export const PrPickerScreen = () => {
   const doSwitchBranch = (branchName: string) => {
     const success = checkoutBranch(process.cwd(), branchName);
     if (success) {
-      usePlanStore.getState().setPlan(undefined);
       setCheckoutError(undefined);
       void queryClient.invalidateQueries({ queryKey: ["git-state"] });
       setScreen(Screen.Main());
@@ -105,12 +100,8 @@ export const PrPickerScreen = () => {
     if (key.return) {
       const selected = filteredBranches[highlightedIndex];
       if (selected) {
-        if (hasPlan) {
-          setConfirmBranch(selected);
-        } else {
-          setCheckoutError(undefined);
-          doSwitchBranch(selected.name);
-        }
+        setCheckoutError(undefined);
+        doSwitchBranch(selected.name);
       }
     }
 
@@ -244,8 +235,7 @@ export const PrPickerScreen = () => {
       {confirmBranch ? (
         <RuledBox color={COLORS.YELLOW} marginTop={1}>
           <Text color={COLORS.YELLOW} bold>
-            Switching to {confirmBranch.name} will discard the current plan. A new plan will need to
-            be generated.
+            Switch to {confirmBranch.name}?
           </Text>
           <Text color={COLORS.DIM}>
             Press <Text color={COLORS.PRIMARY}>y</Text> to continue or{" "}

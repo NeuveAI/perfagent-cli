@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import figures from "figures";
-import type { TestPlan } from "@expect/supervisor";
+import type { ChangesFor, SavedFlow } from "@expect/shared/models";
 import { useColors } from "../theme-context";
 import { Clickable } from "../ui/clickable";
 import { RuledBox } from "../ui/ruled-box";
 import { ScreenHeading } from "../ui/screen-heading";
-import { usePlanStore, Plan } from "../../stores/use-plan-store";
 import { useNavigationStore, Screen } from "../../stores/use-navigation";
 
 interface ConfirmOption {
@@ -29,22 +28,26 @@ const CONFIRM_OPTIONS: ConfirmOption[] = [
 ];
 
 interface CookieSyncConfirmScreenProps {
-  plan: TestPlan;
+  changesFor: ChangesFor;
+  instruction: string;
+  savedFlow?: SavedFlow;
 }
 
-export const CookieSyncConfirmScreen = ({ plan }: CookieSyncConfirmScreenProps) => {
+export const CookieSyncConfirmScreen = ({
+  changesFor,
+  instruction,
+  savedFlow,
+}: CookieSyncConfirmScreenProps) => {
   const COLORS = useColors();
   const setScreen = useNavigationStore((state) => state.setScreen);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  const activateOption = (option: ConfirmOption) => {
-    const finalPlan = option.id === "enable-sync" ? plan.update({ requiresCookies: true }) : plan;
-    usePlanStore.getState().setPlan(Plan.plan(finalPlan));
+  const activateOption = (_option: ConfirmOption) => {
     setScreen(
       Screen.Testing({
-        changesFor: finalPlan.changesFor,
-        instruction: finalPlan.instruction,
-        existingPlan: finalPlan,
+        changesFor,
+        instruction,
+        savedFlow,
       }),
     );
   };
@@ -74,15 +77,12 @@ export const CookieSyncConfirmScreen = ({ plan }: CookieSyncConfirmScreenProps) 
   return (
     <Box flexDirection="column" width="100%" paddingY={1}>
       <Box paddingX={1}>
-        <ScreenHeading title="Cookie sync is off" subtitle={plan.title} />
+        <ScreenHeading title="Cookie sync is off" subtitle={instruction} />
       </Box>
 
       <RuledBox color={COLORS.RED} marginTop={1}>
         <Text color={COLORS.RED} bold>
-          This plan depends on cookie sync.
-        </Text>
-        <Text color={COLORS.DIM}>
-          Reason: <Text color={COLORS.TEXT}>{plan.requiresCookies && "Cookie sync required."}</Text>
+          This test may need cookie sync.
         </Text>
         <Text color={COLORS.DIM}>
           Running without synced cookies will make browser testing less reliable and more likely to

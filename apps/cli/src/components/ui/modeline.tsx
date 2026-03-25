@@ -5,8 +5,6 @@ import { useColors, theme } from "../theme-context";
 import { HintBar, HINT_SEPARATOR, type HintSegment } from "./hint-bar";
 import { Option } from "effect";
 import { useNavigationStore, Screen } from "../../stores/use-navigation";
-import { usePreferencesStore } from "../../stores/use-preferences";
-import { usePlanStore, Plan } from "../../stores/use-plan-store";
 import { usePlanExecutionStore } from "../../stores/use-plan-execution-store";
 import { useGitState } from "../../hooks/use-git-state";
 import { Clickable } from "./clickable";
@@ -15,18 +13,12 @@ import { TextShimmer } from "./text-shimmer";
 const useHintSegments = (screen: Screen): HintSegment[] => {
   const COLORS = useColors();
   const setScreen = useNavigationStore((state) => state.setScreen);
-  const skipPlanning = usePreferencesStore((state) => state.skipPlanning);
 
   switch (screen._tag) {
     case "Main": {
       return [
         {
-          key: "shift+tab",
-          label: `skip planning ${skipPlanning ? "on" : "off"}`,
-          color: skipPlanning ? COLORS.GREEN : undefined,
-        },
-        {
-          key: "ctrl+f",
+          key: "ctrl+r",
           label: "saved flows",
           cta: true,
           onClick: () => setScreen(Screen.SavedFlowPicker()),
@@ -53,54 +45,24 @@ const useHintSegments = (screen: Screen): HintSegment[] => {
         { key: "esc", label: "back", cta: true, onClick: () => setScreen(Screen.Main()) },
         { key: "enter", label: "select", color: COLORS.PRIMARY, cta: true },
       ];
-    case "ReviewPlan":
-      return [
-        { key: "↑↓", label: "nav" },
-        { key: "tab", label: "fold" },
-        { key: "esc", label: "leave" },
-        { key: "e", label: "edit", cta: true },
-        {
-          key: "a/enter",
-          label: "approve",
-          color: COLORS.PRIMARY,
-          cta: true,
-          onClick: () => {
-            usePlanStore.getState().setPlan(Plan.plan(screen.plan));
-            if (screen.plan.requiresCookies) {
-              setScreen(Screen.CookieSyncConfirm({ plan: screen.plan }));
-            } else {
-              setScreen(
-                Screen.Testing({
-                  changesFor: screen.plan.changesFor,
-                  instruction: screen.plan.instruction,
-                  existingPlan: screen.plan,
-                }),
-              );
-            }
-          },
-        },
-      ];
     case "CookieSyncConfirm":
       return [
         { key: "↑↓", label: "nav" },
         {
           key: "esc",
           label: "back",
-          onClick: () =>
-            setScreen(skipPlanning ? Screen.Main() : Screen.ReviewPlan({ plan: screen.plan })),
+          onClick: () => setScreen(Screen.Main()),
         },
         {
           key: "c",
           label: "enable sync",
           cta: true,
           onClick: () => {
-            const updated = screen.plan.update({ requiresCookies: true });
-            usePlanStore.getState().setPlan(Plan.plan(updated));
             setScreen(
               Screen.Testing({
-                changesFor: updated.changesFor,
-                instruction: updated.instruction,
-                existingPlan: updated,
+                changesFor: screen.changesFor,
+                instruction: screen.instruction,
+                savedFlow: screen.savedFlow,
               }),
             );
           },
@@ -111,12 +73,11 @@ const useHintSegments = (screen: Screen): HintSegment[] => {
           color: COLORS.PRIMARY,
           cta: true,
           onClick: () => {
-            usePlanStore.getState().setPlan(Plan.plan(screen.plan));
             setScreen(
               Screen.Testing({
-                changesFor: screen.plan.changesFor,
-                instruction: screen.plan.instruction,
-                existingPlan: screen.plan,
+                changesFor: screen.changesFor,
+                instruction: screen.instruction,
+                savedFlow: screen.savedFlow,
               }),
             );
           },
@@ -137,13 +98,11 @@ const useHintSegments = (screen: Screen): HintSegment[] => {
         color: COLORS.PRIMARY,
         cta: true,
         onClick: () => {
-          usePlanStore.getState().setPlan(undefined);
           usePlanExecutionStore.getState().setExecutedPlan(undefined);
           setScreen(
             Screen.Testing({
               changesFor: screen.report.changesFor,
               instruction: screen.report.instruction,
-              existingPlan: screen.report.resetForRerun,
             }),
           );
         },
@@ -153,7 +112,6 @@ const useHintSegments = (screen: Screen): HintSegment[] => {
         label: "main menu",
         cta: true,
         onClick: () => {
-          usePlanStore.getState().setPlan(undefined);
           usePlanExecutionStore.getState().setExecutedPlan(undefined);
           setScreen(Screen.Main());
         },

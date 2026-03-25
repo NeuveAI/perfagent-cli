@@ -1,6 +1,5 @@
 export { Updates } from "./updates";
-export { Planner, PlanningError } from "./planner";
-export { Executor, ExecutionError } from "./executor";
+export { Executor, ExecutionError, type ExecuteOptions } from "./executor";
 export { Reporter } from "./reporter";
 export {
   AgentProvider,
@@ -17,6 +16,8 @@ export {
   GitError,
   GitRepoRoot,
   GitState,
+  type SavedFlow,
+  type SavedFlowStep,
   TestPlan,
   TestPlanDraft,
   TestPlanStep,
@@ -24,7 +25,7 @@ export {
   type UpdateContent,
 } from "./git/index";
 export { FlowStorage } from "./flow-storage";
-export type { SavedFlowFileData, SavedFlow, SavedFlowStep } from "./types";
+export type { SavedFlowFileData, SavedFlowEnvironment } from "./types";
 export { checkoutBranch, getLocalBranches } from "./git";
 export { Github, GitHubCommandError } from "./github";
 export { promptHistoryStorage } from "./prompt-history";

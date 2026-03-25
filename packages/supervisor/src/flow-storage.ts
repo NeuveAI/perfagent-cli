@@ -30,12 +30,15 @@ const testPlanToSavedFlowFileData = (plan: TestPlan): SavedFlowFileData => ({
   flow: {
     title: plan.title,
     userInstruction: plan.instruction,
-    steps: plan.steps.map((step) => ({
-      id: step.id,
-      title: step.title,
-      instruction: step.instruction,
-      expectedOutcome: step.expectedOutcome,
-    })),
+    steps: plan.steps.map((step) => {
+      const summaryText = Option.getOrElse(step.summary, () => "");
+      return {
+        id: step.id,
+        title: step.title,
+        instruction: step.instruction !== step.title ? step.instruction : summaryText || step.title,
+        expectedOutcome: step.expectedOutcome || summaryText,
+      };
+    }),
   },
   environment: {
     baseUrl: Option.getOrElse(plan.baseUrl, () => ""),

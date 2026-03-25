@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Box, useInput } from "ink";
 import { MouseProvider } from "../hooks/mouse-context";
 import { PrPickerScreen } from "./screens/pr-picker-screen";
-import { PlanReviewScreen } from "./screens/plan-review-screen";
 import { CookieSyncConfirmScreen } from "./screens/cookie-sync-confirm-screen";
 import { Spinner } from "./ui/spinner";
 import { TestingScreen } from "./screens/testing-screen";
@@ -11,7 +10,6 @@ import { SavedFlowPickerScreen } from "./screens/saved-flow-picker-screen";
 import { MainMenu } from "./screens/main-menu-screen";
 import { Modeline } from "./ui/modeline";
 import { useNavigationStore, Screen } from "../stores/use-navigation";
-import { usePlanStore } from "../stores/use-plan-store";
 import { usePlanExecutionStore } from "../stores/use-plan-execution-store";
 import { useGitState } from "../hooks/use-git-state";
 import { clearInkDisplay } from "../utils/clear-ink-display";
@@ -27,23 +25,17 @@ export const App = ({ agent }: { agent: AgentBackend }) => {
   const navigateTo = useNavigationStore((state) => state.navigateTo);
   const { data: gitState, isLoading: gitStateLoading } = useGitState();
 
-  /** @note(rasmus): this constructs the Layer with the agent provider lazily */
   const setAgentProvider = useAtomSet(agentProviderAtom);
   useEffect(() => {
     setAgentProvider(Option.some(agent));
   }, [agent, setAgentProvider]);
 
   const goBack = () => {
-    if (screen._tag === "ReviewPlan") {
+    if (screen._tag === "CookieSyncConfirm") {
       setScreen(Screen.Main());
       return;
     }
-    if (screen._tag === "CookieSyncConfirm") {
-      setScreen(Screen.ReviewPlan({ plan: screen.plan }));
-      return;
-    }
     if (screen._tag === "Results") {
-      usePlanStore.getState().setPlan(undefined);
       usePlanExecutionStore.getState().setExecutedPlan(undefined);
       setScreen(Screen.Main());
       return;
@@ -62,13 +54,13 @@ export const App = ({ agent }: { agent: AgentBackend }) => {
       setRefreshTick((previous) => previous + 1);
       return;
     }
-    if (key.escape && screen._tag !== "Main" && screen._tag !== "ReviewPlan") {
+    if (key.escape && screen._tag !== "Main") {
       goBack();
     }
     if (key.ctrl && input === "p" && screen._tag === "Main" && gitState?.isGitRepo) {
       navigateTo(Screen.SelectPr());
     }
-    if (key.ctrl && input === "f" && screen._tag === "Main") {
+    if (key.ctrl && input === "r" && screen._tag === "Main") {
       navigateTo(Screen.SavedFlowPicker());
     }
   });
@@ -88,17 +80,21 @@ export const App = ({ agent }: { agent: AgentBackend }) => {
           <TestingScreen
             changesFor={screen.changesFor}
             instruction={screen.instruction}
-            existingPlan={screen.existingPlan}
+            savedFlow={screen.savedFlow}
           />
         );
       case "Results":
         return <ResultsScreen report={screen.report} />;
       case "SelectPr":
         return <PrPickerScreen />;
-      case "ReviewPlan":
-        return <PlanReviewScreen plan={screen.plan} />;
       case "CookieSyncConfirm":
-        return <CookieSyncConfirmScreen plan={screen.plan} />;
+        return (
+          <CookieSyncConfirmScreen
+            changesFor={screen.changesFor}
+            instruction={screen.instruction}
+            savedFlow={screen.savedFlow}
+          />
+        );
       case "SavedFlowPicker":
         return <SavedFlowPickerScreen />;
       default:

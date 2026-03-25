@@ -19,6 +19,11 @@
       "import": "./dist/models.mjs",
       "default": "./dist/models.mjs"
     },
+    "./prompts": {
+      "types": "./dist/prompts.d.mts",
+      "import": "./dist/prompts.mjs",
+      "default": "./dist/prompts.mjs"
+    },
     "./observability": {
       "types": "./dist/observability/exports.d.mts",
       "import": "./dist/observability/exports.mjs",

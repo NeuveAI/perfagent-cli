@@ -3,13 +3,13 @@ import { Analytics } from "@expect/shared/observability";
 
 const analyticsRuntime = ManagedRuntime.make(Analytics.layerPostHog);
 
-export const trackSessionStarted = (skipPlanning: boolean) =>
+export const trackSessionStarted = () =>
   analyticsRuntime.runPromise(
     Effect.gen(function* () {
       const analytics = yield* Analytics;
       yield* analytics.capture("session:started", {
         mode: "interactive",
-        skip_planning: skipPlanning,
+        skip_planning: false,
       });
     }),
   );

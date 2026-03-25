@@ -55,4 +55,22 @@ describe("saved-flow-file", () => {
 
     expect(parseSavedFlowFile(formattedFile)).toEqual(savedFlowFileData);
   });
+
+  it("defaults legacy flows without steps to an empty list", () => {
+    const formattedFile = formatSavedFlowFile(savedFlowFileData).replace(
+      `flow: ${JSON.stringify(savedFlowFileData.flow)}`,
+      `flow: ${JSON.stringify({
+        title: savedFlowFileData.flow.title,
+        userInstruction: savedFlowFileData.flow.userInstruction,
+      })}`,
+    );
+
+    expect(parseSavedFlowFile(formattedFile)).toEqual({
+      ...savedFlowFileData,
+      flow: {
+        ...savedFlowFileData.flow,
+        steps: [],
+      },
+    });
+  });
 });
