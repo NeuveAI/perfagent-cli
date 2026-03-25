@@ -402,7 +402,16 @@ export const TestingScreen = ({
     return () => {
       triggerExecute(Atom.Interrupt);
     };
-  }, [triggerExecute, agentBackend, browserHeaded, changesFor, instruction, savedFlow, requiresCookies, baseUrls]);
+  }, [
+    triggerExecute,
+    agentBackend,
+    browserHeaded,
+    changesFor,
+    instruction,
+    savedFlow,
+    requiresCookies,
+    baseUrls,
+  ]);
 
   const replayUrl = isExecutionComplete ? executionResult.value.replayUrl : undefined;
 

@@ -128,7 +128,7 @@ const useHintSegments = (screen: Screen, gitState: GitState | undefined): HintSe
       ];
     }
     case "Results": {
-      const hints: HintSegment[] = [{ key: "y", label: "copy", color: COLORS.PRIMARY, cta: true }];
+      const hints: HintSegment[] = [{ key: "y", label: "copy", cta: true }];
       if (Option.isSome(screen.report.pullRequest)) {
         hints.push({ key: "p", label: "post to PR", cta: true });
       }
@@ -136,7 +136,6 @@ const useHintSegments = (screen: Screen, gitState: GitState | undefined): HintSe
       hints.push({
         key: "r",
         label: "restart",
-        color: COLORS.PRIMARY,
         cta: true,
         onClick: () => {
           usePlanExecutionStore.getState().setExecutedPlan(undefined);
