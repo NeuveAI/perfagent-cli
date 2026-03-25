@@ -7,6 +7,7 @@ import { CookieSyncConfirmScreen } from "./screens/cookie-sync-confirm-screen";
 import { Spinner } from "./ui/spinner";
 import { TestingScreen } from "./screens/testing-screen";
 import { ResultsScreen } from "./screens/results-screen";
+import { SavedFlowPickerScreen } from "./screens/saved-flow-picker-screen";
 import { MainMenu } from "./screens/main-menu-screen";
 import { Modeline } from "./ui/modeline";
 import { useNavigationStore, Screen } from "../stores/use-navigation";
@@ -67,6 +68,9 @@ export const App = ({ agent }: { agent: AgentBackend }) => {
     if (key.ctrl && input === "p" && screen._tag === "Main" && gitState?.isGitRepo) {
       navigateTo(Screen.SelectPr());
     }
+    if (key.ctrl && input === "f" && screen._tag === "Main") {
+      navigateTo(Screen.SavedFlowPicker());
+    }
   });
 
   if (gitStateLoading || !gitState) {
@@ -95,6 +99,8 @@ export const App = ({ agent }: { agent: AgentBackend }) => {
         return <PlanReviewScreen plan={screen.plan} />;
       case "CookieSyncConfirm":
         return <CookieSyncConfirmScreen plan={screen.plan} />;
+      case "SavedFlowPicker":
+        return <SavedFlowPickerScreen />;
       default:
         return <MainMenu gitState={gitState} />;
     }

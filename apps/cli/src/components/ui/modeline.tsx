@@ -26,6 +26,12 @@ const useHintSegments = (screen: Screen): HintSegment[] => {
           color: skipPlanning ? COLORS.GREEN : undefined,
         },
         {
+          key: "ctrl+f",
+          label: "saved flows",
+          cta: true,
+          onClick: () => setScreen(Screen.SavedFlowPicker()),
+        },
+        {
           key: "ctrl+p",
           label: "pick pr",
           cta: true,

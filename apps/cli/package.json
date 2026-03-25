@@ -43,6 +43,7 @@
     "build": "vp pack",
     "dev": "vp pack --watch",
     "link-global": "pnpm build && pnpm link --global",
+    "unlink-global": "pnpm unlink --global",
     "lint": "vp lint && tsc --noEmit",
     "format": "vp fmt",
     "format:check": "vp fmt --check",
