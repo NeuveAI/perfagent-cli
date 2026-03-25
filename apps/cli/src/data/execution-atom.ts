@@ -139,13 +139,10 @@ const execute = Effect.fnUntraced(
 
 export const executeFn = cliAtomRuntime.fn<ExecuteInput>()((input, ctx) =>
   stripUndefinedRequirement(execute(input, ctx)).pipe(
-    Effect.tapErrorCause((cause) =>
+    Effect.tapError((error) =>
       Effect.gen(function* () {
         const analytics = yield* Analytics;
-        const errorTag =
-          cause._tag === "Fail" && cause.error instanceof Error
-            ? cause.error.constructor.name
-            : cause._tag;
+        const errorTag = error instanceof Error ? error.constructor.name : "UnknownError";
         yield* analytics.capture("run:failed", {
           plan_id: "direct",
           error_tag: errorTag,
