@@ -179,13 +179,14 @@ export const MainMenu = ({ gitState }: MainMenuProps) => {
 
   return (
     <Box flexDirection="column" width="100%" paddingY={1}>
-      <Box marginBottom={1} paddingX={1}>
+      <Box flexDirection="column" marginBottom={1} paddingX={1}>
         <Text color={COLORS.BORDER}>
           <Text bold color={COLORS.TEXT}>
             {"Expect CLI"}
           </Text>
-          <Text color={COLORS.DIM}>{" v0.0.1"}</Text> {"─".repeat(Math.max(0, columns - 18))}
+          <Text color={COLORS.DIM}>{" v0.0.1"}</Text>
         </Text>
+        <Text color={COLORS.BORDER}>{"─".repeat(Math.max(0, columns - 2))}</Text>
       </Box>
 
       <Box flexDirection="column" width="100%">

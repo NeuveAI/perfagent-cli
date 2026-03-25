@@ -8,7 +8,6 @@ import { useAtom, useAtomValue } from "@effect/atom-react";
 
 import {
   ChangesFor,
-  changesForDisplayName,
   PlanId,
   StepId,
   TestPlan,
@@ -53,8 +52,6 @@ const getStepElapsedMs = (step: TestPlanStep): number | undefined => {
 export const TestingScreen = ({ changesFor, instruction, existingPlan }: TestingScreenProps) => {
   const setScreen = useNavigationStore((state) => state.setScreen);
   const COLORS = useColors();
-
-  const displayName = changesForDisplayName(changesFor);
 
   const agentBackend = usePreferencesStore((state) => state.agentBackend);
   const skipPlanning = usePreferencesStore((state) => state.skipPlanning);
@@ -277,7 +274,7 @@ export const TestingScreen = ({ changesFor, instruction, existingPlan }: Testing
         <Box paddingX={1}>
           <ScreenHeading
             title="Executing browser plan"
-            subtitle={`${instruction} │ ${displayName}`}
+            subtitle={instruction}
           />
         </Box>
 
