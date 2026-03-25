@@ -17,6 +17,16 @@ const CHROME_TOOLBAR_PADDING_TOP_PX = 8;
 const CHROME_TOOLBAR_PADDING_RIGHT_PX = 12;
 const CHROME_TOOLBAR_PADDING_BOTTOM_PX = 4;
 const CHROME_TOOLBAR_PADDING_LEFT_PX = 12;
+const CHROME_TOOLBAR_CONTENT_GAP_PX = 8;
+const CHROME_TOOLBAR_GROUP_WIDTH_PX = 84;
+const CHROME_TOOLBAR_GROUP_GAP_PX = 4;
+const CHROME_TOOLBAR_BUTTON_SIZE_PX = 24;
+const CHROME_TOOLBAR_BUTTON_ICON_SIZE_PX = 14;
+const CHROME_TOOLBAR_ICON_STROKE_WIDTH_PX = 1.8;
+const CHROME_TOOLBAR_GLYPH_FONT_SIZE_PX = 16;
+const CHROME_TOOLBAR_REFRESH_GLYPH_FONT_SIZE_PX = 17;
+const CHROME_TOOLBAR_BUTTON_BACKGROUND = "rgba(60, 64, 67, 0.06)";
+const CHROME_TOOLBAR_BUTTON_COLOR = "#5f6368";
 const CHROME_OMNIBOX_GAP_PX = 6;
 const CHROME_OMNIBOX_ICON_SIZE_PX = 18;
 const CHROME_OMNIBOX_SHADOW =
@@ -1465,6 +1475,81 @@ interface BrowserCellProps {
   variant?: PageVariant;
 }
 
+interface ChromeToolbarButtonProps {
+  children: ReactNode;
+}
+
+interface ChromeToolbarIconProps {
+  children: ReactNode;
+  viewBox?: string;
+}
+
+interface ChromeToolbarGlyphProps {
+  children: ReactNode;
+  fontSize?: number;
+}
+
+const ChromeToolbarButton = ({ children }: ChromeToolbarButtonProps) => (
+  <div
+    style={{
+      width: CHROME_TOOLBAR_BUTTON_SIZE_PX,
+      height: CHROME_TOOLBAR_BUTTON_SIZE_PX,
+      borderRadius: 999,
+      backgroundColor: CHROME_TOOLBAR_BUTTON_BACKGROUND,
+      color: CHROME_TOOLBAR_BUTTON_COLOR,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0,
+    }}
+  >
+    {children}
+  </div>
+);
+
+const ChromeToolbarIcon = ({
+  children,
+  viewBox = "0 0 24 24",
+}: ChromeToolbarIconProps) => (
+  <svg
+    viewBox={viewBox}
+    width={CHROME_TOOLBAR_BUTTON_ICON_SIZE_PX}
+    height={CHROME_TOOLBAR_BUTTON_ICON_SIZE_PX}
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={CHROME_TOOLBAR_ICON_STROKE_WIDTH_PX}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{
+      width: CHROME_TOOLBAR_BUTTON_ICON_SIZE_PX,
+      height: "auto",
+      flexShrink: 0,
+    }}
+  >
+    {children}
+  </svg>
+);
+
+const ChromeToolbarGlyph = ({
+  children,
+  fontSize = CHROME_TOOLBAR_GLYPH_FONT_SIZE_PX,
+}: ChromeToolbarGlyphProps) => (
+  <span
+    style={{
+      fontSize,
+      lineHeight: 1,
+      fontFamily: "system-ui, sans-serif",
+      fontWeight: 500,
+      color: CHROME_TOOLBAR_BUTTON_COLOR,
+      display: "block",
+      transform: "translateY(-0.5px)",
+    }}
+  >
+    {children}
+  </span>
+);
+
 const ChromeBrowserToolbar = () => (
   <div
     style={{
@@ -1475,6 +1560,7 @@ const ChromeBrowserToolbar = () => (
       alignItems: "center",
       justifyContent: "center",
       padding: `${CHROME_TOOLBAR_PADDING_TOP_PX}px ${CHROME_TOOLBAR_PADDING_RIGHT_PX}px ${CHROME_TOOLBAR_PADDING_BOTTOM_PX}px ${CHROME_TOOLBAR_PADDING_LEFT_PX}px`,
+      boxSizing: "border-box",
       fontSynthesis: "none",
       WebkitFontSmoothing: "antialiased",
       MozOsxFontSmoothing: "grayscale",
@@ -1482,62 +1568,125 @@ const ChromeBrowserToolbar = () => (
   >
     <div
       style={{
-        width: CHROME_OMNIBOX_WIDTH_PX,
-        maxWidth: "100%",
-        borderRadius: 999,
-        backgroundColor: "color(display-p3 1 1 1)",
-        boxShadow: CHROME_OMNIBOX_SHADOW,
+        width: "100%",
         display: "flex",
         alignItems: "center",
-        justifyContent: "flex-start",
-        gap: CHROME_OMNIBOX_GAP_PX,
-        padding: `${CHROME_OMNIBOX_VERTICAL_PADDING_PX}px ${CHROME_OMNIBOX_HORIZONTAL_PADDING_PX}px`,
+        justifyContent: "center",
+        gap: CHROME_TOOLBAR_CONTENT_GAP_PX,
       }}
     >
-      <svg
-        viewBox="0 0 190.5 190.5"
-        width={CHROME_OMNIBOX_ICON_SIZE_PX}
-        height={CHROME_OMNIBOX_ICON_SIZE_PX}
-        xmlns="http://www.w3.org/2000/svg"
-        style={{
-          width: CHROME_OMNIBOX_ICON_SIZE_PX,
-          height: "auto",
-          flexShrink: 0,
-        }}
-      >
-        <path
-          fill="#FFFFFF"
-          d="M95.252 142.873c26.304 0 47.627-21.324 47.627-47.628s-21.323-47.628-47.627-47.628-47.627 21.324-47.627 47.628 21.323 47.628 47.627 47.628z"
-        />
-        <path
-          fill="#229342"
-          d="m54.005 119.07-41.24-71.43a95.227 95.227 0 0 0-.003 95.25 95.234 95.234 0 0 0 82.496 47.61l41.24-71.43v-.011a47.613 47.613 0 0 1-17.428 17.443 47.62 47.62 0 0 1-47.632.007 47.62 47.62 0 0 1-17.433-17.437z"
-        />
-        <path
-          fill="#FBC116"
-          d="m136.495 119.067-41.239 71.43a95.229 95.229 0 0 0 82.489-47.622A95.24 95.24 0 0 0 190.5 95.248a95.237 95.237 0 0 0-12.772-47.623H95.249l-.01.007a47.62 47.62 0 0 1 23.819 6.372 47.618 47.618 0 0 1 17.439 17.431 47.62 47.62 0 0 1-.001 47.633z"
-        />
-        <path
-          fill="#1A73E8"
-          d="M95.252 132.961c20.824 0 37.705-16.881 37.705-37.706S116.076 57.55 95.252 57.55 57.547 74.431 57.547 95.255s16.881 37.706 37.705 37.706z"
-        />
-        <path
-          fill="#E33B2E"
-          d="M95.252 47.628h82.479A95.237 95.237 0 0 0 142.87 12.76 95.23 95.23 0 0 0 95.245 0a95.222 95.222 0 0 0-47.623 12.767 95.23 95.23 0 0 0-34.856 34.872l41.24 71.43.011.006a47.62 47.62 0 0 1-.015-47.633 47.61 47.61 0 0 1 41.252-23.815z"
-        />
-      </svg>
       <div
         style={{
-          fontSize: 14,
-          lineHeight: "18px",
-          letterSpacing: "0em",
-          fontFamily: CHROME_OMNIBOX_FONT_FAMILY,
-          fontWeight: 500,
-          color: CHROME_OMNIBOX_TEXT_COLOR,
+          width: CHROME_TOOLBAR_GROUP_WIDTH_PX,
+          display: "flex",
+          alignItems: "center",
+          gap: CHROME_TOOLBAR_GROUP_GAP_PX,
           flexShrink: 0,
         }}
       >
-        localhost:3000
+        <ChromeToolbarButton>
+          <ChromeToolbarGlyph>&larr;</ChromeToolbarGlyph>
+        </ChromeToolbarButton>
+        <ChromeToolbarButton>
+          <ChromeToolbarGlyph>&rarr;</ChromeToolbarGlyph>
+        </ChromeToolbarButton>
+        <ChromeToolbarButton>
+          <ChromeToolbarGlyph fontSize={CHROME_TOOLBAR_REFRESH_GLYPH_FONT_SIZE_PX}>
+            ↻
+          </ChromeToolbarGlyph>
+        </ChromeToolbarButton>
+      </div>
+
+      <div
+        style={{
+          width: CHROME_OMNIBOX_WIDTH_PX,
+          maxWidth: "100%",
+          flexShrink: 1,
+          borderRadius: 999,
+          backgroundColor: "color(display-p3 1 1 1)",
+          boxShadow: CHROME_OMNIBOX_SHADOW,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "flex-start",
+          gap: CHROME_OMNIBOX_GAP_PX,
+          padding: `${CHROME_OMNIBOX_VERTICAL_PADDING_PX}px ${CHROME_OMNIBOX_HORIZONTAL_PADDING_PX}px`,
+        }}
+      >
+        <svg
+          viewBox="0 0 190.5 190.5"
+          width={CHROME_OMNIBOX_ICON_SIZE_PX}
+          height={CHROME_OMNIBOX_ICON_SIZE_PX}
+          xmlns="http://www.w3.org/2000/svg"
+          style={{
+            width: CHROME_OMNIBOX_ICON_SIZE_PX,
+            height: "auto",
+            flexShrink: 0,
+          }}
+        >
+          <path
+            fill="#FFFFFF"
+            d="M95.252 142.873c26.304 0 47.627-21.324 47.627-47.628s-21.323-47.628-47.627-47.628-47.627 21.324-47.627 47.628 21.323 47.628 47.627 47.628z"
+          />
+          <path
+            fill="#229342"
+            d="m54.005 119.07-41.24-71.43a95.227 95.227 0 0 0-.003 95.25 95.234 95.234 0 0 0 82.496 47.61l41.24-71.43v-.011a47.613 47.613 0 0 1-17.428 17.443 47.62 47.62 0 0 1-47.632.007 47.62 47.62 0 0 1-17.433-17.437z"
+          />
+          <path
+            fill="#FBC116"
+            d="m136.495 119.067-41.239 71.43a95.229 95.229 0 0 0 82.489-47.622A95.24 95.24 0 0 0 190.5 95.248a95.237 95.237 0 0 0-12.772-47.623H95.249l-.01.007a47.62 47.62 0 0 1 23.819 6.372 47.618 47.618 0 0 1 17.439 17.431 47.62 47.62 0 0 1-.001 47.633z"
+          />
+          <path
+            fill="#1A73E8"
+            d="M95.252 132.961c20.824 0 37.705-16.881 37.705-37.706S116.076 57.55 95.252 57.55 57.547 74.431 57.547 95.255s16.881 37.706 37.705 37.706z"
+          />
+          <path
+            fill="#E33B2E"
+            d="M95.252 47.628h82.479A95.237 95.237 0 0 0 142.87 12.76 95.23 95.23 0 0 0 95.245 0a95.222 95.222 0 0 0-47.623 12.767 95.23 95.23 0 0 0-34.856 34.872l41.24 71.43.011.006a47.62 47.62 0 0 1-.015-47.633 47.61 47.61 0 0 1 41.252-23.815z"
+          />
+        </svg>
+        <div
+          style={{
+            fontSize: 14,
+            lineHeight: "18px",
+            letterSpacing: "0em",
+            fontFamily: CHROME_OMNIBOX_FONT_FAMILY,
+            fontWeight: 500,
+            color: CHROME_OMNIBOX_TEXT_COLOR,
+            flexShrink: 0,
+          }}
+        >
+          localhost:3000
+        </div>
+      </div>
+
+      <div
+        style={{
+          width: CHROME_TOOLBAR_GROUP_WIDTH_PX,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "flex-end",
+          gap: CHROME_TOOLBAR_GROUP_GAP_PX,
+          flexShrink: 0,
+        }}
+      >
+        <ChromeToolbarButton>
+          <ChromeToolbarIcon>
+            <path d="M12 3.75l2.547 5.163 5.698.828-4.122 4.018.973 5.677L12 16.757l-5.096 2.679.974-5.677-4.123-4.018 5.699-.828L12 3.75Z" />
+          </ChromeToolbarIcon>
+        </ChromeToolbarButton>
+        <ChromeToolbarButton>
+          <ChromeToolbarIcon>
+            <rect x="5.25" y="6.25" width="13.5" height="11.5" rx="2.25" />
+            <path d="M13.5 6.25v11.5" />
+          </ChromeToolbarIcon>
+        </ChromeToolbarButton>
+        <ChromeToolbarButton>
+          <ChromeToolbarIcon>
+            <circle cx="12" cy="5.5" r="1.5" fill="currentColor" stroke="none" />
+            <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+            <circle cx="12" cy="18.5" r="1.5" fill="currentColor" stroke="none" />
+          </ChromeToolbarIcon>
+        </ChromeToolbarButton>
       </div>
     </div>
   </div>
