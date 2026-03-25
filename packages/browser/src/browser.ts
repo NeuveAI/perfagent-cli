@@ -2,7 +2,7 @@ import { Browsers, Cookies, layerLive } from "@expect/cookies";
 import type { Browser as BrowserProfile } from "@expect/cookies";
 import { chromium } from "playwright";
 import type { Locator, Page } from "playwright";
-import { Effect, Layer, Option, ServiceMap } from "effect";
+import { Array as Arr, Effect, Layer, Option, ServiceMap } from "effect";
 
 const cookiesLayer = Layer.mergeAll(layerLive, Cookies.layer);
 import {
@@ -69,6 +69,17 @@ const extractCookiesForProfile = Effect.fn("Browser.extractCookiesForProfile")(
   }),
 );
 
+const isSiblingProfile = (profile: BrowserProfile, reference: BrowserProfile) => {
+  if (profile._tag !== reference._tag) return false;
+  if (profile._tag === "ChromiumBrowser" && reference._tag === "ChromiumBrowser") {
+    return profile.key === reference.key && profile.profilePath !== reference.profilePath;
+  }
+  if (profile._tag === "FirefoxBrowser" && reference._tag === "FirefoxBrowser") {
+    return profile.profilePath !== reference.profilePath;
+  }
+  return false;
+};
+
 const extractDefaultBrowserCookies = Effect.fn("Browser.extractDefaultBrowserCookies")(function* (
   url: string,
   preferredProfile: BrowserProfile | undefined,
@@ -76,27 +87,22 @@ const extractDefaultBrowserCookies = Effect.fn("Browser.extractDefaultBrowserCoo
   if (!preferredProfile) return [];
 
   const cookiesService = yield* Cookies;
-
-  const profileCookies = yield* extractCookiesForProfile(cookiesService, preferredProfile);
-  if (profileCookies.length > 0) return profileCookies;
-
   const browsers = yield* Browsers;
+
   const allProfiles = yield* browsers.list.pipe(
     Effect.catchTag("ListBrowsersError", () => Effect.succeed<BrowserProfile[]>([])),
   );
-  const matchingProfiles = allProfiles.filter((profile) => {
-    if (preferredProfile._tag === "ChromiumBrowser" && profile._tag === "ChromiumBrowser") {
-      return profile.key === preferredProfile.key;
-    }
-    return profile._tag === preferredProfile._tag;
-  });
 
   const results = yield* Effect.forEach(
-    matchingProfiles,
+    [preferredProfile, ...allProfiles.filter((profile) => isSiblingProfile(profile, preferredProfile))],
     (profile) => extractCookiesForProfile(cookiesService, profile),
     { concurrency: "unbounded" },
   );
-  return results.flat();
+
+  // Preferred profile is first, so its cookies win when multiple profiles share the same cookie identity.
+  return Arr.dedupeWith(results.flat(), (cookieA, cookieB) =>
+    cookieA.name === cookieB.name && cookieA.domain === cookieB.domain && cookieA.path === cookieB.path,
+  );
 }, Effect.provide(cookiesLayer));
 
 const appendCursorInteractiveElements = Effect.fn("Browser.appendCursorInteractive")(function* (
