@@ -28,6 +28,28 @@ const getClaudeCodeEmail = Effect.fn("getClaudeCodeEmail")(function* () {
   return status.email;
 });
 
+const getGitEmail = Effect.fn("getGitEmail")(function* () {
+  const spawner = yield* ChildProcessSpawner;
+  const email = yield* spawner
+    .string(ChildProcess.make("git", ["config", "user.email"]))
+    .pipe(Effect.timeout("5 seconds"), Effect.map((output) => output.trim()));
+  if (email.length === 0) {
+    return yield* Effect.fail("empty");
+  }
+  return email;
+});
+
+const getGitName = Effect.fn("getGitName")(function* () {
+  const spawner = yield* ChildProcessSpawner;
+  const name = yield* spawner
+    .string(ChildProcess.make("git", ["config", "user.name"]))
+    .pipe(Effect.timeout("5 seconds"), Effect.map((output) => output.trim()));
+  if (name.length === 0) {
+    return yield* Effect.fail("empty");
+  }
+  return name;
+});
+
 // ---------------------------------------------------------------------------
 // AnalyticsProvider — abstract provider that Analytics delegates to
 // ---------------------------------------------------------------------------
@@ -41,6 +63,7 @@ export interface AnalyticsProviderShape {
   readonly identify: (params: {
     readonly distinctId: string;
     readonly email: string;
+    readonly name?: string;
   }) => Effect.Effect<void>;
   readonly flush: Effect.Effect<void>;
 }
@@ -62,7 +85,7 @@ export class AnalyticsProvider extends ServiceMap.Service<
       Effect.sync(() => {
         posthogClient.identify({
           distinctId: params.distinctId,
-          properties: { email: params.email },
+          properties: { email: params.email, ...(params.name ? { name: params.name } : {}) },
         });
       }),
     flush: Effect.tryPromise({
@@ -82,6 +105,7 @@ export class AnalyticsProvider extends ServiceMap.Service<
       Effect.logInfo("Identified user", {
         distinctId: params.distinctId,
         email: params.email,
+        name: params.name,
       }).pipe(Effect.annotateLogs({ module: "Analytics" })),
     flush: Effect.void,
   });
@@ -101,11 +125,16 @@ export class Analytics extends ServiceMap.Service<Analytics>()("@expect/Analytic
     });
     const projectId = hash(process.cwd());
 
-    yield* getClaudeCodeEmail().pipe(
-      Effect.tap((email) => provider.identify({ distinctId, email })),
-      Effect.catchTag("PlatformError", () => Effect.void),
-      Effect.catchTag("TimeoutError", () => Effect.void),
-      Effect.catchTag("SchemaError", () => Effect.void),
+    yield* Effect.all({
+      email: getClaudeCodeEmail().pipe(
+        Effect.catchTag("PlatformError", () => getGitEmail()),
+        Effect.catchTag("TimeoutError", () => getGitEmail()),
+        Effect.catchTag("SchemaError", () => getGitEmail()),
+      ),
+      name: getGitName().pipe(Effect.catchCause(() => Effect.succeed(undefined))),
+    }).pipe(
+      Effect.tap(({ email, name }) => provider.identify({ distinctId, email, name })),
+      Effect.catchCause(() => Effect.void),
       Effect.forkDetach,
     );
 
