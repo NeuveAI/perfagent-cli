@@ -75,7 +75,7 @@ const AcpToolCallLocation = Schema.Struct({
 });
 
 export class AcpAgentMessageChunk extends Schema.Class<AcpAgentMessageChunk>(
-  "AcpAgentMessageChunk"
+  "AcpAgentMessageChunk",
 )({
   sessionUpdate: Schema.Literal("agent_message_chunk"),
   content: AcpContentBlock,
@@ -83,16 +83,14 @@ export class AcpAgentMessageChunk extends Schema.Class<AcpAgentMessageChunk>(
 }) {}
 
 export class AcpAgentThoughtChunk extends Schema.Class<AcpAgentThoughtChunk>(
-  "AcpAgentThoughtChunk"
+  "AcpAgentThoughtChunk",
 )({
   sessionUpdate: Schema.Literal("agent_thought_chunk"),
   content: AcpContentBlock,
   messageId: Schema.optional(Schema.NullOr(Schema.String)),
 }) {}
 
-export class AcpUserMessageChunk extends Schema.Class<AcpUserMessageChunk>(
-  "AcpUserMessageChunk"
-)({
+export class AcpUserMessageChunk extends Schema.Class<AcpUserMessageChunk>("AcpUserMessageChunk")({
   sessionUpdate: Schema.Literal("user_message_chunk"),
   content: AcpContentBlock,
   messageId: Schema.optional(Schema.NullOr(Schema.String)),
@@ -110,9 +108,7 @@ export class AcpToolCall extends Schema.Class<AcpToolCall>("AcpToolCall")({
   rawOutput: Schema.optional(Schema.Unknown),
 }) {}
 
-export class AcpToolCallUpdate extends Schema.Class<AcpToolCallUpdate>(
-  "AcpToolCallUpdate"
-)({
+export class AcpToolCallUpdate extends Schema.Class<AcpToolCallUpdate>("AcpToolCallUpdate")({
   sessionUpdate: Schema.Literal("tool_call_update"),
   toolCallId: Schema.String,
   title: Schema.optional(Schema.NullOr(Schema.String)),
@@ -124,58 +120,46 @@ export class AcpToolCallUpdate extends Schema.Class<AcpToolCallUpdate>(
   rawOutput: Schema.optional(Schema.Unknown),
 }) {}
 
-const AcpPlanEntryStatus = Schema.Literals([
-  "pending",
-  "in_progress",
-  "completed",
-] as const);
+const AcpPlanEntryStatus = Schema.Literals(["pending", "in_progress", "completed"] as const);
 
-const AcpPlanEntryPriority = Schema.Literals([
-  "high",
-  "medium",
-  "low",
-] as const);
+const AcpPlanEntryPriority = Schema.Literals(["high", "medium", "low"] as const);
 
-export class AcpPlanUpdate extends Schema.Class<AcpPlanUpdate>("AcpPlanUpdate")(
-  {
-    sessionUpdate: Schema.Literal("plan"),
-    entries: Schema.Array(
-      Schema.Struct({
-        content: Schema.String,
-        priority: AcpPlanEntryPriority,
-        status: AcpPlanEntryStatus,
-      })
-    ),
-  }
-) {}
+export class AcpPlanUpdate extends Schema.Class<AcpPlanUpdate>("AcpPlanUpdate")({
+  sessionUpdate: Schema.Literal("plan"),
+  entries: Schema.Array(
+    Schema.Struct({
+      content: Schema.String,
+      priority: AcpPlanEntryPriority,
+      status: AcpPlanEntryStatus,
+    }),
+  ),
+}) {}
 
 export class AcpAvailableCommandsUpdate extends Schema.Class<AcpAvailableCommandsUpdate>(
-  "AcpAvailableCommandsUpdate"
+  "AcpAvailableCommandsUpdate",
 )({
   sessionUpdate: Schema.Literal("available_commands_update"),
 }) {}
 
 export class AcpCurrentModeUpdate extends Schema.Class<AcpCurrentModeUpdate>(
-  "AcpCurrentModeUpdate"
+  "AcpCurrentModeUpdate",
 )({
   sessionUpdate: Schema.Literal("current_mode_update"),
 }) {}
 
 export class AcpConfigOptionUpdate extends Schema.Class<AcpConfigOptionUpdate>(
-  "AcpConfigOptionUpdate"
+  "AcpConfigOptionUpdate",
 )({
   sessionUpdate: Schema.Literal("config_option_update"),
 }) {}
 
 export class AcpSessionInfoUpdate extends Schema.Class<AcpSessionInfoUpdate>(
-  "AcpSessionInfoUpdate"
+  "AcpSessionInfoUpdate",
 )({
   sessionUpdate: Schema.Literal("session_info_update"),
 }) {}
 
-export class AcpUsageUpdate extends Schema.Class<AcpUsageUpdate>(
-  "AcpUsageUpdate"
-)({
+export class AcpUsageUpdate extends Schema.Class<AcpUsageUpdate>("AcpUsageUpdate")({
   sessionUpdate: Schema.Literal("usage_update"),
 }) {}
 
@@ -195,7 +179,7 @@ export const AcpSessionUpdate = Schema.Union([
 export type AcpSessionUpdate = typeof AcpSessionUpdate.Type;
 
 export class AcpSessionNotification extends Schema.Class<AcpSessionNotification>(
-  "AcpSessionNotification"
+  "AcpSessionNotification",
 )({
   sessionId: Schema.String,
   update: AcpSessionUpdate,
@@ -209,9 +193,7 @@ export const AcpUsage = Schema.Struct({
   thoughtTokens: Schema.optional(Schema.NullOr(Schema.Number)),
 });
 
-export class AcpPromptResponse extends Schema.Class<AcpPromptResponse>(
-  "AcpPromptResponse"
-)({
+export class AcpPromptResponse extends Schema.Class<AcpPromptResponse>("AcpPromptResponse")({
   stopReason: AcpStopReason,
   usage: Schema.optional(Schema.NullOr(AcpUsage)),
 }) {}
@@ -227,11 +209,7 @@ export interface CommitSummary {
   subject: string;
 }
 
-export const AgentProvider = Schema.Literals([
-  "claude",
-  "codex",
-  "cursor",
-] as const);
+export const AgentProvider = Schema.Literals(["claude", "codex", "cursor"] as const);
 export type AgentProvider = typeof AgentProvider.Type;
 
 export const AGENT_PROVIDER_DISPLAY_NAMES: Record<AgentProvider, string> = {
@@ -258,9 +236,7 @@ export class Branch extends Schema.Class<Branch>("@ami/Branch")({
 }) {}
 
 export const formatFileStats = (fileStats: readonly FileStat[]): string =>
-  fileStats
-    .map((stat) => `  ${stat.relativePath} (+${stat.added} -${stat.removed})`)
-    .join("\n");
+  fileStats.map((stat) => `  ${stat.relativePath} (+${stat.added} -${stat.removed})`).join("\n");
 
 export class GitState extends Schema.Class<GitState>("@supervisor/GitState")({
   isGitRepo: Schema.Boolean,
@@ -281,10 +257,7 @@ export class GitState extends Schema.Class<GitState>("@supervisor/GitState")({
   }
 
   get totalChangedLines(): number {
-    return this.fileStats.reduce(
-      (sum, stat) => sum + stat.added + stat.removed,
-      0
-    );
+    return this.fileStats.reduce((sum, stat) => sum + stat.added + stat.removed, 0);
   }
 
   get isCurrentStateTested(): boolean {
@@ -314,7 +287,7 @@ export const changesForDisplayName = (changesFor: ChangesFor): string =>
       Branch: () => "branch",
       Changes: () => "changes",
       Commit: ({ hash }) => hash.slice(0, 7),
-    })
+    }),
   );
 
 export const GhPrListItem = Schema.Struct({
@@ -325,13 +298,7 @@ export const GhPrListItem = Schema.Struct({
   updatedAt: Schema.String,
 });
 
-export type BranchFilter =
-  | "recent"
-  | "all"
-  | "open"
-  | "draft"
-  | "merged"
-  | "no-pr";
+export type BranchFilter = "recent" | "all" | "open" | "draft" | "merged" | "no-pr";
 
 export const BRANCH_FILTERS: readonly BranchFilter[] = [
   "recent",
@@ -342,21 +309,17 @@ export const BRANCH_FILTERS: readonly BranchFilter[] = [
   "no-pr",
 ];
 
-export class RemoteBranch extends Schema.Class<RemoteBranch>(
-  "@supervisor/RemoteBranch"
-)({
+export class RemoteBranch extends Schema.Class<RemoteBranch>("@supervisor/RemoteBranch")({
   name: Schema.String,
   author: Schema.String,
   prNumber: Schema.NullOr(Schema.Number),
-  prStatus: Schema.NullOr(
-    Schema.Literals(["open", "draft", "merged"] as const)
-  ),
+  prStatus: Schema.NullOr(Schema.Literals(["open", "draft", "merged"] as const)),
   updatedAt: Schema.NullOr(Schema.String),
 }) {
   static filterBranches(
     branches: readonly RemoteBranch[],
     filter: BranchFilter,
-    searchQuery?: string
+    searchQuery?: string,
   ): RemoteBranch[] {
     let result = branches.filter((branch) => {
       if (filter === "recent" || filter === "all") return true;
@@ -365,9 +328,7 @@ export class RemoteBranch extends Schema.Class<RemoteBranch>(
     });
     if (searchQuery) {
       const lowercaseQuery = searchQuery.toLowerCase();
-      result = result.filter((branch) =>
-        branch.name.toLowerCase().includes(lowercaseQuery)
-      );
+      result = result.filter((branch) => branch.name.toLowerCase().includes(lowercaseQuery));
     }
     if (filter === "recent") {
       result = [...result]
@@ -387,17 +348,10 @@ export class FileDiff extends Schema.Class<FileDiff>("@supervisor/FileDiff")({
   diff: Schema.String,
 }) {}
 
-export const StepStatus = Schema.Literals([
-  "pending",
-  "active",
-  "passed",
-  "failed",
-]);
+export const StepStatus = Schema.Literals(["pending", "active", "passed", "failed"]);
 export type StepStatus = typeof StepStatus.Type;
 
-export class TestPlanStep extends Schema.Class<TestPlanStep>(
-  "@supervisor/TestPlanStep"
-)({
+export class TestPlanStep extends Schema.Class<TestPlanStep>("@supervisor/TestPlanStep")({
   id: StepId,
   title: Schema.String,
   instruction: Schema.String,
@@ -412,15 +366,9 @@ export class TestPlanStep extends Schema.Class<TestPlanStep>(
     fields: Partial<
       Pick<
         TestPlanStep,
-        | "title"
-        | "instruction"
-        | "expectedOutcome"
-        | "status"
-        | "summary"
-        | "startedAt"
-        | "endedAt"
+        "title" | "instruction" | "expectedOutcome" | "status" | "summary" | "startedAt" | "endedAt"
       >
-    >
+    >,
   ): TestPlanStep {
     return new TestPlanStep({ ...this, ...fields });
   }
@@ -429,9 +377,7 @@ export class TestPlanStep extends Schema.Class<TestPlanStep>(
 export const DraftId = Schema.String.pipe(Schema.brand("DraftId"));
 export type DraftId = typeof DraftId.Type;
 
-export class TestPlanDraft extends Schema.Class<TestPlanDraft>(
-  "@supervisor/TestPlanDraft"
-)({
+export class TestPlanDraft extends Schema.Class<TestPlanDraft>("@supervisor/TestPlanDraft")({
   id: DraftId,
   changesFor: ChangesFor,
   currentBranch: Schema.String,
@@ -444,19 +390,14 @@ export class TestPlanDraft extends Schema.Class<TestPlanDraft>(
 }) {
   update(
     fields: Partial<
-      Pick<
-        TestPlanDraft,
-        "instruction" | "baseUrl" | "isHeadless" | "requiresCookies"
-      >
-    >
+      Pick<TestPlanDraft, "instruction" | "baseUrl" | "isHeadless" | "requiresCookies">
+    >,
   ): TestPlanDraft {
     return new TestPlanDraft({ ...this, ...fields });
   }
 }
 
-export class TestPlan extends TestPlanDraft.extend<TestPlan>(
-  "@supervisor/TestPlan"
-)({
+export class TestPlan extends TestPlanDraft.extend<TestPlan>("@supervisor/TestPlan")({
   id: PlanId,
   title: Schema.String,
   rationale: Schema.String,
@@ -464,24 +405,16 @@ export class TestPlan extends TestPlanDraft.extend<TestPlan>(
 }) {
   update(
     fields: Partial<
-      Pick<
-        TestPlanDraft,
-        "instruction" | "baseUrl" | "isHeadless" | "requiresCookies"
-      >
-    >
+      Pick<TestPlanDraft, "instruction" | "baseUrl" | "isHeadless" | "requiresCookies">
+    >,
   ): TestPlan {
     return new TestPlan({ ...this, ...fields });
   }
 
-  updateStep(
-    stepIndex: number,
-    updater: (step: TestPlanStep) => TestPlanStep
-  ): TestPlan {
+  updateStep(stepIndex: number, updater: (step: TestPlanStep) => TestPlanStep): TestPlan {
     return new TestPlan({
       ...this,
-      steps: this.steps.map((step, index) =>
-        index === stepIndex ? updater(step) : step
-      ),
+      steps: this.steps.map((step, index) => (index === stepIndex ? updater(step) : step)),
     });
   }
 
@@ -500,7 +433,7 @@ export class TestPlan extends TestPlanDraft.extend<TestPlan>(
             summary: Option.none(),
             startedAt: Option.none(),
             endedAt: Option.none(),
-          })
+          }),
       ),
     });
   }
@@ -514,25 +447,19 @@ export class RunStarted extends Schema.TaggedClass<RunStarted>()("RunStarted", {
   }
 }
 
-export class StepStarted extends Schema.TaggedClass<StepStarted>()(
-  "StepStarted",
-  {
-    stepId: StepId,
-    title: Schema.String,
-  }
-) {
+export class StepStarted extends Schema.TaggedClass<StepStarted>()("StepStarted", {
+  stepId: StepId,
+  title: Schema.String,
+}) {
   get id(): string {
     return `step-started-${this.stepId}`;
   }
 }
 
-export class StepCompleted extends Schema.TaggedClass<StepCompleted>()(
-  "StepCompleted",
-  {
-    stepId: StepId,
-    summary: Schema.String,
-  }
-) {
+export class StepCompleted extends Schema.TaggedClass<StepCompleted>()("StepCompleted", {
+  stepId: StepId,
+  summary: Schema.String,
+}) {
   get id(): string {
     return `step-completed-${this.stepId}`;
   }
@@ -556,22 +483,16 @@ export class ToolCall extends Schema.TaggedClass<ToolCall>()("ToolCall", {
   }
   get displayText(): string {
     if (Predicate.isObject(this.input) && "command" in this.input) {
-      return String(this.input.command).slice(
-        0,
-        TOOL_CALL_DISPLAY_TEXT_CHAR_LIMIT
-      );
+      return String(this.input.command).slice(0, TOOL_CALL_DISPLAY_TEXT_CHAR_LIMIT);
     }
     return this.toolName;
   }
 }
 
-export class ToolProgress extends Schema.TaggedClass<ToolProgress>()(
-  "ToolProgress",
-  {
-    toolName: Schema.String,
-    outputSize: Schema.Number,
-  }
-) {
+export class ToolProgress extends Schema.TaggedClass<ToolProgress>()("ToolProgress", {
+  toolName: Schema.String,
+  outputSize: Schema.Number,
+}) {
   get id(): string {
     return `tool-progress-${this.toolName}-${this.outputSize}`;
   }
@@ -587,12 +508,9 @@ export class ToolResult extends Schema.TaggedClass<ToolResult>()("ToolResult", {
   }
 }
 
-export class AgentThinking extends Schema.TaggedClass<AgentThinking>()(
-  "AgentThinking",
-  {
-    text: Schema.String,
-  }
-) {
+export class AgentThinking extends Schema.TaggedClass<AgentThinking>()("AgentThinking", {
+  text: Schema.String,
+}) {
   get id(): string {
     return `agent-thinking-${this.text}`;
   }
@@ -606,13 +524,10 @@ export class AgentText extends Schema.TaggedClass<AgentText>()("AgentText", {
   }
 }
 
-export class RunFinished extends Schema.TaggedClass<RunFinished>()(
-  "RunFinished",
-  {
-    status: Schema.Literals(["passed", "failed"] as const),
-    summary: Schema.String,
-  }
-) {
+export class RunFinished extends Schema.TaggedClass<RunFinished>()("RunFinished", {
+  status: Schema.Literals(["passed", "failed"] as const),
+  summary: Schema.String,
+}) {
   get id(): string {
     return `run-finished-${this.status}`;
   }
@@ -661,8 +576,7 @@ const parseMarker = (line: string): ExecutionEvent | undefined => {
     });
   }
   if (marker === "RUN_COMPLETED") {
-    const status =
-      first === "failed" ? ("failed" as const) : ("passed" as const);
+    const status = first === "failed" ? ("failed" as const) : ("passed" as const);
     return new RunFinished({ status, summary: second });
   }
   return undefined;
@@ -682,12 +596,9 @@ export const ExecutionEvent = Schema.Union([
 ]);
 export type ExecutionEvent = typeof ExecutionEvent.Type;
 
-export class RunCompleted extends Schema.TaggedClass<RunCompleted>()(
-  "RunCompleted",
-  {
-    report: Schema.suspend((): Schema.Schema<TestReport> => TestReport),
-  }
-) {}
+export class RunCompleted extends Schema.TaggedClass<RunCompleted>()("RunCompleted", {
+  report: Schema.suspend((): Schema.Schema<TestReport> => TestReport),
+}) {}
 
 export const UpdateContent = Schema.Union([
   RunStarted,
@@ -707,9 +618,7 @@ export class Update extends Schema.Class<Update>("@supervisor/Update")({
   receivedAt: Schema.DateTimeUtc,
 }) {}
 
-export class PullRequest extends Schema.Class<PullRequest>(
-  "@supervisor/PullRequest"
-)({
+export class PullRequest extends Schema.Class<PullRequest>("@supervisor/PullRequest")({
   number: Schema.Number,
   url: Schema.String,
   title: Schema.String,
@@ -735,7 +644,7 @@ export const testContextId = (context: TestContext): string =>
       Branch: ({ branch }) => `branch-${branch.name}`,
       PullRequest: ({ branch }) => `pr-${branch.prNumber}`,
       Commit: ({ hash }) => `commit-${hash}`,
-    })
+    }),
   );
 
 export const testContextFilterText = (context: TestContext): string =>
@@ -743,10 +652,9 @@ export const testContextFilterText = (context: TestContext): string =>
     Match.tagsExhaustive({
       WorkingTree: () => "local changes",
       Branch: ({ branch }) => branch.name,
-      PullRequest: ({ branch }) =>
-        `#${branch.prNumber} ${branch.name} ${branch.author}`,
+      PullRequest: ({ branch }) => `#${branch.prNumber} ${branch.name} ${branch.author}`,
       Commit: ({ shortHash, subject }) => `${shortHash} ${subject}`,
-    })
+    }),
   );
 
 export const testContextLabel = (context: TestContext): string =>
@@ -756,7 +664,7 @@ export const testContextLabel = (context: TestContext): string =>
       Branch: ({ branch }) => branch.name,
       PullRequest: ({ branch }) => branch.name,
       Commit: ({ shortHash }) => shortHash,
-    })
+    }),
   );
 
 export const testContextDescription = (context: TestContext): string =>
@@ -764,10 +672,9 @@ export const testContextDescription = (context: TestContext): string =>
     Match.tagsExhaustive({
       WorkingTree: () => "working tree",
       Branch: ({ branch }) => (branch.author ? `by ${branch.author}` : ""),
-      PullRequest: ({ branch }) =>
-        `#${branch.prNumber} ${branch.prStatus ?? ""}`.trim(),
+      PullRequest: ({ branch }) => `#${branch.prNumber} ${branch.prStatus ?? ""}`.trim(),
       Commit: ({ subject }) => subject,
-    })
+    }),
   );
 
 export const testContextDisplayLabel = (context: TestContext): string =>
@@ -777,7 +684,7 @@ export const testContextDisplayLabel = (context: TestContext): string =>
       Branch: ({ branch }) => branch.name,
       PullRequest: ({ branch }) => `#${branch.prNumber}`,
       Commit: ({ shortHash }) => shortHash,
-    })
+    }),
   );
 
 export const FindPullRequestPayload = Schema.TaggedUnion({
@@ -786,14 +693,13 @@ export const FindPullRequestPayload = Schema.TaggedUnion({
 export type FindPullRequestPayload = typeof FindPullRequestPayload.Type;
 
 export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
-  "@supervisor/ExecutedTestPlan"
+  "@supervisor/ExecutedTestPlan",
 )({
   events: Schema.Array(ExecutionEvent),
 }) {
   addEvent(update: AcpSessionUpdate): ExecutedTestPlan {
     if (update.sessionUpdate === "agent_thought_chunk") {
-      if (update.content.type !== "text" || update.content.text === undefined)
-        return this;
+      if (update.content.type !== "text" || update.content.text === undefined) return this;
       const base = this.finalizeTextBlock();
       const lastEvent = base.events.at(-1);
       if (lastEvent?._tag === "AgentThinking") {
@@ -807,16 +713,12 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
       }
       return new ExecutedTestPlan({
         ...base,
-        events: [
-          ...base.events,
-          new AgentThinking({ text: update.content.text }),
-        ],
+        events: [...base.events, new AgentThinking({ text: update.content.text })],
       });
     }
 
     if (update.sessionUpdate === "agent_message_chunk") {
-      if (update.content.type !== "text" || update.content.text === undefined)
-        return this;
+      if (update.content.type !== "text" || update.content.text === undefined) return this;
       const lastEvent = this.events.at(-1);
       if (lastEvent?._tag === "AgentText") {
         return new ExecutedTestPlan({
@@ -854,10 +756,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
         const updatedEvents = [...current.events];
         for (let index = updatedEvents.length - 1; index >= 0; index--) {
           const event = updatedEvents[index];
-          if (
-            event._tag === "ToolCall" &&
-            event.toolName === (update.title ?? "")
-          ) {
+          if (event._tag === "ToolCall" && event.toolName === (update.title ?? "")) {
             updatedEvents[index] = new ToolCall({
               toolName: event.toolName,
               input: JSON.stringify(update.rawInput),
@@ -888,10 +787,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
           events: [
             ...current.events.filter(
               (event) =>
-                !(
-                  event._tag === "ToolProgress" &&
-                  event.toolName === (update.title ?? "")
-                )
+                !(event._tag === "ToolProgress" && event.toolName === (update.title ?? "")),
             ),
             new ToolProgress({
               toolName: update.title ?? "",
@@ -937,7 +833,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
                   title: marker.title,
                   startedAt: Option.some(DateTime.nowUnsafe()),
                 })
-              : step
+              : step,
           ),
         });
       }
@@ -970,7 +866,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
                 expectedOutcome: marker.summary,
                 endedAt: Option.some(DateTime.nowUnsafe()),
               })
-            : step
+            : step,
         ),
       });
     }
@@ -985,7 +881,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
                 expectedOutcome: marker.message,
                 endedAt: Option.some(DateTime.nowUnsafe()),
               })
-            : step
+            : step,
         ),
       });
     }
@@ -997,23 +893,17 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
   }
 
   get completedStepCount(): number {
-    return this.steps.filter(
-      (step) => step.status === "passed" || step.status === "failed"
-    ).length;
+    return this.steps.filter((step) => step.status === "passed" || step.status === "failed").length;
   }
 
   get lastToolCallDisplayText(): string | undefined {
-    const lastToolCall = this.events.findLast(
-      (event) => event._tag === "ToolCall"
-    );
+    const lastToolCall = this.events.findLast((event) => event._tag === "ToolCall");
     if (!lastToolCall || lastToolCall._tag !== "ToolCall") return undefined;
     return lastToolCall.displayText;
   }
 }
 
-export class TestReport extends ExecutedTestPlan.extend<TestReport>(
-  "@supervisor/TestReport"
-)({
+export class TestReport extends ExecutedTestPlan.extend<TestReport>("@supervisor/TestReport")({
   summary: Schema.String,
   screenshotPaths: Schema.Array(Schema.String),
   pullRequest: Schema.Option(Schema.suspend(() => PullRequest)),
@@ -1023,10 +913,9 @@ export class TestReport extends ExecutedTestPlan.extend<TestReport>(
     StepId,
     { status: "passed" | "failed" | "not-run"; summary: string }
   > {
-    const statuses = new Map<
-      StepId,
-      { status: "passed" | "failed" | "not-run"; summary: string }
-    >(this.steps.map((step) => [step.id, { status: "not-run", summary: "" }]));
+    const statuses = new Map<StepId, { status: "passed" | "failed" | "not-run"; summary: string }>(
+      this.steps.map((step) => [step.id, { status: "not-run", summary: "" }]),
+    );
 
     for (const event of this.events) {
       if (event._tag === "StepCompleted") {
@@ -1056,10 +945,10 @@ export class TestReport extends ExecutedTestPlan.extend<TestReport>(
   get toPlainText(): string {
     const statuses = this.stepStatuses;
     const passedCount = this.steps.filter(
-      (step) => statuses.get(step.id)?.status === "passed"
+      (step) => statuses.get(step.id)?.status === "passed",
     ).length;
     const failedCount = this.steps.filter(
-      (step) => statuses.get(step.id)?.status === "failed"
+      (step) => statuses.get(step.id)?.status === "failed",
     ).length;
 
     const icon = this.status === "passed" ? "\u2705" : "\u274C";
@@ -1076,11 +965,7 @@ export class TestReport extends ExecutedTestPlan.extend<TestReport>(
       const entry = statuses.get(step.id);
       const stepStatus = entry?.status ?? "not-run";
       const stepIcon =
-        stepStatus === "passed"
-          ? "\u2713"
-          : stepStatus === "failed"
-          ? "\u2717"
-          : "\u2013";
+        stepStatus === "passed" ? "\u2713" : stepStatus === "failed" ? "\u2717" : "\u2013";
       lines.push(`  ${stepIcon} ${step.title}`);
       if (entry?.summary) {
         lines.push(`    ${entry.summary}`);

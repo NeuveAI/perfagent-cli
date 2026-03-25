@@ -1048,11 +1048,7 @@ export const ReplayViewer = ({
           </div>
         )}
         <div className="relative min-w-0 flex-1">
-          <div
-            ref={backdropRef}
-            className="absolute inset-0 p-6"
-            style={REPLAY_BACKDROP_STYLE}
-          >
+          <div ref={backdropRef} className="absolute inset-0 p-6" style={REPLAY_BACKDROP_STYLE}>
             <div
               className="glow-pulse pointer-events-none absolute inset-0"
               style={{
@@ -1081,24 +1077,22 @@ export const ReplayViewer = ({
               ))}
             </AnimatePresence>
           </div>
+          {!hasEvents && (
+            <div
+              className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4"
+              style={{ fontFamily: CONTROL_FONT_FAMILY }}
+            >
+              {live && (
+                <span className="text-shimmer text-sm font-medium">
+                  Waiting for browser session...
+                </span>
+              )}
+              {!live && (
+                <span className="text-sm font-medium text-white/90 drop-shadow-sm">No events</span>
+              )}
+            </div>
+          )}
         </div>
-        {!hasEvents && (
-          <div
-            className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4"
-            style={{ fontFamily: CONTROL_FONT_FAMILY }}
-          >
-            {live && (
-              <span className="text-shimmer text-sm font-medium">
-                Waiting for browser session...
-              </span>
-            )}
-            {!live && (
-              <span className="text-sm font-medium text-white/90 drop-shadow-sm">
-                No recording available
-              </span>
-            )}
-          </div>
-        )}
       </div>
 
       <div
