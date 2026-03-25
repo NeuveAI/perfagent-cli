@@ -196,7 +196,9 @@ export class McpSession extends ServiceMap.Service<McpSession>()("@browser/McpSe
         const pollPage = Effect.sync(() => Ref.getUnsafe(sessionRef)?.page).pipe(
           Effect.flatMap((page) => {
             if (!page || page.isClosed()) return Effect.void;
-            return evaluateRuntime(page, "getEvents").pipe(
+            return evaluateRuntime(page, "startRecording").pipe(
+              Effect.catchCause(() => Effect.void),
+              Effect.flatMap(() => evaluateRuntime(page, "getEvents")),
               Effect.tap((events) =>
                 Effect.sync(() => {
                   if (Array.isArray(events) && events.length > 0) {

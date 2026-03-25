@@ -282,5 +282,3 @@ export const getAllEvents = (): eventWithTime[] => {
 export const getEventCount = (): number => {
   return eventBuffer.length;
 };
-
-startRecording();
