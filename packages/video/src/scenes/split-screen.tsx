@@ -12,8 +12,8 @@ import { fontFamily } from "../utils/font";
 import { BrowserCell, CELL_HEIGHT_PX, CELL_WIDTH_PX, type PageVariant } from "./browser-cell";
 
 const FRAMES_PER_CASE = 75;
-const FINALE_FRAMES = 90;
-const CASE_COUNT = 4;
+const FINALE_FRAMES = 120;
+const CASE_COUNT = 3;
 export const SPLIT_SCREEN_DURATION_FRAMES = FRAMES_PER_CASE * CASE_COUNT + FINALE_FRAMES;
 
 interface TestCase {
@@ -26,7 +26,6 @@ const TEST_CASES: TestCase[] = [
   { category: "Perf", label: "FCP exceeds 2.5s", variant: "signup" },
   { category: "Security", label: "CSRF missing on /subscribe", variant: "analytics" },
   { category: "Debug", label: "TypeError — undefined", variant: "dashboard" },
-  { category: "E2E", label: "/api/signup → 500", variant: "checkout" },
 ];
 
 const BROWSER_MARGIN_PX = 50;
@@ -59,6 +58,17 @@ const FINALE_GROUP_HEIGHT_PX = (CASE_COUNT - 1) * FINALE_ROW_SPACING_PX;
 const FINALE_TOP_START_PX = (VIDEO_HEIGHT_PX - FINALE_GROUP_HEIGHT_PX) / 2;
 const FINALE_LEFT_PX = 80;
 const FINALE_COMMAND_FONT_SIZE_PX = 48;
+const FINALE_APPEAR_DELAY_FRAMES = 8;
+const FINALE_RESOLVE_DELAY_FRAMES = 20;
+const FINALE_RESOLVE_STAGGER_FRAMES = 6;
+const FINALE_RESOLVE_DURATION_FRAMES = 6;
+const FINALE_COVERAGE_DELAY_FRAMES = 10;
+const FINALE_COVERAGE_FILL_FRAMES = 20;
+const FINALE_COVERAGE_FONT_SIZE_PX = 64;
+const FINALE_COVERAGE_BAR_FONT_SIZE_PX = 56;
+const FINALE_FILLED_CHAR = "\u2588";
+const FINALE_EMPTY_CHAR = "\u2591";
+const FINALE_BAR_SEGMENTS = 10;
 
 const AsciiSpinner = ({ size, frame }: { size: number; frame: number }) => {
   const charIndex = Math.floor(frame / SPINNER_SPEED_FRAMES) % SPINNER_CHARS.length;
@@ -214,7 +224,7 @@ export const SplitScreen = () => {
             width: "100%",
             height: OVERLAY_HEIGHT_PX,
             background:
-              "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.7) 40%, rgba(0,0,0,0.9) 100%)",
+              "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.15) 20%, rgba(0,0,0,0.45) 45%, rgba(0,0,0,0.75) 70%, rgba(0,0,0,0.95) 100%)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -293,11 +303,18 @@ export const SplitScreen = () => {
               <span style={{ color: "#999" }}>{COMMAND}</span>
             </div>
 
-            {TEST_CASES.map((testCase, index) => {
-              const rowStartFrame = FINALE_START_FRAME + 8 + index * FINALE_ROW_STAGGER_FRAMES;
-              const rowOpacity = interpolate(
+            {(() => {
+              const appearStart = FINALE_START_FRAME + FINALE_APPEAR_DELAY_FRAMES;
+              const resolveBase =
+                appearStart + FINALE_ROW_APPEAR_FRAMES + FINALE_RESOLVE_DELAY_FRAMES;
+              const lastResolveEnd =
+                resolveBase +
+                (CASE_COUNT - 1) * FINALE_RESOLVE_STAGGER_FRAMES +
+                FINALE_RESOLVE_DURATION_FRAMES;
+              const coverageStart = lastResolveEnd + FINALE_COVERAGE_DELAY_FRAMES;
+              const coverageProgress = interpolate(
                 frame,
-                [rowStartFrame, rowStartFrame + FINALE_ROW_APPEAR_FRAMES],
+                [coverageStart, coverageStart + FINALE_COVERAGE_FILL_FRAMES],
                 [0, 1],
                 {
                   extrapolateLeft: "clamp",
@@ -305,10 +322,23 @@ export const SplitScreen = () => {
                   easing: Easing.out(Easing.cubic),
                 },
               );
-              const rowScale = interpolate(
+              const coverageOpacity = interpolate(
                 frame,
-                [rowStartFrame, rowStartFrame + FINALE_ROW_APPEAR_FRAMES],
-                [0.7, 1],
+                [coverageStart - 5, coverageStart + 5],
+                [0, 1],
+                {
+                  extrapolateLeft: "clamp",
+                  extrapolateRight: "clamp",
+                  easing: Easing.out(Easing.cubic),
+                },
+              );
+              const filledSegments = Math.round(coverageProgress * FINALE_BAR_SEGMENTS);
+              const displayPercent = Math.round(coverageProgress * 100);
+
+              const rowOpacity = interpolate(
+                frame,
+                [appearStart, appearStart + FINALE_ROW_APPEAR_FRAMES],
+                [0, 1],
                 {
                   extrapolateLeft: "clamp",
                   extrapolateRight: "clamp",
@@ -317,41 +347,105 @@ export const SplitScreen = () => {
               );
 
               return (
-                <div
-                  key={testCase.label}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 20,
-                    fontFamily,
-                    fontSize: FINALE_FONT_SIZE_PX,
-                    whiteSpace: "nowrap",
-                    opacity: rowOpacity,
-                  }}
-                >
+                <>
+                  {TEST_CASES.map((testCase, index) => {
+                    const resolveStart = resolveBase + index * FINALE_RESOLVE_STAGGER_FRAMES;
+                    const resolveProgress = interpolate(
+                      frame,
+                      [resolveStart, resolveStart + FINALE_RESOLVE_DURATION_FRAMES],
+                      [0, 1],
+                      {
+                        extrapolateLeft: "clamp",
+                        extrapolateRight: "clamp",
+                        easing: Easing.out(Easing.cubic),
+                      },
+                    );
+                    const resolveScale = interpolate(resolveProgress, [0, 1], [0.7, 1]);
+
+                    return (
+                      <div
+                        key={testCase.label}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 20,
+                          fontFamily,
+                          fontSize: FINALE_FONT_SIZE_PX,
+                          whiteSpace: "nowrap",
+                          opacity: rowOpacity,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: FINALE_ICON_SIZE_PX,
+                            height: FINALE_ICON_SIZE_PX,
+                            position: "relative",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <FailedIcon size={FINALE_ICON_SIZE_PX} opacity={1 - resolveProgress} />
+                          <CheckIcon
+                            size={FINALE_ICON_SIZE_PX}
+                            opacity={resolveProgress}
+                            scale={resolveScale}
+                          />
+                        </div>
+                        <span
+                          style={{
+                            color: resolveProgress >= 0.5 ? CHECK_ICON_COLOR : ERROR_ICON_COLOR,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            maxWidth: VIDEO_WIDTH_PX - FINALE_ICON_SIZE_PX - 20 - 160,
+                          }}
+                        >
+                          {testCase.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+
                   <div
                     style={{
-                      width: FINALE_ICON_SIZE_PX,
-                      height: FINALE_ICON_SIZE_PX,
-                      position: "relative",
-                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: 24,
+                      fontFamily,
+                      whiteSpace: "nowrap",
+                      opacity: coverageOpacity,
+                      marginTop: 20,
                     }}
                   >
-                    <CheckIcon size={FINALE_ICON_SIZE_PX} opacity={1} scale={rowScale} />
+                    <span
+                      style={{
+                        fontSize: FINALE_COVERAGE_FONT_SIZE_PX,
+                        fontWeight: 700,
+                        color: CHECK_ICON_COLOR,
+                        lineHeight: 1,
+                      }}
+                    >
+                      {displayPercent}%
+                    </span>
+                    <span style={{ fontSize: FINALE_COVERAGE_BAR_FONT_SIZE_PX, lineHeight: 1 }}>
+                      <span style={{ color: CHECK_ICON_COLOR }}>
+                        {FINALE_FILLED_CHAR.repeat(filledSegments)}
+                      </span>
+                      <span style={{ color: "#333333" }}>
+                        {FINALE_EMPTY_CHAR.repeat(FINALE_BAR_SEGMENTS - filledSegments)}
+                      </span>
+                    </span>
+                    <span
+                      style={{
+                        fontSize: FINALE_COVERAGE_FONT_SIZE_PX,
+                        color: CHECK_ICON_COLOR,
+                        lineHeight: 1,
+                      }}
+                    >
+                      test coverage
+                    </span>
                   </div>
-                  <span
-                    style={{
-                      color: CHECK_ICON_COLOR,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      maxWidth: VIDEO_WIDTH_PX - FINALE_ICON_SIZE_PX - 20 - 160,
-                    }}
-                  >
-                    {testCase.label}
-                  </span>
-                </div>
+                </>
               );
-            })}
+            })()}
           </div>
         </AbsoluteFill>
       )}
