@@ -25,4 +25,14 @@ jobs:
           GITHUB_ACTIONS: "1"
       - name: Build
         run: pnpm build
-      - run: pnpm dlx pkg-pr-new publish ./apps/cli
+      - name: Publish
+        id: publish
+        run: |
+          OUTPUT=$(pnpm dlx pkg-pr-new publish ./apps/cli 2>&1) || true
+          echo "$OUTPUT"
+          URL=$(echo "$OUTPUT" | grep -oE 'https://pkg\.pr\.new/[^ ]+')
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+      - name: Smoke test — published CLI runs
+        run: |
+          npx ${{ steps.publish.outputs.url }} --version
+          npx ${{ steps.publish.outputs.url }} --help | grep -q "AI-powered browser testing"
