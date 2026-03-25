@@ -4,6 +4,7 @@ import { Calligraph } from "calligraph";
 import { useEffect, useRef, useState } from "react";
 import type { eventWithTime } from "@posthog/rrweb";
 import type { Replayer } from "@posthog/rrweb";
+import { motion } from "motion/react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatTime } from "@/lib/format-time";
 import { createCursorZoom } from "@/lib/cursor-zoom";
@@ -15,7 +16,6 @@ import type { ViewerRunState, ViewerStepEvent } from "@/lib/replay-types";
 const SPEEDS = [1, 2, 4, 8] as const;
 const TIMER_INTERVAL_MS = 100;
 const LIVE_EDGE_THRESHOLD_MS = 2000;
-const LIVE_RESUME_BUFFER_MS = 3000;
 const LIVE_STALL_TICK_THRESHOLD = 5;
 const IDLE_THRESHOLD_MS = 4000;
 const IDLE_SPEED_TIERS = [
@@ -24,12 +24,8 @@ const IDLE_SPEED_TIERS = [
   { afterMs: 20000, speed: 8 },
   { afterMs: 40000, speed: 16 },
 ] as const;
-const CONTROL_BUTTON_SHADOW = [
-  "color(display-p3 0 0 0 / 12%) 0px 0px 0px 1px",
-  "color(display-p3 0.752 0.752 0.752 / 12%) 0px 2px 2px",
-].join(", ");
 const LIVE_PLAYBACK_BAR_SHADOW =
-  "color(display-p3 0.281 0.281 0.281 / 16%) 0px 0px 0px 1px";
+  "color(display-p3 0.281 0.281 0.281 / 22%) 0px 0px 0px 1px";
 const LIVE_PLAYBACK_BAR_BUTTON_SHADOW =
   "color(display-p3 0.847 0.847 0.847) 0px 0px 0px 0.5px";
 const LIVE_PLAYBACK_BAR_MARKER_INTERVAL_MS = 10_000;
@@ -46,10 +42,15 @@ const VIEWER_SHELL_SHADOW = "color(display-p3 0.788 0.788 0.788 / 20%) 0px 2px 3
 const CONTROL_FONT_FAMILY =
   '"SF Pro Display", "SFProDisplay-Medium", "Inter Variable", system-ui, sans-serif';
 const PAPER_TIME_LENGTH = 5;
-const PLAYBACK_BAR_TRACK_COLOR = "color(display-p3 0.897 0.897 0.897)";
-const LIVE_PLAYBACK_BAR_SURFACE_COLOR = "color(display-p3 0.971 0.971 0.971)";
+const LIVE_PLAYBACK_BAR_SURFACE_COLOR = "color(display-p3 0.938 0.938 0.938)";
 const LIVE_PLAYBACK_PROGRESS_BACKGROUND_IMAGE =
   "linear-gradient(in oklab 180deg, oklab(100% 0 0) 0%, oklab(100% 0 0 / 61%) 100%)";
+const ACTIVE_STEP_CARD_SHADOW = "color(display-p3 0.847 0.847 0.847) 0px 0px 0px 0.5px";
+const ACTIVE_STEP_CARD_TRANSITION = {
+  type: "tween",
+  duration: 0.16,
+  ease: [0.2, 0.8, 0.2, 1],
+} as const;
 
 const getReplayDuration = (replayEvents: eventWithTime[]) => {
   if (replayEvents.length < 2) return 0;
@@ -65,6 +66,25 @@ const getStepRelativeTime = (step: ViewerStepEvent, replayStartMs: number) => {
   const endMs =
     step.endedAtMs !== undefined ? Math.max(0, step.endedAtMs - replayStartMs) : undefined;
   return { startMs, endMs };
+};
+
+const getPlaybackStepIndex = (
+  stepEvents: readonly ViewerStepEvent[] | undefined,
+  replayStartMs: number,
+  currentTime: number,
+) => {
+  if (!stepEvents || stepEvents.length === 0) return -1;
+
+  for (let index = stepEvents.length - 1; index >= 0; index--) {
+    const { startMs, endMs } = getStepRelativeTime(stepEvents[index], replayStartMs);
+    const stepTimeMs = startMs ?? endMs;
+    if (stepTimeMs === undefined) continue;
+    if (stepTimeMs <= currentTime) {
+      return index;
+    }
+  }
+
+  return 0;
 };
 
 interface ControlIconProps {
@@ -133,6 +153,9 @@ export const ReplayViewer = ({
   const autoPlayTriggeredRef = useRef(false);
   const liveRef = useRef(live);
   liveRef.current = live;
+  const playPauseRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const stepNavigationRef = useRef<((direction: "up" | "down") => void) | undefined>(undefined);
+  const stepJumpRef = useRef<((stepNumber: number) => void) | undefined>(undefined);
   const isIdleSpeedRef = useRef(false);
   const userSpeedRef = useRef<(typeof SPEEDS)[number]>(1);
   const lastCursorPosRef = useRef("");
@@ -241,6 +264,60 @@ export const ReplayViewer = ({
     };
   });
 
+  useMountEffect(() => {
+    const handleWindowKeyDown = (event: KeyboardEvent) => {
+      const pressedSpace = event.code === "Space" || event.key === " ";
+      const isModifierPressed = event.metaKey || event.ctrlKey || event.altKey;
+      if (pressedSpace) {
+        if (event.repeat || isModifierPressed) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void playPauseRef.current?.();
+        return;
+      }
+
+      const eventTarget = event.target;
+      const targetElement = eventTarget instanceof HTMLElement ? eventTarget : null;
+      const targetUsesArrowKeys =
+        targetElement?.isContentEditable ||
+        targetElement?.tagName === "INPUT" ||
+        targetElement?.tagName === "TEXTAREA" ||
+        targetElement?.tagName === "SELECT";
+      if (isModifierPressed || targetUsesArrowKeys) return;
+
+      const pressedDigit = /^\d$/.test(event.key)
+        ? event.key === "0"
+          ? 10
+          : Number(event.key)
+        : undefined;
+      if (pressedDigit !== undefined) {
+        if (event.repeat) return;
+        event.preventDefault();
+        event.stopPropagation();
+        stepJumpRef.current?.(pressedDigit);
+        return;
+      }
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        event.stopPropagation();
+        stepNavigationRef.current?.("down");
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        event.stopPropagation();
+        stepNavigationRef.current?.("up");
+      }
+    };
+
+    window.addEventListener("keydown", handleWindowKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleWindowKeyDown);
+    };
+  });
+
   useEffect(() => {
     if (!onAddEventsRef) return;
     onAddEventsRef((newEvents) => {
@@ -255,7 +332,7 @@ export const ReplayViewer = ({
   useEffect(() => {
     if (autoPlayTriggeredRef.current || !live || replayerRef.current || events.length < 2) return;
     autoPlayTriggeredRef.current = true;
-    handlePlay();
+    void playPauseRef.current?.();
   }, [live, events.length]);
 
   const setupScalingAndZoom = () => {
@@ -373,9 +450,7 @@ export const ReplayViewer = ({
     });
     replayerRef.current = replayer;
 
-    const startTime = liveRef.current
-      ? Math.max(0, replayDuration - LIVE_RESUME_BUFFER_MS)
-      : Math.min(currentTime, replayDuration);
+    const startTime = liveRef.current ? replayDuration : Math.min(currentTime, replayDuration);
     setCurrentTime(startTime);
     replayer.play(startTime);
     setPlaying(true);
@@ -383,6 +458,7 @@ export const ReplayViewer = ({
 
     cleanupZoomRef.current = setupScalingAndZoom();
   };
+  playPauseRef.current = handlePlay;
 
   const seekTo = (timeMs: number) => {
     setCurrentTime(timeMs);
@@ -441,19 +517,67 @@ export const ReplayViewer = ({
   const playbackBarProgressPercent = (playbackBarValue / playbackBarMax) * 100;
   const playbackBarProgress = playbackBarProgressPercent.toFixed(1);
 
-  const currentStepForLabel = (() => {
-    if (!steps || replayStartMs === 0) return undefined;
-    for (let index = steps.steps.length - 1; index >= 0; index--) {
-      const { startMs } = getStepRelativeTime(steps.steps[index], replayStartMs);
-      if (startMs !== undefined && currentTime >= startMs) {
-        return { index, step: steps.steps[index] };
-      }
-    }
-    return undefined;
-  })();
+  const activeStepIndex = getPlaybackStepIndex(steps?.steps, replayStartMs, currentTime);
+  const currentStep = steps && activeStepIndex >= 0 ? steps.steps[activeStepIndex] : undefined;
+  const currentStepLabel = currentStep ? `Step ${activeStepIndex + 1}` : "";
+  const currentStepTitle = currentStep?.title ?? "";
+  const stepList = steps?.steps.map((step, index) => {
+    const isActive = index === activeStepIndex;
+    const { startMs, endMs } = getStepRelativeTime(step, replayStartMs);
+    const timeMs = startMs ?? endMs;
+    return {
+      stepId: step.stepId,
+      label: `${index + 1}`,
+      title: step.title,
+      isActive,
+      timeMs,
+      dotClassName:
+        step.status === "failed"
+          ? "bg-[color(display-p3_0.988_0.153_0.184)]"
+          : step.status === "passed"
+            ? "bg-[color(display-p3_0.249_0.701_0.193)]"
+            : "bg-[color(display-p3_0.787_0.787_0.787)]",
+    };
+  }) ?? [];
+  stepNavigationRef.current = (direction) => {
+    if (!hasEvents) return;
+    const navigableStepIndices = stepList.flatMap((step, index) =>
+      step.timeMs !== undefined ? [index] : [],
+    );
+    if (navigableStepIndices.length === 0) return;
 
-  const stepLabel = currentStepForLabel ? `Step ${currentStepForLabel.index + 1}` : "";
-  const stepTitle = currentStepForLabel ? currentStepForLabel.step.title : "";
+    const currentNavigablePosition = navigableStepIndices.findIndex((index) => index === activeStepIndex);
+    if (currentNavigablePosition === -1) {
+      if (direction === "down") {
+        const firstStepIndex = navigableStepIndices[0];
+        const firstStep = stepList[firstStepIndex];
+        if (firstStep?.timeMs !== undefined) {
+          seekTo(firstStep.timeMs);
+        }
+      }
+      return;
+    }
+
+    const stepOffset = direction === "down" ? 1 : -1;
+    const nextPosition = Math.min(
+      Math.max(currentNavigablePosition + stepOffset, 0),
+      navigableStepIndices.length - 1,
+    );
+    const nextStepIndex = navigableStepIndices[nextPosition];
+    if (nextStepIndex === activeStepIndex) return;
+
+    const nextStep = stepList[nextStepIndex];
+    if (nextStep?.timeMs !== undefined) {
+      seekTo(nextStep.timeMs);
+    }
+  };
+  stepJumpRef.current = (stepNumber) => {
+    if (!hasEvents || stepNumber < 1) return;
+    const targetStep = stepList[stepNumber - 1];
+    if (targetStep?.timeMs !== undefined) {
+      seekTo(targetStep.timeMs);
+    }
+  };
   const playbackBarFillVisible = hasEvents && playbackBarValue > 0;
   const playbackBarFillClassName =
     playbackBarValue >= playbackBarMax ? "rounded-full" : "rounded-l-full";
@@ -469,11 +593,11 @@ export const ReplayViewer = ({
   const visiblePlaybackBarMarkerPositions = playbackBarMarkerPositions.slice(1);
   const playbackStepMarkers =
     steps && replayStartMs !== 0
-      ? steps.steps.flatMap((step, index) => {
+      ? steps.steps.slice(1).flatMap((step, index) => {
           if (step.status !== "passed" && step.status !== "failed") return [];
 
           const { startMs, endMs } = getStepRelativeTime(step, replayStartMs);
-          const markerTimeMs = endMs ?? startMs;
+          const markerTimeMs = startMs ?? endMs;
           if (markerTimeMs === undefined) return [];
 
           const markerPercent = Math.min(
@@ -514,19 +638,67 @@ export const ReplayViewer = ({
     >
       <div
         ref={viewerShellRef}
-        className="relative h-0 grow overflow-hidden rounded-[26px] border-[7px] border-solid border-[color(display-p3_1_1_1)] bg-[color(display-p3_0.977_0.977_0.977)]"
+        className="flex h-0 grow overflow-hidden rounded-[26px] border-[7px] border-solid border-[color(display-p3_1_1_1)] bg-[color(display-p3_0.977_0.977_0.977)]"
         style={{ boxShadow: VIEWER_SHELL_SHADOW }}
       >
-        <div
-          ref={backdropRef}
-          className="absolute inset-0 bg-linear-to-br from-sky-200 to-blue-400 p-6"
-        >
-          <MacWindow>
-            <div
-              ref={replayRef}
-              className="relative h-full w-full overflow-hidden"
-            />
-          </MacWindow>
+        {stepList.length > 0 && (
+          <div className="flex w-72 shrink-0 pt-2.5 pr-6 pb-6 pl-2.5">
+            <div className="min-h-0 w-full overflow-y-auto">
+              <div className="flex flex-col p-[1px]">
+                {stepList.map((step) => (
+                  <button
+                    type="button"
+                    key={step.stepId}
+                    onClick={() => {
+                      if (step.timeMs === undefined) return;
+                      seekTo(step.timeMs);
+                    }}
+                    disabled={step.timeMs === undefined || !hasEvents}
+                    aria-label={`Step ${step.label}: ${step.title}`}
+                    className="[font-synthesis:none] relative w-full py-[3px] text-left antialiased disabled:cursor-default disabled:opacity-50"
+                  >
+                    <div className="relative flex w-full items-center gap-1.75 rounded-[11px] px-3 py-1.5">
+                      {step.isActive && (
+                        <motion.div
+                          layoutId="active-replay-step-background"
+                          transition={ACTIVE_STEP_CARD_TRANSITION}
+                          className="pointer-events-none absolute inset-0 rounded-[11px] bg-[color(display-p3_1_1_1)] will-change-transform"
+                          style={{ boxShadow: ACTIVE_STEP_CARD_SHADOW }}
+                        />
+                      )}
+                      <div
+                        className={`relative z-10 size-2 shrink-0 rounded-full ${step.dotClassName}`}
+                      />
+                      <div className="relative z-10 flex min-w-0 items-start gap-1.5">
+                        <div className="[letter-spacing:0em] shrink-0 font-['SFProDisplay-Semibold','SF_Pro_Display',system-ui,sans-serif] text-[13px]/4.5 font-semibold text-[color(display-p3_0.587_0.587_0.587)]">
+                          {step.label}
+                        </div>
+                        <div
+                          title={step.title}
+                          className="min-w-0 truncate [letter-spacing:0em] font-['SFProDisplay-Medium','SF_Pro_Display',system-ui,sans-serif] text-[13px]/4.5 font-medium text-[color(display-p3_0.188_0.188_0.188)]"
+                        >
+                          {step.title}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        <div className="relative min-w-0 flex-1">
+          <div
+            ref={backdropRef}
+            className="absolute inset-0 bg-linear-to-br from-sky-200 to-blue-400 p-6"
+          >
+            <MacWindow>
+              <div
+                ref={replayRef}
+                className="relative h-full w-full overflow-hidden"
+              />
+            </MacWindow>
+          </div>
         </div>
         {!hasEvents && (
           <div
@@ -553,28 +725,28 @@ export const ReplayViewer = ({
       </div>
 
       <div
-        className="flex flex-col gap-3 rounded-[28px] px-6 py-5"
+        className="flex flex-col gap-3 rounded-[28px] px-6 pt-3 pb-5"
         style={{ fontFamily: CONTROL_FONT_FAMILY }}
       >
         <div className="mt-1.5 flex items-center justify-between gap-4 p-0 antialiased [font-synthesis:none]">
           <div className="flex min-w-0 items-center gap-1.5">
-            {!stepLabel && !stepTitle && live && (
+            {!currentStepLabel && !currentStepTitle && live && (
               <div className="h-4.5 shrink-0 font-['SFProDisplay-Medium','SF_Pro_Display',system-ui,sans-serif] text-base/4.5 font-medium tracking-[0em] text-[color(display-p3_0.587_0.587_0.587)]">
                 Waiting for steps...
               </div>
             )}
-            {stepLabel && (
+            {currentStepLabel && (
               <Calligraph
                 as="div"
                 autoSize={false}
                 className="h-4.5 shrink-0 font-['SFProDisplay-Medium','SF_Pro_Display',system-ui,sans-serif] text-base/4.5 font-medium tracking-[0em] text-[color(display-p3_0.587_0.587_0.587)]"
               >
-                {stepLabel}
+                {currentStepLabel}
               </Calligraph>
             )}
-            {stepTitle && (
-              <div className="h-4.5 shrink-0 font-['SFProDisplay-Medium','SF_Pro_Display',system-ui,sans-serif] text-base/4.5 font-medium tracking-[0em] text-[color(display-p3_0.188_0.188_0.188)]">
-                {stepTitle}
+            {currentStepTitle && (
+              <div className="min-w-0 truncate font-['SFProDisplay-Medium','SF_Pro_Display',system-ui,sans-serif] text-base/4.5 font-medium tracking-[0em] text-[color(display-p3_0.188_0.188_0.188)]">
+                {currentStepTitle}
               </div>
             )}
           </div>
