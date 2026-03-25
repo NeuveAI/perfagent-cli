@@ -8,7 +8,7 @@ import { useMountEffect } from "@/hooks/use-mount-effect";
 import { useDelayedFlag } from "@/hooks/use-delayed-flag";
 import { berkeleyMonoRegular, restartHardRegular, testSignifierRegular } from "@/app/fonts";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence, useMotionValue } from "motion/react";
 import { useSound } from "@/hooks/use-sound";
 import { clickSoftSound } from "@/lib/click-soft";
 import { drawKnife1Sound } from "@/lib/draw-knife-1";
@@ -561,6 +561,7 @@ export default function Home() {
   const [submitButtonTouched, setSubmitButtonTouched] = useState(false);
   const [terminalLabelDismissed, setTerminalLabelDismissed] = useState(false);
   const [terminalDragging, setTerminalDragging] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [cursorFieldPressScale, setCursorFieldPressScale] = useState(1);
   const [firstFieldUnlocked, setFirstFieldUnlocked] = useState(false);
   const [secondFieldUnlocked, setSecondFieldUnlocked] = useState(false);
@@ -569,6 +570,8 @@ export default function Home() {
   const [editableFirstFieldValue, setEditableFirstFieldValue] = useState("");
   const [editableSecondFieldValue, setEditableSecondFieldValue] = useState("");
   const [animationRunId, setAnimationRunId] = useState(0);
+  const terminalOffsetX = useMotionValue(0);
+  const terminalOffsetY = useMotionValue(0);
 
   useMountEffect(() => {
     const element = new Audio(drawKnife1Sound.dataUri);
@@ -604,7 +607,6 @@ export default function Home() {
     setSecondFieldTouched(false);
     setSecondTypedFieldLength(0);
     setSubmitButtonTouched(false);
-    setTerminalLabelDismissed(false);
     setTerminalDragging(false);
     setCursorFieldPressScale(1);
     setFirstFieldUnlocked(false);
@@ -766,14 +768,14 @@ export default function Home() {
   }, [pendingEditableFocusField, firstFieldInputActive, secondFieldInputActive]);
 
   useEffect(() => {
-    if (!autoReplayReady) return;
+    if (!autoReplayReady || terminalDragging) return;
     const replayTimer = window.setTimeout(() => {
       resetAnimation();
     }, 0);
     return () => {
       window.clearTimeout(replayTimer);
     };
-  }, [autoReplayReady, resetAnimation]);
+  }, [autoReplayReady, terminalDragging, resetAnimation]);
 
   useEffect(() => {
     if (!firstFieldFocused) return;
@@ -842,12 +844,13 @@ export default function Home() {
       const firstFieldRect = firstField.getBoundingClientRect();
       const secondFieldRect = secondField.getBoundingClientRect();
       const submitButtonRect = submitButton.getBoundingClientRect();
+      const mobileViewport = window.matchMedia(`(max-width: ${MOBILE_VIEWPORT_MAX_WIDTH_PX}px)`).matches;
       const maxX = Math.max(stageRect.width - CURSOR_ART_WIDTH, 0);
       const maxY = Math.max(stageRect.height - CURSOR_ART_HEIGHT, 0);
       const startX = clampNumber(CURSOR_TOP_START_X, 0, maxX);
       const startY = clampNumber(CURSOR_TOP_START_Y, 0, maxY);
 
-      const isMobileViewport = window.matchMedia(`(max-width: ${MOBILE_VIEWPORT_MAX_WIDTH_PX}px)`).matches;
+      setIsMobileViewport(mobileViewport);
       const getFieldTarget = (fieldRect: DOMRect, insetX: number, side: "left" | "right" = "right") => {
         const endHotspotX = side === "left"
           ? fieldRect.left - stageRect.left + insetX
@@ -860,10 +863,10 @@ export default function Home() {
         };
       };
 
-      const firstTarget = isMobileViewport
+      const firstTarget = mobileViewport
         ? getFieldTarget(firstFieldRect, MOBILE_CURSOR_TARGET_LEFT_INSET_X, "left")
         : getFieldTarget(firstFieldRect, CURSOR_TARGET_RIGHT_INSET_X);
-      const secondTarget = isMobileViewport
+      const secondTarget = mobileViewport
         ? getFieldTarget(secondFieldRect, MOBILE_SECOND_FIELD_CURSOR_TARGET_LEFT_INSET_X, "left")
         : getFieldTarget(secondFieldRect, SECOND_FIELD_CURSOR_TARGET_RIGHT_INSET_X);
       const submitTarget = getFieldTarget(submitButtonRect, SUBMIT_BUTTON_CURSOR_TARGET_RIGHT_INSET_X);
@@ -1423,7 +1426,7 @@ export default function Home() {
           </div>
           <div className="absolute left-[198px] top-[4.5rem] z-10 sm:left-auto sm:right-0 sm:top-1/2 sm:-translate-y-1/2">
             <motion.div
-              drag
+              drag={isMobileViewport ? false : true}
               dragConstraints={mainContainerRef}
               dragMomentum={false}
               dragElastic={0.1}
@@ -1462,8 +1465,8 @@ export default function Home() {
               role="button"
               tabIndex={0}
               whileDrag={{ cursor: "grabbing" }}
-              style={{ willChange: "transform, filter" }}
-              className="cursor-grab touch-none active:cursor-grabbing"
+              style={{ x: terminalOffsetX, y: terminalOffsetY, willChange: "transform, filter" }}
+              className="cursor-default active:cursor-grabbing sm:cursor-grab sm:touch-none"
             >
             <motion.div
               className="relative h-[200px] w-[225px] rounded-2xl [box-shadow:color(display-p3_1_1_1)_0px_0px_9px_inset,color(display-p3_0_0_0/5%)_0px_0px_0px_1px,color(display-p3_0_0_0/5%)_0px_0px_26px] dark:[box-shadow:color(display-p3_0.08_0.08_0.08)_0px_0px_9px_inset,color(display-p3_1_1_1/6%)_0px_0px_0px_1px,color(display-p3_0_0_0/20%)_0px_0px_26px] sm:h-54.75 sm:w-61.75"
@@ -1492,7 +1495,7 @@ export default function Home() {
                     $
                   </span>
                   <span className="tracking-[-0.01em] text-[color(display-p3_0.195_0.195_0.195)] dark:text-[color(display-p3_0.881_0.881_0.881)]">
-                    npx -y expect-cli@latest init
+                    expect-cli@latest init
                   </span>
                 </div>
                 <div className="flex items-center gap-[4px]">
