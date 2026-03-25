@@ -1,6 +1,4 @@
-import { Effect, Layer, Schema, ServiceMap } from "effect";
-import { ChildProcess } from "effect/unstable/process";
-import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
+import { Config, Effect, Layer, Option, ServiceMap } from "effect";
 import { NodeServices } from "@effect/platform-node";
 import { machineId } from "node-machine-id";
 import { hash } from "ohash";
@@ -13,10 +11,6 @@ const POSTHOG_DEFAULT_HOST = "https://us.i.posthog.com";
 
 const posthogClient = new PostHog(POSTHOG_API_KEY, {
   host: POSTHOG_DEFAULT_HOST,
-});
-
-const ClaudeAuthStatusResponse = Schema.Struct({
-  email: Schema.String,
 });
 
 // ---------------------------------------------------------------------------
@@ -90,79 +84,40 @@ export class AnalyticsProvider extends ServiceMap.Service<
 export class Analytics extends ServiceMap.Service<Analytics>()("@expect/Analytics", {
   make: Effect.gen(function* () {
     const provider = yield* AnalyticsProvider;
-    const spawner = yield* ChildProcessSpawner;
+    const noTelemetryValue = yield* Config.option(Config.string("NO_TELEMTRY"));
+    const telemetryDisabled = Option.match(noTelemetryValue, {
+      onNone: () => false,
+      onSome: (value) => value === "1",
+    });
 
     const distinctId = yield* Effect.tryPromise(() => machineId()).pipe(Effect.orDie);
     const projectId = hash(process.cwd());
-
-    const getClaudeCodeEmail = Effect.fn("getClaudeCodeEmail")(function* () {
-      const stdout = yield* spawner
-        .string(ChildProcess.make("claude", ["auth", "status"]))
-        .pipe(Effect.timeout("5 seconds"));
-      const status = yield* Schema.decodeEffect(Schema.fromJsonString(ClaudeAuthStatusResponse))(
-        stdout,
-      );
-      return status.email;
-    });
-
-    const getGitEmail = Effect.fn("getGitEmail")(function* () {
-      const email = yield* spawner.string(ChildProcess.make("git", ["config", "user.email"])).pipe(
-        Effect.timeout("5 seconds"),
-        Effect.map((output) => output.trim()),
-      );
-      if (email.length === 0) {
-        return yield* Effect.fail("empty");
-      }
-      return email;
-    });
-
-    const getGitName = Effect.fn("getGitName")(function* () {
-      const name = yield* spawner.string(ChildProcess.make("git", ["config", "user.name"])).pipe(
-        Effect.timeout("5 seconds"),
-        Effect.map((output) => output.trim()),
-      );
-      if (name.length === 0) {
-        return yield* Effect.fail("empty");
-      }
-      return name;
-    });
-
-    yield* Effect.all({
-      email: getClaudeCodeEmail().pipe(
-        Effect.catchTag("PlatformError", () => getGitEmail()),
-        Effect.catchTag("TimeoutError", () => getGitEmail()),
-        Effect.catchTag("SchemaError", () => getGitEmail()),
-      ),
-      name: getGitName().pipe(Effect.catchCause(() => Effect.succeed(undefined))),
-    }).pipe(
-      Effect.tap(({ email, name }) => provider.identify({ distinctId, email, name })),
-      Effect.catchCause(() => Effect.void),
-      Effect.forkScoped,
-    );
 
     const capture = <K extends keyof EventMap>(
       eventName: K,
       ...[properties]: EventMap[K] extends undefined ? [] : [EventMap[K]]
     ) =>
-      Effect.gen(function* () {
-        const commonProperties = {
-          timestamp: new Date().toISOString(),
-          projectId,
-        };
+      telemetryDisabled
+        ? Effect.void
+        : Effect.gen(function* () {
+            const commonProperties = {
+              timestamp: new Date().toISOString(),
+              projectId,
+            };
 
-        yield* provider.capture({
-          eventName: eventName as string,
-          properties: { ...commonProperties, ...(properties ?? {}) },
-          distinctId,
-        });
-      }).pipe(
-        Effect.catchCause((cause) =>
-          Effect.logWarning("Analytics capture failed", {
-            eventName,
-            cause,
-          }).pipe(Effect.annotateLogs({ module: "Analytics" })),
-        ),
-      );
+            yield* provider.capture({
+              eventName: eventName as string,
+              properties: { ...commonProperties, ...(properties ?? {}) },
+              distinctId,
+            });
+          }).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Analytics capture failed", {
+                eventName,
+                cause,
+              }).pipe(Effect.annotateLogs({ module: "Analytics" })),
+            ),
+          );
 
     const track: {
       <K extends keyof EventMap>(
@@ -187,7 +142,7 @@ export class Analytics extends ServiceMap.Service<Analytics>()("@expect/Analytic
           );
         })) as never;
 
-    return { capture, track, flush: provider.flush } as const;
+    return { capture, track, flush: telemetryDisabled ? Effect.void : provider.flush } as const;
   }),
 }) {
   static layerPostHog = Layer.effect(this)(this.make).pipe(
