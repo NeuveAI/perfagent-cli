@@ -19,7 +19,8 @@ export const useTestCoverage = (gitState: GitState | undefined) =>
   useQuery({
     queryKey: ["test-coverage", gitState?.fingerprint],
     queryFn: async (): Promise<TestCoverageReport | undefined> => {
-      if (!gitState?.isGitRepo || !gitState.hasUntestedChanges) return undefined;
+      if (!gitState?.isGitRepo) return undefined;
+      if (!gitState.hasChangesFromMain && !gitState.hasUnstagedChanges) return undefined;
 
       const mainBranch = gitState.mainBranch ?? "main";
 
@@ -53,6 +54,8 @@ export const useTestCoverage = (gitState: GitState | undefined) =>
       if (Exit.isSuccess(exit)) return exit.value;
       return undefined;
     },
-    enabled: Boolean(gitState?.isGitRepo && gitState.hasUntestedChanges),
+    enabled: Boolean(
+      gitState?.isGitRepo && (gitState.hasChangesFromMain || gitState.hasUnstagedChanges),
+    ),
     staleTime: 30_000,
   });

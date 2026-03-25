@@ -258,14 +258,14 @@ export const MainMenu = ({ gitState }: MainMenuProps) => {
         <Logo />
       </Box>
 
-      {gitState?.hasUntestedChanges &&
+      {(gitState?.hasUntestedChanges || (testCoverage && testCoverage.totalCount > 0)) &&
         !(testCoverage && testCoverage.totalCount > 0 && testCoverage.percent >= 90) && (
           <Box
             paddingX={1}
             paddingY={1}
             marginBottom={1}
             backgroundColor={
-              testCoverage && testCoverage.totalCount > 0 && testCoverage.coveredCount > 0
+              testCoverage && testCoverage.totalCount > 0
                 ? coverageBannerBg(testCoverage.percent)
                 : COLORS.BANNER_BG
             }
@@ -274,8 +274,7 @@ export const MainMenu = ({ gitState }: MainMenuProps) => {
             gap={0}
           >
             {(() => {
-              const hasCoverage =
-                testCoverage && testCoverage.totalCount > 0 && testCoverage.coveredCount > 0;
+              const hasCoverage = testCoverage && testCoverage.totalCount > 0;
 
               if (hasCoverage) {
                 return (
@@ -319,7 +318,7 @@ export const MainMenu = ({ gitState }: MainMenuProps) => {
               );
             })()}
             <Text color={COLORS.DIM}>
-              {testCoverage && testCoverage.totalCount > 0 && testCoverage.coveredCount > 0
+              {testCoverage && testCoverage.totalCount > 0
                 ? coverageRecommendation(testCoverage.percent)
                 : "Describe what to test and hit enter to verify your changes."}
             </Text>
