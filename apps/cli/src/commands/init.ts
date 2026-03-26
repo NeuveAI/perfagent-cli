@@ -69,6 +69,7 @@ export const runInit = async (options: InitOptions = {}) => {
   logger.log(
     `  ${pc.red(figures.cross)}${pc.green(figures.tick)} ${pc.bold("Expect")} ${highlighter.dim(`v${VERSION}`)}`,
   );
+  logger.dim("  Let agents test your code in a real browser.");
   logger.break();
 
   const availableAgents = detectAvailableAgents();
