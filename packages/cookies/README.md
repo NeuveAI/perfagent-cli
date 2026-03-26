@@ -191,21 +191,21 @@ Reads cookie databases without launching a browser. Each step below happens for 
 1. Locate the database. Each browser has a known path per platform (e.g. `~/Library/Application Support/Google/Chrome/Default/Network/Cookies` on macOS). If the path doesn't exist, the browser is skipped with a warning.
 2. Copy to a temp directory. The database file and its WAL/SHM sidecars are copied so reads never conflict with a running browser.
 3. Decrypt (Chromium only). Cookie values may be encrypted in `encrypted_value`. The decryption method depends on the OS:
-   - macOS — password from Keychain → PBKDF2-SHA1 (1003 iterations, salt `"saltysalt"`) → AES-128-CBC.
-   - Linux — password from `secret-tool` (fallback `"peanuts"`) → PBKDF2-SHA1 (1 iteration) → AES-128-CBC. Multiple key candidates are tried.
-   - Windows — encrypted key from `Local State` → unwrap with DPAPI via PowerShell → AES-256-GCM.
+   - macOS - password from Keychain → PBKDF2-SHA1 (1003 iterations, salt `"saltysalt"`) → AES-128-CBC.
+   - Linux - password from `secret-tool` (fallback `"peanuts"`) → PBKDF2-SHA1 (1 iteration) → AES-128-CBC. Multiple key candidates are tried.
+   - Windows - encrypted key from `Local State` → unwrap with DPAPI via PowerShell → AES-256-GCM.
    - Databases with meta version ≥ 24 prepend a 32-byte hash to the plaintext, which is stripped after decryption.
 4. Query and parse.
-   - Chromium — SQL query on `cookies` table, filtered by host. Plaintext values are used directly; encrypted values go through step 3.
-   - Firefox — SQL query on `moz_cookies` in `cookies.sqlite`. Values are stored in plaintext. The default profile is found by preferring directories containing `default-release`.
-   - Safari — binary format (`Cookies.binarycookies`) parsed by walking its page/record structure. Each record contains flags, domain, name, path, value, and a Mac-epoch expiration. macOS only.
+   - Chromium - SQL query on `cookies` table, filtered by host. Plaintext values are used directly; encrypted values go through step 3.
+   - Firefox - SQL query on `moz_cookies` in `cookies.sqlite`. Values are stored in plaintext. The default profile is found by preferring directories containing `default-release`.
+   - Safari - binary format (`Cookies.binarycookies`) parsed by walking its page/record structure. Each record contains flags, domain, name, path, value, and a Mac-epoch expiration. macOS only.
 5. Normalize. Expiration is converted to Unix seconds, sameSite is mapped to `"Strict" | "Lax" | "None"`, and leading dots are stripped from domains.
 6. Deduplicate. Cookies are keyed by `name|domain|path`. First occurrence wins.
 7. Clean up. Temp directories are removed.
 
 ### Strategy B: Profile extraction via CDP (`extractProfileCookies`)
 
-Works with any detected `BrowserProfile`, not just the default. For Firefox and Safari, it reads from disk the same way as strategy A. For Chromium browsers, it uses the Chrome DevTools Protocol so the browser handles its own decryption — no Keychain/DPAPI prompts:
+Works with any detected `BrowserProfile`, not just the default. For Firefox and Safari, it reads from disk the same way as strategy A. For Chromium browsers, it uses the Chrome DevTools Protocol so the browser handles its own decryption - no Keychain/DPAPI prompts:
 
 1. Copy the profile to a temp directory so the real profile stays untouched.
 2. Remove singleton locks (`SingletonLock`, `SingletonSocket`, `SingletonCookie`) so the headless instance can open the profile even if the browser is already running.
@@ -218,7 +218,7 @@ Works with any detected `BrowserProfile`, not just the default. For Firefox and 
 
 ### Output
 
-Both strategies return an `ExtractResult` containing a plain `Cookie[]` and any `warnings`. The cookies array is the primary output — helper functions handle conversion from there:
+Both strategies return an `ExtractResult` containing a plain `Cookie[]` and any `warnings`. The cookies array is the primary output - helper functions handle conversion from there:
 
 - `matchCookies(cookies, url)` filters by domain, path, secure flag, and expiry.
 - `toCookieHeader(cookies)` formats cookies as a `Cookie` header string.
