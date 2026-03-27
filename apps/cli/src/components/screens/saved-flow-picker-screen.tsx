@@ -33,9 +33,8 @@ const selectFlow = (flow: SavedFlowFileData, mainBranch: string) => {
     steps,
   };
   const storedKeys = useProjectPreferencesStore.getState().cookieBrowserKeys;
-  const cookieBrowserKeys = flow.environment.cookies && storedKeys.length === 0
-    ? ["chrome"]
-    : storedKeys;
+  const cookieBrowserKeys =
+    flow.environment.cookies && storedKeys.length === 0 ? ["chrome"] : storedKeys;
 
   trackEvent("flow:reused", { slug: flow.slug, step_count: steps.length });
 

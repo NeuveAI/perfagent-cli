@@ -7,7 +7,11 @@ import { useColors } from "../theme-context";
 import { Logo } from "../ui/logo";
 import { Spinner } from "../ui/spinner";
 import { Clickable } from "../ui/clickable";
-import { useNavigationStore, Screen, screenForTestingOrPortPicker } from "../../stores/use-navigation";
+import {
+  useNavigationStore,
+  Screen,
+  screenForTestingOrPortPicker,
+} from "../../stores/use-navigation";
 import { useProjectPreferencesStore } from "../../stores/use-project-preferences";
 import { useInstalledBrowsers, type DetectedBrowser } from "../../hooks/use-installed-browsers";
 

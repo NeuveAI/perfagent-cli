@@ -14,7 +14,7 @@ export const Spinner = ({ message }: SpinnerProps) => {
       <Text color={COLORS.SELECTION}>
         <InkSpinner type="dots" />
       </Text>
-      {message ? <Text> {message}</Text> : null}
+      {message && <Text> {message}</Text>}
     </Text>
   );
 };

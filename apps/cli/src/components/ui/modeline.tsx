@@ -21,7 +21,9 @@ const useHintSegments = (screen: Screen, gitState: GitState | undefined): HintSe
   const COLORS = useColors();
   const setScreen = useNavigationStore((state) => state.setScreen);
   const cookieBrowserKeys = useProjectPreferencesStore((state) => state.cookieBrowserKeys);
-  const clearCookieBrowserKeys = useProjectPreferencesStore((state) => state.clearCookieBrowserKeys);
+  const clearCookieBrowserKeys = useProjectPreferencesStore(
+    (state) => state.clearCookieBrowserKeys,
+  );
   const notifications = usePreferencesStore((state) => state.notifications);
   const toggleNotifications = usePreferencesStore((state) => state.toggleNotifications);
   const expanded = usePlanExecutionStore((state) => state.expanded);
@@ -32,9 +34,7 @@ const useHintSegments = (screen: Screen, gitState: GitState | undefined): HintSe
         {
           key: "ctrl+k",
           label:
-            cookieBrowserKeys.length > 0
-              ? `cookies (${cookieBrowserKeys.length})`
-              : "cookies off",
+            cookieBrowserKeys.length > 0 ? `cookies (${cookieBrowserKeys.length})` : "cookies off",
           cta: true,
           onClick:
             cookieBrowserKeys.length > 0

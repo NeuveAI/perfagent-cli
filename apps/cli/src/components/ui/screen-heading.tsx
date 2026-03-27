@@ -21,8 +21,8 @@ export const ScreenHeading = ({ title, subtitle, showDivider = true }: ScreenHea
       <Text bold color={theme.text}>
         {upperTitle}
       </Text>
-      {subtitle ? <Text color={theme.textMuted}>{subtitleContent}</Text> : null}
-      {showDivider ? <Text color={theme.border}> {"─".repeat(lineWidth)}</Text> : null}
+      {subtitle && <Text color={theme.textMuted}>{subtitleContent}</Text>}
+      {showDivider && <Text color={theme.border}> {"─".repeat(lineWidth)}</Text>}
     </Text>
   );
 };

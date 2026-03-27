@@ -22,7 +22,10 @@ import {
 import { buildExecutionPrompt } from "@expect/shared/prompts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Git } from "./git/git";
-import { EXPECT_LIVE_VIEW_URL_ENV_NAME, EXPECT_COOKIE_BROWSERS_ENV_NAME } from "@expect/browser/mcp";
+import {
+  EXPECT_LIVE_VIEW_URL_ENV_NAME,
+  EXPECT_COOKIE_BROWSERS_ENV_NAME,
+} from "@expect/browser/mcp";
 import {
   EXECUTION_CONTEXT_FILE_LIMIT,
   EXECUTION_RECENT_COMMIT_LIMIT,

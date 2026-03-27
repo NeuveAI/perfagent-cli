@@ -39,7 +39,10 @@ export const extractCloseArtifacts = (events: readonly ExecutionEvent[]): CloseA
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
   const extractValue = (prefix: string) => {
-    const raw = lines.find((line) => line.startsWith(prefix))?.replace(prefix, "").trim();
+    const raw = lines
+      .find((line) => line.startsWith(prefix))
+      ?.replace(prefix, "")
+      .trim();
     return raw && raw.length > 0 ? raw : undefined;
   };
 

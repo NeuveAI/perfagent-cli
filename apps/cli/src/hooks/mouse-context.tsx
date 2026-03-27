@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useRef } from "react";
+import { createContext, useContext, useRef } from "react";
 import { CLICK_SUPPORT_ENABLED } from "../constants";
 
 interface MousePosition {
@@ -63,12 +63,12 @@ export const MouseProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }
 
-  const subscribeClick = useCallback((handler: ClickHandler) => {
+  const subscribeClick = (handler: ClickHandler) => {
     handlersRef.current.add(handler);
     return () => {
       handlersRef.current.delete(handler);
     };
-  }, []);
+  };
 
   return <MouseContext.Provider value={{ subscribeClick }}>{children}</MouseContext.Provider>;
 };

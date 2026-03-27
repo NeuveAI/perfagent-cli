@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { useStdoutDimensions } from "../../hooks/use-stdout-dimensions";
 import figures from "figures";
@@ -53,13 +53,10 @@ export const PrPickerScreen = () => {
 
   const visibleItems = filteredBranches.slice(scrollOffset, scrollOffset + BRANCH_VISIBLE_COUNT);
 
-  const handleSearchChange = useCallback(
-    (value: string) => {
-      setSearchQuery(stripMouseSequences(value));
-      setHighlightedIndex(0);
-    },
-    [setHighlightedIndex],
-  );
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(stripMouseSequences(value));
+    setHighlightedIndex(0);
+  };
 
   const doSwitchBranch = (branchName: string) => {
     const success = checkoutBranch(process.cwd(), branchName);
@@ -74,15 +71,12 @@ export const PrPickerScreen = () => {
     }
   };
 
-  const cycleFilter = useCallback(
-    (direction: 1 | -1) => {
-      const currentIndex = BRANCH_FILTERS.indexOf(activeFilter);
-      const nextIndex = (currentIndex + direction + BRANCH_FILTERS.length) % BRANCH_FILTERS.length;
-      setActiveFilter(BRANCH_FILTERS[nextIndex]);
-      setHighlightedIndex(0);
-    },
-    [activeFilter, setHighlightedIndex],
-  );
+  const cycleFilter = (direction: 1 | -1) => {
+    const currentIndex = BRANCH_FILTERS.indexOf(activeFilter);
+    const nextIndex = (currentIndex + direction + BRANCH_FILTERS.length) % BRANCH_FILTERS.length;
+    setActiveFilter(BRANCH_FILTERS[nextIndex]);
+    setHighlightedIndex(0);
+  };
 
   useInput((input, key) => {
     if (isSearching) {

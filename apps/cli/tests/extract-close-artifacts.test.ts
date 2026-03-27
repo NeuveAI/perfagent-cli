@@ -72,15 +72,11 @@ describe("extractCloseArtifacts", () => {
       const artifacts = extractCloseArtifacts(events);
 
       expect(artifacts.replayPath).toBe("/tmp/expect-replays/report.html");
-      expect(artifacts.localReplayUrl).toBe(
-        pathToFileURL("/tmp/expect-replays/report.html").href,
-      );
+      expect(artifacts.localReplayUrl).toBe(pathToFileURL("/tmp/expect-replays/report.html").href);
     });
 
     it("trims whitespace from replay path", () => {
-      const events: ExecutionEvent[] = [
-        makeCloseResult("rrweb report:   /tmp/report.html  "),
-      ];
+      const events: ExecutionEvent[] = [makeCloseResult("rrweb report:   /tmp/report.html  ")];
 
       const artifacts = extractCloseArtifacts(events);
 
@@ -101,9 +97,7 @@ describe("extractCloseArtifacts", () => {
     });
 
     it("trims whitespace from video path", () => {
-      const events: ExecutionEvent[] = [
-        makeCloseResult("Playwright video:   /tmp/video.webm  "),
-      ];
+      const events: ExecutionEvent[] = [makeCloseResult("Playwright video:   /tmp/video.webm  ")];
 
       const artifacts = extractCloseArtifacts(events);
 
@@ -123,9 +117,7 @@ describe("extractCloseArtifacts", () => {
     });
 
     it("trims whitespace from session path", () => {
-      const events: ExecutionEvent[] = [
-        makeCloseResult("rrweb replay:   /tmp/session.ndjson  "),
-      ];
+      const events: ExecutionEvent[] = [makeCloseResult("rrweb replay:   /tmp/session.ndjson  ")];
 
       const artifacts = extractCloseArtifacts(events);
 
@@ -228,9 +220,7 @@ describe("extractCloseArtifacts", () => {
       const artifacts = extractCloseArtifacts(events);
 
       expect(artifacts.replayPath).toBe("/tmp/my folder/report file.html");
-      expect(artifacts.localReplayUrl).toBe(
-        pathToFileURL("/tmp/my folder/report file.html").href,
-      );
+      expect(artifacts.localReplayUrl).toBe(pathToFileURL("/tmp/my folder/report file.html").href);
     });
 
     it("handles lines with extra whitespace and blank lines", () => {

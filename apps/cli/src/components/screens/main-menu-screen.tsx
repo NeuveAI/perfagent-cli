@@ -73,7 +73,9 @@ export const MainMenu = ({ gitState }: MainMenuProps) => {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [savedCurrentInput, setSavedCurrentInput] = useState("");
   const cookieBrowserKeys = useProjectPreferencesStore((state) => state.cookieBrowserKeys);
-  const clearCookieBrowserKeys = useProjectPreferencesStore((state) => state.clearCookieBrowserKeys);
+  const clearCookieBrowserKeys = useProjectPreferencesStore(
+    (state) => state.clearCookieBrowserKeys,
+  );
   const { data: testCoverage } = useTestCoverage(gitState);
 
   const navigateHistoryBack = () => {

@@ -84,7 +84,11 @@ export class SqliteClient extends ServiceMap.Service<SqliteClient>()("@cookies/S
       yield* Effect.annotateCurrentSpan({ browser, databasePath });
       const database = yield* engine
         .open(databasePath)
-        .pipe(Effect.mapError((error) => new CookieReadError({ browser, cause: error.cause })));
+        .pipe(
+          Effect.catchTag("CookieReadError", (error) =>
+            new CookieReadError({ browser, cause: error.cause }).asEffect(),
+          ),
+        );
       return yield* Effect.try({
         try: () => database.prepare(sqlQuery).all(),
         catch: (cause) => new CookieReadError({ browser, cause: String(cause) }),

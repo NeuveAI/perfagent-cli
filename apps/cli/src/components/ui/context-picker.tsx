@@ -62,14 +62,12 @@ export const ContextPicker = ({
             <Text color={isSelected ? COLORS.PRIMARY : COLORS.DIM}>
               {isSelected ? `${figures.pointer} ` : "  "}
             </Text>
-            {option._tag === "WorkingTree" ? (
-              <Text color={COLORS.GREEN}>{figures.bullet} </Text>
-            ) : null}
-            {prStatus ? <StatusDot status={prStatus} /> : null}
+            {option._tag === "WorkingTree" && <Text color={COLORS.GREEN}>{figures.bullet} </Text>}
+            {prStatus && <StatusDot status={prStatus} />}
             <Text color={isSelected ? COLORS.PRIMARY : COLORS.TEXT} bold={isSelected}>
               {label}
             </Text>
-            {prNumber ? (
+            {prNumber && (
               <Text>
                 {" "}
                 <Text
@@ -83,19 +81,19 @@ export const ContextPicker = ({
                 >
                   #{prNumber}
                 </Text>
-                {prStatus ? <Text color={COLORS.DIM}> {prStatus}</Text> : null}
+                {prStatus && <Text color={COLORS.DIM}> {prStatus}</Text>}
               </Text>
-            ) : null}
-            {description && !prNumber ? <Text color={COLORS.DIM}> {description}</Text> : null}
+            )}
+            {description && !prNumber && <Text color={COLORS.DIM}> {description}</Text>}
           </Text>
         );
       })}
-      {isLoading ? (
+      {isLoading && (
         <Box>
           <Text color={COLORS.DIM}> Loading PRs and branches{figures.ellipsis}</Text>
         </Box>
-      ) : null}
-      {options.length > CONTEXT_PICKER_VISIBLE_COUNT ? (
+      )}
+      {options.length > CONTEXT_PICKER_VISIBLE_COUNT && (
         <Box>
           <Text color={COLORS.DIM}>
             {"  "}
@@ -103,7 +101,7 @@ export const ContextPicker = ({
             {figures.arrowDown}
           </Text>
         </Box>
-      ) : null}
+      )}
     </Box>
   );
 };

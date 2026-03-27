@@ -278,17 +278,12 @@ export const runHeadless = (options: HeadlessRunOptions) =>
           const artifactLines: string[] = [];
           const summaryVideoPath = generatedVideoPath ?? artifacts.videoPath;
           if (summaryVideoPath) {
-            artifactLines.push(
-              `**Video:** uploaded as artifact (see workflow artifacts above)`,
-            );
+            artifactLines.push(`**Video:** uploaded as artifact (see workflow artifacts above)`);
           }
           if (artifacts.replayPath) {
-            artifactLines.push(
-              `**Replay:** uploaded as artifact (see workflow artifacts above)`,
-            );
+            artifactLines.push(`**Replay:** uploaded as artifact (see workflow artifacts above)`);
           }
-          const artifactSection =
-            artifactLines.length > 0 ? `\n${artifactLines.join("\n")}\n` : "";
+          const artifactSection = artifactLines.length > 0 ? `\n${artifactLines.join("\n")}\n` : "";
           const summary = `## expect test results\n\n${badge}\n\n\`\`\`\n${reportText}\n\`\`\`\n${artifactSection}`;
           yield* Effect.sync(() => appendFileSync(stepSummaryPath.value, summary));
         }
