@@ -3,6 +3,7 @@ export { buildReplayViewerHtml } from "./replay-viewer";
 export { diffSnapshots } from "./diff";
 export { collectEvents, collectAllEvents, loadSession } from "./recorder";
 export { autoDiscoverCdp, discoverCdpUrl } from "./cdp-discovery";
+export { RrVideo, RrVideoConvertError } from "./rrvideo";
 export type {
   Browser as BrowserProfile,
   BrowserKey,

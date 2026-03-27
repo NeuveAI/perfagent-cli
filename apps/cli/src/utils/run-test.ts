@@ -9,6 +9,8 @@ import { VERSION, CI_HEARTBEAT_INTERVAL_MS } from "../constants";
 import { layerCli } from "../layers";
 import { playSound } from "./play-sound";
 import { stripUndefinedRequirement } from "./strip-undefined-requirement";
+import { extractCloseArtifacts } from "./extract-close-artifacts";
+import { RrVideo } from "@expect/browser";
 
 class ExecutionTimeoutError extends Schema.ErrorClass<ExecutionTimeoutError>(
   "ExecutionTimeoutError",
@@ -217,10 +219,75 @@ export const runHeadless = (options: HeadlessRunOptions) =>
         const reportText = report.toPlainText;
         console.error(`\n${reportText}`);
 
+        const artifacts = extractCloseArtifacts(finalExecuted.events);
+
+        let generatedVideoPath: string | undefined;
+        if (artifacts.replaySessionPath) {
+          const latestJsonPath = artifacts.replaySessionPath.replace(/\.ndjson$/, "-latest.json");
+          const videoOutputPath = artifacts.replaySessionPath.replace(/\.ndjson$/, ".mp4");
+          console.error("\nGenerating session video...");
+          const rrvideo = yield* RrVideo;
+          generatedVideoPath = yield* rrvideo
+            .convert({
+              inputPath: latestJsonPath,
+              outputPath: videoOutputPath,
+              skipInactive: true,
+              speed: 1,
+            })
+            .pipe(
+              Effect.tap(() => Effect.sync(() => console.error(`Video: ${videoOutputPath}`))),
+              Effect.catchTag("RrVideoConvertError", (error) =>
+                Effect.sync(() => {
+                  console.error(`Warning: video generation failed: ${error.message}`);
+                  return undefined;
+                }),
+              ),
+            );
+        }
+
+        if (artifacts.localReplayUrl) {
+          console.error(`Replay: ${artifacts.localReplayUrl}`);
+        }
+        if (!generatedVideoPath && artifacts.videoUrl) {
+          console.error(`Video:  ${artifacts.videoUrl}`);
+        }
+
+        if (isGitHubActions) {
+          const githubOutputPath = yield* Config.option(Config.string("GITHUB_OUTPUT"));
+          if (Option.isSome(githubOutputPath)) {
+            const outputLines: string[] = [];
+            outputLines.push(`result=${report.status}`);
+            const effectiveVideoPath = generatedVideoPath ?? artifacts.videoPath;
+            if (effectiveVideoPath) {
+              outputLines.push(`video_path=${effectiveVideoPath}`);
+            }
+            if (artifacts.replayPath) {
+              outputLines.push(`replay_path=${artifacts.replayPath}`);
+            }
+            yield* Effect.sync(() =>
+              appendFileSync(githubOutputPath.value, outputLines.join("\n") + "\n"),
+            );
+          }
+        }
+
         const stepSummaryPath = yield* Config.option(Config.string("GITHUB_STEP_SUMMARY"));
         if (Option.isSome(stepSummaryPath)) {
           const badge = report.status === "passed" ? "**Result: PASSED**" : "**Result: FAILED**";
-          const summary = `## expect test results\n\n${badge}\n\n\`\`\`\n${reportText}\n\`\`\`\n`;
+          const artifactLines: string[] = [];
+          const summaryVideoPath = generatedVideoPath ?? artifacts.videoPath;
+          if (summaryVideoPath) {
+            artifactLines.push(
+              `**Video:** uploaded as artifact (see workflow artifacts above)`,
+            );
+          }
+          if (artifacts.replayPath) {
+            artifactLines.push(
+              `**Replay:** uploaded as artifact (see workflow artifacts above)`,
+            );
+          }
+          const artifactSection =
+            artifactLines.length > 0 ? `\n${artifactLines.join("\n")}\n` : "";
+          const summary = `## expect test results\n\n${badge}\n\n\`\`\`\n${reportText}\n\`\`\`\n${artifactSection}`;
           yield* Effect.sync(() => appendFileSync(stepSummaryPath.value, summary));
         }
 

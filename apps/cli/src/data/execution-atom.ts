@@ -3,54 +3,18 @@ import * as Atom from "effect/unstable/reactivity/Atom";
 import { ExecutedTestPlan, Executor, Git, Reporter, type ExecuteOptions } from "@expect/supervisor";
 import { Analytics } from "@expect/shared/observability";
 import type { AgentBackend } from "@expect/agent";
-import type { ExecutionEvent, TestReport } from "@expect/shared/models";
+import type { TestReport } from "@expect/shared/models";
 import { cliAtomRuntime } from "./runtime";
 import { stripUndefinedRequirement } from "../utils/strip-undefined-requirement";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { startReplayProxy } from "../utils/replay-proxy-server";
 import { toViewerRunState, pushStepState } from "../utils/push-step-state";
-import { pathToFileURL } from "node:url";
+import { extractCloseArtifacts } from "../utils/extract-close-artifacts";
 
 const LIVE_VIEW_PORT_MIN = 50000;
 const LIVE_VIEW_PORT_RANGE = 10000;
-const REPLAY_REPORT_PREFIX = "rrweb report:";
-const PLAYWRIGHT_VIDEO_PREFIX = "Playwright video:";
 
 const pickRandomPort = () => LIVE_VIEW_PORT_MIN + Math.floor(Math.random() * LIVE_VIEW_PORT_RANGE);
-
-const extractCloseArtifacts = (events: readonly ExecutionEvent[]) => {
-  const closeResult = events
-    .slice()
-    .reverse()
-    .find(
-      (event) =>
-        event._tag === "ToolResult" &&
-        event.toolName === "close" &&
-        !event.isError &&
-        event.result.length > 0,
-    );
-  if (!closeResult || closeResult._tag !== "ToolResult") {
-    return { localReplayUrl: undefined, videoUrl: undefined } as const;
-  }
-
-  const lines = closeResult.result
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  const replayPath = lines
-    .find((line) => line.startsWith(REPLAY_REPORT_PREFIX))
-    ?.replace(REPLAY_REPORT_PREFIX, "");
-  const videoPath = lines
-    .find((line) => line.startsWith(PLAYWRIGHT_VIDEO_PREFIX))
-    ?.replace(PLAYWRIGHT_VIDEO_PREFIX, "");
-
-  const localReplayUrl =
-    replayPath && replayPath.trim().length > 0 ? pathToFileURL(replayPath.trim()).href : undefined;
-  const videoUrl =
-    videoPath && videoPath.trim().length > 0 ? pathToFileURL(videoPath.trim()).href : undefined;
-
-  return { localReplayUrl, videoUrl } as const;
-};
 
 interface ExecuteInput {
   readonly options: ExecuteOptions;

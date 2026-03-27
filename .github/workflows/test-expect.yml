@@ -1,0 +1,78 @@
+name: Test Expect
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-expect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build all packages
+        run: pnpm build
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Claude Code
+        run: pnpm add -g @anthropic-ai/claude-code
+
+      - name: Smoke test Claude Code CLI
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          claude --version
+          echo "What is 1+1?" | claude -p --max-turns 1
+
+      - name: Start website dev server
+        run: pnpm --filter @expect/website dev -- --port 3000 &
+
+      - name: Wait for dev server
+        run: pnpm dlx wait-on http://localhost:3000 --timeout 30000
+
+      - name: Run expect tests
+        id: expect
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: >-
+          node apps/cli/dist/index.js --verbose -y -m
+          "Test the expect.dev marketing website at http://localhost:3000.
+          Verify the homepage loads, key sections are visible, and navigation works."
+
+      - name: Upload session recording
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: expect-session-recording
+          path: /tmp/expect-replays/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Print expect debug logs
+        if: always()
+        run: |-
+          if [ -f .expect/logs.md ]; then
+            tail -n 240 .expect/logs.md
+          else
+            echo "No .expect/logs.md file found"
+          fi
