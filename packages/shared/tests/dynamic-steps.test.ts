@@ -361,10 +361,7 @@ describe("run completion detection", () => {
 
     const withFinish = new ExecutedTestPlan({
       ...executed,
-      events: [
-        ...executed.events,
-        new RunFinished({ status: "passed", summary: "Agent summary" }),
-      ],
+      events: [...executed.events, new RunFinished({ status: "passed", summary: "Agent summary" })],
     });
 
     const result = withFinish.synthesizeRunFinished();

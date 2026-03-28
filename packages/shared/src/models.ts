@@ -951,8 +951,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
     return (
       this.steps.length > 0 &&
       this.steps.every(
-        (step) =>
-          step.status === "passed" || step.status === "failed" || step.status === "skipped",
+        (step) => step.status === "passed" || step.status === "failed" || step.status === "skipped",
       )
     );
   }
