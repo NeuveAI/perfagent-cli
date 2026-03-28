@@ -1,6 +1,13 @@
 import { execSync } from "node:child_process";
 
-export type SupportedAgent = "claude" | "codex" | "copilot" | "gemini" | "cursor" | "opencode";
+export type SupportedAgent =
+  | "claude"
+  | "codex"
+  | "copilot"
+  | "gemini"
+  | "cursor"
+  | "opencode"
+  | "droid";
 
 const SUPPORTED_AGENTS: readonly SupportedAgent[] = [
   "claude",
@@ -9,6 +16,7 @@ const SUPPORTED_AGENTS: readonly SupportedAgent[] = [
   "gemini",
   "cursor",
   "opencode",
+  "droid",
 ];
 
 const AGENT_BINARY_NAMES: Record<SupportedAgent, string> = {
@@ -18,6 +26,7 @@ const AGENT_BINARY_NAMES: Record<SupportedAgent, string> = {
   gemini: "gemini",
   cursor: "agent",
   opencode: "opencode",
+  droid: "droid",
 };
 
 const WHICH_COMMAND = process.platform === "win32" ? "where" : "which";

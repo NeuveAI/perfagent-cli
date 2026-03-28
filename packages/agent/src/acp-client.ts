@@ -78,6 +78,11 @@ export class AcpProviderNotInstalledError extends Schema.ErrorClass<AcpProviderN
       () =>
         "OpenCode is not installed. Install it with `npm install -g opencode-ai`, or use Claude Code with `expect -a claude`.",
     ),
+    Match.when(
+      "droid",
+      () =>
+        "Factory Droid is not installed. Install it with `npm install -g droid`, or use Claude Code with `expect -a claude`.",
+    ),
     Match.orElse(
       () => "Your coding agent CLI is not installed. Please install it and then re-run expect.",
     ),
@@ -100,6 +105,11 @@ export class AcpProviderUnauthenticatedError extends Schema.ErrorClass<AcpProvid
     Match.when(
       "opencode",
       () => "Please log in using `opencode auth login`, and then re-run expect.",
+    ),
+    Match.when(
+      "droid",
+      () =>
+        "Please set the FACTORY_API_KEY environment variable (get one at app.factory.ai/settings/api-keys), and then re-run expect.",
     ),
     Match.orElse(() => "Please sign in to your coding agent, and then re-run expect."),
   );
@@ -384,6 +394,38 @@ export class AcpAdapter extends ServiceMap.Service<
     }),
   ).pipe(Layer.provide(NodeServices.layer));
 
+  static layerDroid = Layer.effect(AcpAdapter)(
+    Effect.gen(function* () {
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+
+      yield* ChildProcess.make("droid", ["--version"]).pipe(
+        spawner.string,
+        Effect.timeoutOrElse({
+          duration: ACP_AUTH_CHECK_TIMEOUT,
+          onTimeout: () => new AcpProviderNotInstalledError({ provider: "droid" }).asEffect(),
+        }),
+        Effect.catchReason("PlatformError", "NotFound", () =>
+          new AcpProviderNotInstalledError({ provider: "droid" }).asEffect(),
+        ),
+        Effect.catchTag("PlatformError", () =>
+          new AcpProviderNotInstalledError({ provider: "droid" }).asEffect(),
+        ),
+      );
+
+      const apiKeyOption = yield* Config.option(Config.string("FACTORY_API_KEY"));
+      if (!Option.isSome(apiKeyOption) || apiKeyOption.value.trim().length === 0) {
+        return yield* new AcpProviderUnauthenticatedError({ provider: "droid" });
+      }
+
+      return AcpAdapter.of({
+        provider: "droid",
+        bin: "droid",
+        args: ["exec", "--output-format", "acp"],
+        env: {},
+      });
+    }),
+  ).pipe(Layer.provide(NodeServices.layer));
+
   static layerOpencode = Layer.effect(AcpAdapter)(
     Effect.gen(function* () {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -647,4 +689,5 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@expect/AcpClien
   static layerGemini = this.layer.pipe(Layer.provide(AcpAdapter.layerGemini));
   static layerCursor = this.layer.pipe(Layer.provide(AcpAdapter.layerCursor));
   static layerOpencode = this.layer.pipe(Layer.provide(AcpAdapter.layerOpencode));
+  static layerDroid = this.layer.pipe(Layer.provide(AcpAdapter.layerDroid));
 }

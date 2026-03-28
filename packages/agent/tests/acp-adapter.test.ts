@@ -120,6 +120,26 @@ describe("AcpAdapter", () => {
     }, 15_000);
   });
 
+  describe("layerDroid", () => {
+    it("resolves or fails with not-installed/auth error", async () => {
+      const exit = await Effect.gen(function* () {
+        return yield* AcpAdapter;
+      }).pipe(Effect.provide(AcpAdapter.layerDroid), Effect.runPromiseExit);
+
+      if (Exit.isSuccess(exit)) {
+        expect(exit.value.provider).toBe("droid");
+        expect(exit.value.bin).toBe("droid");
+        expect(exit.value.args).toEqual(["exec", "--output-format", "acp"]);
+      } else {
+        const error = exit.cause.toString();
+        expect(
+          error.includes("AcpProviderNotInstalledError") ||
+            error.includes("AcpProviderUnauthenticatedError"),
+        ).toBe(true);
+      }
+    }, 15_000);
+  });
+
   describe("error messages", () => {
     it("copilot not-installed error mentions @github/copilot", () => {
       const error = new AcpProviderNotInstalledError({ provider: "copilot" });
@@ -161,6 +181,16 @@ describe("AcpAdapter", () => {
       expect(error.message).toContain("opencode auth login");
     });
 
+    it("droid not-installed error mentions npm install -g droid", () => {
+      const error = new AcpProviderNotInstalledError({ provider: "droid" });
+      expect(error.message).toContain("npm install -g droid");
+    });
+
+    it("droid unauthenticated error mentions FACTORY_API_KEY", () => {
+      const error = new AcpProviderUnauthenticatedError({ provider: "droid" });
+      expect(error.message).toContain("FACTORY_API_KEY");
+    });
+
     it("claude not-installed error mentions code.claude.com", () => {
       const error = new AcpProviderNotInstalledError({ provider: "claude" });
       expect(error.message).toContain("code.claude.com");
@@ -174,7 +204,15 @@ describe("AcpAdapter", () => {
 
   describe("Agent.layerFor", () => {
     it("maps all backend names to layers", () => {
-      const backends = ["claude", "codex", "copilot", "gemini", "cursor", "opencode"] as const;
+      const backends = [
+        "claude",
+        "codex",
+        "copilot",
+        "gemini",
+        "cursor",
+        "opencode",
+        "droid",
+      ] as const;
 
       for (const backend of backends) {
         const layer = Agent.layerFor(backend);

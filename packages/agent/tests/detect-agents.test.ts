@@ -90,11 +90,21 @@ describe("detectAvailableAgents", () => {
     expect(agents).toEqual(["opencode"]);
   });
 
-  it("checks all six supported agents", () => {
+  it("detects droid as a supported agent", () => {
+    mockedExecSync.mockImplementation((command) => {
+      if (String(command) === `${WHICH_COMMAND} droid`) return Buffer.from("/usr/local/bin/droid");
+      throw new Error("not found");
+    });
+
+    const agents = detectAvailableAgents();
+    expect(agents).toEqual(["droid"]);
+  });
+
+  it("checks all seven supported agents", () => {
     mockedExecSync.mockImplementation(() => Buffer.from(""));
 
     const agents = detectAvailableAgents();
-    expect(agents).toEqual(["claude", "codex", "copilot", "gemini", "cursor", "opencode"]);
+    expect(agents).toEqual(["claude", "codex", "copilot", "gemini", "cursor", "opencode", "droid"]);
   });
 
   it("uses platform-specific lookup command for every agent", () => {

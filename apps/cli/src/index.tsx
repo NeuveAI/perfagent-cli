@@ -52,7 +52,7 @@ const program = new Command()
   .option("-y, --yes", "run immediately without confirmation")
   .option(
     "-a, --agent <provider>",
-    "agent provider to use (claude, codex, copilot, gemini, cursor, or opencode)",
+    "agent provider to use (claude, codex, copilot, gemini, cursor, opencode, or droid)",
   )
   .option("-t, --target <target>", "what to test: unstaged, branch, or changes", "changes")
   .option("--verbose", "enable verbose logging")

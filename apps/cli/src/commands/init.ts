@@ -45,7 +45,7 @@ export const runInit = async (options: InitOptions = {}) => {
 
   if (availableAgents.length === 0) {
     logger.error(
-      "No supported coding agent found. expect requires one of: Claude Code, Codex, GitHub Copilot, Gemini, Cursor, or OpenCode.",
+      "No supported coding agent found. expect requires one of: Claude Code, Codex, GitHub Copilot, Gemini, Cursor, OpenCode, or Factory Droid.",
     );
     logger.break();
     logger.log(`  Install one to get started:`);
@@ -66,6 +66,9 @@ export const runInit = async (options: InitOptions = {}) => {
     );
     logger.log(
       `    ${highlighter.info("OpenCode")}         ${highlighter.dim("npm install -g opencode-ai")}`,
+    );
+    logger.log(
+      `    ${highlighter.info("Factory Droid")}    ${highlighter.dim("npm install -g droid")}`,
     );
     logger.break();
     process.exit(1);

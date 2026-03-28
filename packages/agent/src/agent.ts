@@ -25,7 +25,14 @@ type AgentLayerError =
   | AcpConnectionInitError
   | AcpAdapterNotFoundError;
 
-export type AgentBackend = "claude" | "codex" | "copilot" | "gemini" | "cursor" | "opencode";
+export type AgentBackend =
+  | "claude"
+  | "codex"
+  | "copilot"
+  | "gemini"
+  | "cursor"
+  | "opencode"
+  | "droid";
 
 export class Agent extends ServiceMap.Service<
   Agent,
@@ -70,6 +77,7 @@ export class Agent extends ServiceMap.Service<
   static layerGemini = Agent.layerAcp.pipe(Layer.provide(AcpAdapter.layerGemini));
   static layerCursor = Agent.layerAcp.pipe(Layer.provide(AcpAdapter.layerCursor));
   static layerOpencode = Agent.layerAcp.pipe(Layer.provide(AcpAdapter.layerOpencode));
+  static layerDroid = Agent.layerAcp.pipe(Layer.provide(AcpAdapter.layerDroid));
 
   static layerFor = (backend: AgentBackend): Layer.Layer<Agent, AgentLayerError> => {
     const layers: Record<AgentBackend, Layer.Layer<Agent, AgentLayerError>> = {
@@ -79,6 +87,7 @@ export class Agent extends ServiceMap.Service<
       gemini: Agent.layerGemini,
       cursor: Agent.layerCursor,
       opencode: Agent.layerOpencode,
+      droid: Agent.layerDroid,
     };
     return layers[backend];
   };

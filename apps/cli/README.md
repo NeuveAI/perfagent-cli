@@ -26,7 +26,7 @@ Options:
   -m, --message <instruction>   natural language instruction for what to test
   -f, --flow <slug>             reuse a saved flow by slug
   -y, --yes                     skip plan review, run immediately
-  -a, --agent <provider>        agent provider to use (claude, codex, copilot, gemini, cursor, or opencode)
+  -a, --agent <provider>        agent provider to use (claude, codex, copilot, gemini, cursor, opencode, or droid)
   -t, --target <target>         what to test: unstaged, branch, or changes (default: changes)
   --verbose                     enable verbose logging
   -v, --version                 print version
@@ -69,6 +69,7 @@ Expect works with the following coding agents via the [Agent Client Protocol (AC
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli)     | `-a gemini`   | `npm install -g @google/gemini-cli`        |
 | [Cursor](https://cursor.com)                                  | `-a cursor`   | [cursor.com](https://cursor.com)           |
 | [OpenCode](https://github.com/opencode-ai/opencode)           | `-a opencode` | `npm install -g opencode-ai`               |
+| [Factory Droid](https://factory.ai)                           | `-a droid`    | `npm install -g droid`                     |
 
 Expect auto-detects which agents are installed on your `PATH`. If multiple are available, it defaults to the first one found. Use `-a <provider>` to pick a specific agent.
 
