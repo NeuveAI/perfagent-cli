@@ -1,11 +1,15 @@
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as acp from "@agentclientprotocol/sdk";
 import {
   Cause,
+  Config,
   Duration,
   Effect,
   FiberMap,
+  FileSystem,
   Layer,
   Match,
   Option,
@@ -53,6 +57,21 @@ export class AcpProviderNotInstalledError extends Schema.ErrorClass<AcpProviderN
       () =>
         "Codex CLI is not installed. Install it with `npm install -g @openai/codex`, or use Claude Code by removing the `--agent codex` option.",
     ),
+    Match.when(
+      "copilot",
+      () =>
+        "GitHub Copilot CLI is not installed. Install it with `npm install -g @github/copilot`, or use Claude Code with `expect -a claude`.",
+    ),
+    Match.when(
+      "gemini",
+      () =>
+        "Gemini CLI is not installed. Install it with `npm install -g @google/gemini-cli`, or use Claude Code with `expect -a claude`.",
+    ),
+    Match.when(
+      "cursor",
+      () =>
+        "Cursor agent CLI is not installed. Install it from https://cursor.com/docs/cli/acp, or use Claude Code with `expect -a claude`.",
+    ),
     Match.orElse(
       () => "Your coding agent CLI is not installed. Please install it and then re-run expect.",
     ),
@@ -69,6 +88,9 @@ export class AcpProviderUnauthenticatedError extends Schema.ErrorClass<AcpProvid
   message = Match.value(this.provider).pipe(
     Match.when("claude", () => "Please log in using `claude login`, and then re-run expect."),
     Match.when("codex", () => "Please log in using `codex login`, and then re-run expect."),
+    Match.when("copilot", () => "Please log in using `gh auth login`, and then re-run expect."),
+    Match.when("gemini", () => "Please log in using `gemini auth login`, and then re-run expect."),
+    Match.when("cursor", () => "Please log in using `agent login`, and then re-run expect."),
     Match.orElse(() => "Please sign in to your coding agent, and then re-run expect."),
   );
 }
@@ -116,6 +138,43 @@ export class AcpAdapterNotFoundError extends Schema.ErrorClass<AcpAdapterNotFoun
 
 type SessionQueueError = Cause.Done | AcpStreamError;
 
+const makeRequire = () =>
+  createRequire(typeof __filename !== "undefined" ? __filename : import.meta.url);
+
+const resolvePackageDir = (require: NodeRequire, packageName: string): string => {
+  try {
+    return dirname(require.resolve(`${packageName}/package.json`));
+  } catch {
+    const paths = require.resolve.paths(packageName) ?? [];
+    for (const searchPath of paths) {
+      const candidate = join(searchPath, packageName);
+      try {
+        const content = JSON.parse(readFileSync(join(candidate, "package.json"), "utf-8"));
+        if (content.name === packageName) return candidate;
+      } catch {}
+    }
+    throw new Error(`Cannot find package root for ${packageName}`);
+  }
+};
+
+const resolvePackageBin = (packageName: string): string => {
+  const require = makeRequire();
+  const packageDir = resolvePackageDir(require, packageName);
+  const packageJson = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf-8"));
+
+  if (typeof packageJson.bin === "string") {
+    return join(packageDir, packageJson.bin);
+  }
+  if (typeof packageJson.bin === "object" && packageJson.bin !== null) {
+    const firstBinPath = String(Object.values(packageJson.bin)[0]);
+    return join(packageDir, firstBinPath);
+  }
+  if (packageJson.main) {
+    return join(packageDir, packageJson.main);
+  }
+  throw new Error(`Cannot resolve bin entry for ${packageName}`);
+};
+
 export class AcpAdapter extends ServiceMap.Service<
   AcpAdapter,
   {
@@ -128,9 +187,7 @@ export class AcpAdapter extends ServiceMap.Service<
   static layerCodex = Layer.effect(AcpAdapter)(
     Effect.try({
       try: () => {
-        const require = createRequire(
-          typeof __filename !== "undefined" ? __filename : import.meta.url,
-        );
+        const require = makeRequire();
         const binPath = require.resolve("@zed-industries/codex-acp/bin/codex-acp.js");
         return AcpAdapter.of({
           provider: "codex",
@@ -170,9 +227,7 @@ export class AcpAdapter extends ServiceMap.Service<
 
       return yield* Effect.try({
         try: () => {
-          const require = createRequire(
-            typeof __filename !== "undefined" ? __filename : import.meta.url,
-          );
+          const require = makeRequire();
           const binPath = require.resolve("@zed-industries/claude-agent-acp/dist/index.js");
           return AcpAdapter.of({
             provider: "claude",
@@ -186,6 +241,135 @@ export class AcpAdapter extends ServiceMap.Service<
             packageName: "@zed-industries/claude-agent-acp",
             cause,
           }),
+      });
+    }),
+  ).pipe(Layer.provide(NodeServices.layer));
+
+  static layerCopilot = Layer.effect(AcpAdapter)(
+    Effect.gen(function* () {
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+
+      // HACK: only checks gh CLI auth, not env var (COPILOT_GITHUB_TOKEN/GH_TOKEN) or keyring auth
+      // gh CLI missing means we can't verify auth — treat as unauthenticated, not uninstalled
+      yield* ChildProcess.make("gh", ["auth", "token"]).pipe(
+        spawner.string,
+        Effect.flatMap((token) =>
+          token.trim().length > 0
+            ? Effect.void
+            : new AcpProviderUnauthenticatedError({ provider: "copilot" }).asEffect(),
+        ),
+        Effect.catchTag("PlatformError", () =>
+          new AcpProviderUnauthenticatedError({ provider: "copilot" }).asEffect(),
+        ),
+      );
+
+      return yield* Effect.try({
+        try: () => {
+          const binPath = resolvePackageBin("@github/copilot");
+          return AcpAdapter.of({
+            provider: "copilot",
+            bin: process.execPath,
+            args: [binPath, "--acp"],
+            env: {},
+          });
+        },
+        catch: (cause) =>
+          new AcpAdapterNotFoundError({
+            packageName: "@github/copilot",
+            cause,
+          }),
+      });
+    }),
+  ).pipe(Layer.provide(NodeServices.layer));
+
+  static layerGemini = Layer.effect(AcpAdapter)(
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const homeOption = yield* Config.option(
+        Config.string("HOME").pipe(Config.orElse(() => Config.string("USERPROFILE"))),
+      );
+      const homedir = Option.isSome(homeOption)
+        ? homeOption.value
+        : yield* new AcpProviderUnauthenticatedError({ provider: "gemini" });
+      const accountsPath = `${homedir}/.gemini/google_accounts.json`;
+      const AccountsSchema = Schema.Struct({ active: Schema.String });
+
+      yield* fileSystem.readFileString(accountsPath).pipe(
+        Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(AccountsSchema))),
+        Effect.flatMap(({ active }) =>
+          active.length > 0
+            ? Effect.void
+            : new AcpProviderUnauthenticatedError({ provider: "gemini" }).asEffect(),
+        ),
+        Effect.catchReason("PlatformError", "NotFound", () =>
+          new AcpProviderUnauthenticatedError({ provider: "gemini" }).asEffect(),
+        ),
+        Effect.catchTag("PlatformError", () =>
+          new AcpProviderUnauthenticatedError({ provider: "gemini" }).asEffect(),
+        ),
+        Effect.catchTag("SchemaError", () =>
+          new AcpProviderUnauthenticatedError({ provider: "gemini" }).asEffect(),
+        ),
+      );
+
+      return yield* Effect.try({
+        try: () => {
+          const binPath = resolvePackageBin("@google/gemini-cli");
+          return AcpAdapter.of({
+            provider: "gemini",
+            bin: process.execPath,
+            args: [binPath, "--acp"],
+            env: {},
+          });
+        },
+        catch: (cause) =>
+          new AcpAdapterNotFoundError({
+            packageName: "@google/gemini-cli",
+            cause,
+          }),
+      });
+    }),
+  ).pipe(Layer.provide(NodeServices.layer));
+
+  static layerCursor = Layer.effect(AcpAdapter)(
+    Effect.gen(function* () {
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+
+      yield* ChildProcess.make("agent", ["--version"]).pipe(
+        spawner.string,
+        Effect.timeoutOrElse({
+          duration: "3 seconds",
+          onTimeout: () => new AcpProviderNotInstalledError({ provider: "cursor" }).asEffect(),
+        }),
+        Effect.catchReason("PlatformError", "NotFound", () =>
+          new AcpProviderNotInstalledError({ provider: "cursor" }).asEffect(),
+        ),
+        Effect.catchTag("PlatformError", () =>
+          new AcpProviderNotInstalledError({ provider: "cursor" }).asEffect(),
+        ),
+      );
+
+      yield* ChildProcess.make("agent", ["auth", "whoami"]).pipe(
+        spawner.string,
+        Effect.flatMap((output) =>
+          output.trim().length > 0
+            ? Effect.void
+            : new AcpProviderUnauthenticatedError({ provider: "cursor" }).asEffect(),
+        ),
+        Effect.timeoutOrElse({
+          duration: "3 seconds",
+          onTimeout: () => new AcpProviderUnauthenticatedError({ provider: "cursor" }).asEffect(),
+        }),
+        Effect.catchTag("PlatformError", () =>
+          new AcpProviderUnauthenticatedError({ provider: "cursor" }).asEffect(),
+        ),
+      );
+
+      return AcpAdapter.of({
+        provider: "cursor",
+        bin: "agent",
+        args: ["acp"],
+        env: {},
       });
     }),
   ).pipe(Layer.provide(NodeServices.layer));
@@ -406,4 +590,7 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@expect/AcpClien
   static layer = Layer.effect(this)(this.make).pipe(Layer.provide(NodeServices.layer));
   static layerCodex = this.layer.pipe(Layer.provide(AcpAdapter.layerCodex));
   static layerClaude = this.layer.pipe(Layer.provide(AcpAdapter.layerClaude));
+  static layerCopilot = this.layer.pipe(Layer.provide(AcpAdapter.layerCopilot));
+  static layerGemini = this.layer.pipe(Layer.provide(AcpAdapter.layerGemini));
+  static layerCursor = this.layer.pipe(Layer.provide(AcpAdapter.layerCursor));
 }
