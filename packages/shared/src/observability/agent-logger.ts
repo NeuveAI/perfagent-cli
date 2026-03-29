@@ -15,7 +15,7 @@ const EnsureDebugLogDirectoryLayer = Layer.effectDiscard(
   }),
 );
 
-export const DebugFileLoggerLayer = Layer.mergeAll(
-  EnsureDebugLogDirectoryLayer,
-  Logger.layer([DebugFileLogger]),
-).pipe(Layer.provide(NodeFileSystem.layer));
+export const DebugFileLoggerLayer = Logger.layer([DebugFileLogger]).pipe(
+  Layer.provide(EnsureDebugLogDirectoryLayer),
+  Layer.provide(NodeFileSystem.layer),
+);
