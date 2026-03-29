@@ -202,9 +202,7 @@ export const Modeline = () => {
           speed={3}
         />
       )}
-      {screen._tag !== "Testing" && (
-        <Text color={theme.border}>{"─".repeat(columns)}</Text>
-      )}
+      {screen._tag !== "Testing" && <Text color={theme.border}>{"─".repeat(columns)}</Text>}
       <Box paddingX={1}>
         {actions.map((action, index) => {
           const pill = (

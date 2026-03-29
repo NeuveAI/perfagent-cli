@@ -45,25 +45,25 @@ export const detectNonInteractive = (yesFlag: boolean): boolean =>
   yesFlag || isRunningInAgent() || isHeadless();
 
 export const hasGitHubRemote = Effect.tryPromise({
-    try: () =>
-      new Promise<string>((resolve, reject) => {
-        const child = spawn("git", ["remote", "-v"], { stdio: ["ignore", "pipe", "ignore"] });
-        let stdout = "";
-        child.stdout.on("data", (data: Buffer) => {
-          stdout += data.toString();
-        });
-        child.on("close", (code) => {
-          if (code === 0) resolve(stdout);
-          else reject(new Error(`git remote exited with ${code}`));
-        });
-        child.on("error", reject);
-      }),
-    catch: () => new Error("Failed to detect git remote"),
-  }).pipe(
-    Effect.map((stdout) => stdout.includes("github.com")),
-    Effect.timeout(GIT_REMOTE_TIMEOUT_MS),
-    Effect.orElseSucceed(() => false),
-  );
+  try: () =>
+    new Promise<string>((resolve, reject) => {
+      const child = spawn("git", ["remote", "-v"], { stdio: ["ignore", "pipe", "ignore"] });
+      let stdout = "";
+      child.stdout.on("data", (data: Buffer) => {
+        stdout += data.toString();
+      });
+      child.on("close", (code) => {
+        if (code === 0) resolve(stdout);
+        else reject(new Error(`git remote exited with ${code}`));
+      });
+      child.on("error", reject);
+    }),
+  catch: () => new Error("Failed to detect git remote"),
+}).pipe(
+  Effect.map((stdout) => stdout.includes("github.com")),
+  Effect.timeout(GIT_REMOTE_TIMEOUT_MS),
+  Effect.orElseSucceed(() => false),
+);
 
 const INSTALL_TIMEOUT_MS = 60_000;
 

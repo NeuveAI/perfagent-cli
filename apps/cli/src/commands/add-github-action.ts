@@ -1,5 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { Effect } from "effect";
 import { detectProject } from "@expect/supervisor/detect-project";
 import { highlighter } from "../utils/highlighter";
 import { logger } from "../utils/logger";
@@ -105,7 +107,9 @@ export const runAddGithubAction = async (options: AddGithubActionOptions = {}) =
   const nonInteractive = detectNonInteractive(options.yes ?? false);
   const packageManager = detectPackageManager();
 
-  const detection = detectProject();
+  const detection = await Effect.runPromise(
+    detectProject().pipe(Effect.provide(NodeServices.layer)),
+  );
   const detectedPort = detection.customPort ?? detection.defaultPort;
   let devCommand = DEV_COMMAND_DEFAULTS[packageManager];
   let devUrl = `http://localhost:${detectedPort}`;
