@@ -9,6 +9,7 @@ import {
 } from "@expect/agent";
 import { Effect, Layer, Option, Schema, ServiceMap, Stream } from "effect";
 import {
+  type AcpConfigOption,
   type ChangesFor,
   type ChangedFile,
   type CommitSummary,
@@ -59,6 +60,8 @@ export interface ExecuteOptions {
   readonly learnings?: string;
   readonly liveViewUrl?: string;
   readonly testCoverage?: TestCoverageReport;
+  readonly onConfigOptions?: (configOptions: readonly AcpConfigOption[]) => void;
+  readonly modelPreference?: { configId: string; value: string };
 }
 
 interface ExecutorAccumState {
@@ -168,9 +171,17 @@ export class Executor extends ServiceMap.Service<Executor>()("@supervisor/Execut
         prompt,
         systemPrompt: Option.none(),
         mcpEnv,
+        modelPreference: options.modelPreference,
       });
 
       return agent.stream(streamOptions).pipe(
+        Stream.tap((update) => {
+          const callback = options.onConfigOptions;
+          if (update.sessionUpdate === "config_option_update" && callback) {
+            return Effect.sync(() => callback(update.configOptions));
+          }
+          return Effect.void;
+        }),
         Stream.mapAccum(
           (): ExecutorAccumState => ({
             plan: initial,

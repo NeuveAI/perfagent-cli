@@ -4,7 +4,7 @@ import figures from "figures";
 import { Cause, DateTime, Option } from "effect";
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 import * as Atom from "effect/unstable/reactivity/Atom";
-import { useAtom, useAtomValue } from "@effect/atom-react";
+import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 
 import {
   type ChangesFor,
@@ -27,6 +27,8 @@ import { formatElapsedTime } from "../../utils/format-elapsed-time";
 import { Image } from "../ui/image";
 import { ErrorMessage } from "../ui/error-message";
 import { executeFn, screenshotPathsAtom } from "../../data/execution-atom";
+import { agentConfigOptionsAtom } from "../../data/config-options";
+import { agentProviderAtom } from "../../data/runtime";
 import { trackEvent } from "../../utils/session-analytics";
 import { formatToolCall, type FormattedToolCall } from "../../utils/format-tool-call";
 import { useScrollableList } from "../../hooks/use-scrollable-list";
@@ -264,7 +266,15 @@ export const TestingScreen = ({
   const COLORS = useColors();
   const [, terminalRows] = useStdoutDimensions();
 
-  const agentBackend = usePreferencesStore((state) => state.agentBackend);
+  const agentProviderValue = useAtomValue(agentProviderAtom);
+  const agentBackend = Option.isSome(agentProviderValue) ? agentProviderValue.value : "claude";
+  const setConfigOptions = useAtomSet(agentConfigOptionsAtom);
+  const modelPreferenceConfigId = usePreferencesStore(
+    (state) => state.modelPreferences[agentBackend]?.configId,
+  );
+  const modelPreferenceValue = usePreferencesStore(
+    (state) => state.modelPreferences[agentBackend]?.value,
+  );
   const browserHeaded = usePreferencesStore((state) => state.browserHeaded);
   const replayHost = usePreferencesStore((state) => state.replayHost);
   const toggleNotifications = usePreferencesStore((state) => state.toggleNotifications);
@@ -412,11 +422,21 @@ export const TestingScreen = ({
         cookieBrowserKeys: [...cookieBrowserKeys],
         savedFlow,
         baseUrl,
+        modelPreference:
+          modelPreferenceConfigId && modelPreferenceValue
+            ? { configId: modelPreferenceConfigId, value: modelPreferenceValue }
+            : undefined,
       },
       agentBackend,
       replayHost,
       onUpdate: setExecutedPlan,
       onReplayUrl: setLiveReplayUrl,
+      onConfigOptions: (configOptions) => {
+        setConfigOptions((previous) => ({
+          ...previous,
+          [agentBackend]: [...configOptions],
+        }));
+      },
     });
 
     return () => {
@@ -432,6 +452,9 @@ export const TestingScreen = ({
     cookieBrowserKeys,
     baseUrls,
     replayHost,
+    modelPreferenceConfigId,
+    modelPreferenceValue,
+    setConfigOptions,
   ]);
 
   const replayUrl = isExecutionComplete ? executionResult.value.replayUrl : undefined;

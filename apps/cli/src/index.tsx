@@ -74,7 +74,6 @@ Examples:
 
 const seedStores = (opts: CommanderOpts, changesFor: ChangesFor) => {
   usePreferencesStore.setState({
-    ...(opts.agent ? { agentBackend: opts.agent } : {}),
     browserHeaded: opts.headed ?? false,
     replayHost: opts.replayHost ?? "https://expect.dev",
   });
@@ -109,10 +108,22 @@ const runHeadlessForTarget = async (target: Target, opts: CommanderOpts) => {
   });
 };
 
+const waitForHydration = async () => {
+  if (usePreferencesStore.persist.hasHydrated()) return;
+  await new Promise<void>((resolve) => {
+    const unsub = usePreferencesStore.persist.onFinishHydration(() => {
+      unsub();
+      resolve();
+    });
+  });
+};
+
 const runInteractiveForTarget = async (target: Target, opts: CommanderOpts) => {
   const { changesFor } = await resolveChangesFor(target);
   seedStores(opts, changesFor);
-  renderApp(opts.agent ?? "claude");
+  await waitForHydration();
+  const persistedAgent = usePreferencesStore.getState().agentBackend;
+  renderApp(opts.agent ?? persistedAgent ?? "claude");
 };
 
 program
@@ -185,7 +196,9 @@ program.action(async () => {
       browserHeaded: opts.headed ?? false,
       replayHost: opts.replayHost ?? "https://expect.dev",
     });
-    renderApp(opts.agent ?? "claude");
+    await waitForHydration();
+    const persistedAgent = usePreferencesStore.getState().agentBackend;
+    renderApp(opts.agent ?? persistedAgent ?? "claude");
   }
 });
 

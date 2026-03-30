@@ -20,7 +20,12 @@ import {
   Stream,
   String as Str,
 } from "effect";
-import { AcpSessionUpdate, AgentProvider } from "@expect/shared/models";
+import {
+  AcpConfigOption,
+  AcpConfigOptionUpdate,
+  AcpSessionUpdate,
+  AgentProvider,
+} from "@expect/shared/models";
 import { hasStringMessage } from "@expect/shared/utils";
 
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
@@ -500,8 +505,12 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@expect/AcpClien
         const updatesQueue = sessionUpdatesMap.get(SessionId.makeUnsafe(sessionId));
         if (updatesQueue === undefined)
           return console.warn(`updates queue not found for session ${sessionId}`);
-        const decoded = Schema.decodeUnknownSync(AcpSessionUpdate)(update);
-        Queue.offerUnsafe(updatesQueue, decoded);
+        try {
+          const decoded = Schema.decodeUnknownSync(AcpSessionUpdate)(update);
+          Queue.offerUnsafe(updatesQueue, decoded);
+        } catch {
+          // HACK: unknown session update types from newer ACP servers are silently dropped
+        }
       },
     };
 
@@ -553,6 +562,15 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@expect/AcpClien
       capabilities: initResponse.agentCapabilities,
     });
 
+    const decodeConfigOptions = (raw: unknown[]) =>
+      Schema.decodeUnknownEffect(Schema.Array(AcpConfigOption))(raw).pipe(
+        Effect.catchTag("SchemaError", (schemaError) =>
+          Effect.logWarning("Failed to decode config options", {
+            error: String(schemaError),
+          }).pipe(Effect.as([] as AcpConfigOption[])),
+        ),
+      );
+
     const createSession = Effect.fn("AcpClient.createSession")(function* (
       cwd: string,
       mcpEnv: ReadonlyArray<{ name: string; value: string }> = [],
@@ -592,28 +610,44 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@expect/AcpClien
           return new AcpSessionCreateError({ cause });
         },
       }).pipe(
-        Effect.map(({ sessionId }) => SessionId.makeUnsafe(sessionId)),
-        Effect.tap((sessionId) =>
+        Effect.tap((response) =>
           Effect.gen(function* () {
+            const sessionId = SessionId.makeUnsafe(response.sessionId);
             const updatesQueue = yield* Queue.unbounded<AcpSessionUpdate, SessionQueueError>();
             sessionUpdatesMap.set(sessionId, updatesQueue);
             yield* Effect.logInfo("ACP session created", { sessionId });
+
+            if (response.configOptions && response.configOptions.length > 0) {
+              const decoded = yield* decodeConfigOptions(response.configOptions);
+              if (decoded.length > 0) {
+                Queue.offerUnsafe(
+                  updatesQueue,
+                  new AcpConfigOptionUpdate({
+                    sessionUpdate: "config_option_update",
+                    configOptions: decoded,
+                  }),
+                );
+                yield* Effect.logDebug("ACP config options emitted", {
+                  count: decoded.length,
+                });
+              }
+            }
           }),
         ),
+        Effect.map(({ sessionId }) => SessionId.makeUnsafe(sessionId)),
       );
     });
 
     const getQueueBySessionId = Effect.fn("AcpClient.getQueueBySessionId")(function* (
       sessionId: SessionId,
     ) {
-      if (!sessionUpdatesMap.has(sessionId)) {
+      const existing = sessionUpdatesMap.get(sessionId);
+      if (!existing) {
         return yield* Effect.die(
           `Session ${sessionId} not initialized, did you forget to call createSession?`,
         );
       }
-      const fresh = yield* Queue.unbounded<AcpSessionUpdate, SessionQueueError>();
-      sessionUpdatesMap.set(sessionId, fresh);
-      return fresh;
+      return existing;
     });
 
     const stream = Effect.fn("AcpClient.stream")(function* ({
@@ -622,18 +656,37 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@expect/AcpClien
       cwd,
       mcpEnv = [],
       systemPrompt = Option.none(),
+      modelPreference,
     }: {
       sessionId: Option.Option<SessionId>;
       prompt: string;
       cwd: string;
       mcpEnv?: ReadonlyArray<{ name: string; value: string }>;
       systemPrompt?: Option.Option<string>;
+      modelPreference?: { configId: string; value: string };
     }) {
       const sessionId = Option.isSome(sessionIdOption)
         ? sessionIdOption.value
         : yield* createSession(cwd, mcpEnv, systemPrompt);
 
       yield* Effect.logDebug("ACP stream starting", { sessionId });
+
+      if (modelPreference) {
+        yield* setConfigOption(sessionId, modelPreference.configId, modelPreference.value).pipe(
+          Effect.tap(() =>
+            Effect.logInfo("Model preference applied", {
+              configId: modelPreference.configId,
+              value: modelPreference.value,
+            }),
+          ),
+          Effect.tapErrorTag("AcpStreamError", (error) =>
+            Effect.logWarning("Failed to apply model preference", {
+              error: error.message,
+            }),
+          ),
+          Effect.catchTag("AcpStreamError", () => Effect.void),
+        );
+      }
 
       const updatesQueue = yield* getQueueBySessionId(sessionId);
       const lastActivityAt = yield* Ref.make(Date.now());
@@ -691,9 +744,51 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@expect/AcpClien
       );
     }, Stream.unwrap);
 
+    const setConfigOption = Effect.fn("AcpClient.setConfigOption")(function* (
+      sessionId: SessionId,
+      configId: string,
+      value: string | boolean,
+    ) {
+      yield* Effect.annotateCurrentSpan({ sessionId, configId });
+      const response = yield* Effect.tryPromise({
+        try: () =>
+          connection.setSessionConfigOption({
+            sessionId,
+            configId,
+            ...(typeof value === "boolean" ? { type: "boolean" as const, value } : { value }),
+          }),
+        catch: (cause) => new AcpStreamError({ cause }),
+      });
+      yield* Effect.logInfo("ACP config option set", { configId, value });
+      return response;
+    });
+
+    const fetchConfigOptions = Effect.fn("AcpClient.fetchConfigOptions")(function* (cwd: string) {
+      const sessionId = yield* createSession(cwd);
+      const queue = sessionUpdatesMap.get(sessionId);
+      if (!queue) return [] as AcpConfigOption[];
+
+      const configOptions: AcpConfigOption[] = [];
+      let update = yield* Queue.poll(queue);
+      while (update._tag === "Some") {
+        if (update.value.sessionUpdate === "config_option_update") {
+          configOptions.push(...update.value.configOptions);
+        }
+        update = yield* Queue.poll(queue);
+      }
+
+      yield* Effect.logInfo("ACP config options fetched", {
+        sessionId,
+        count: configOptions.length,
+      });
+      return configOptions;
+    });
+
     return {
       createSession,
       stream,
+      setConfigOption,
+      fetchConfigOptions,
     } as const;
   }),
 }) {
