@@ -37,6 +37,10 @@ npm install -g expect-cli
 
 Then confirm installation succeeded by re-running `expect-cli --version`. Do not proceed until the command resolves.
 
+## Timeout
+
+`expect-cli` runs a real browser and can take several minutes to complete — often 2–5 minutes depending on the number of test steps. Account for this when running and do not assume it will finish quickly.
+
 ## The Command
 
 ```bash
