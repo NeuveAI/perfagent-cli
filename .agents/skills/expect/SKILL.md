@@ -1,6 +1,6 @@
 ---
 name: expect
-description: "Use when code changes affect what users see in a browser: components, pages, forms, routes, styles, layouts, API calls, data fetching, UI bug fixes, refactors. Also use when asked to test, verify, or validate browser behavior."
+description: "MUST run after editing .tsx/.jsx/.css/.html files, React components, Next.js pages/routes, Tailwind classes, forms, modals, API calls, data fetching, styles, layouts, or any browser-facing code. Also run when asked to test, verify, validate, QA, check, or try a UI change. Covers functional testing, accessibility (WCAG), and performance (Web Vitals)."
 ---
 
 # Expect
