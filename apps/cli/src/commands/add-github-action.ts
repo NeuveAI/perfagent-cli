@@ -2,14 +2,24 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect } from "effect";
+import { detectAvailableAgents, type SupportedAgent } from "@expect/agent";
 import { detectProject } from "@expect/supervisor/detect-project";
 import { highlighter } from "../utils/highlighter";
 import { logger } from "../utils/logger";
 import { prompts } from "../utils/prompts";
-import { type PackageManager, detectNonInteractive, detectPackageManager } from "./init-utils";
+import {
+  type PackageManager,
+  detectNonInteractive,
+  detectPackageManager,
+  generateClaudeToken,
+  hasGhCli,
+  isGithubCliAuthenticated,
+  setGhSecret,
+} from "./init-utils";
 
 interface AddGithubActionOptions {
   yes?: boolean;
+  agents?: SupportedAgent[];
 }
 
 const DEV_COMMAND_DEFAULTS: Record<PackageManager, string> = {
@@ -17,6 +27,7 @@ const DEV_COMMAND_DEFAULTS: Record<PackageManager, string> = {
   pnpm: "pnpm dev",
   yarn: "yarn dev",
   bun: "bun dev",
+  deno: "deno task dev",
   vp: "vp dev",
 };
 
@@ -25,6 +36,7 @@ const DLX_COMMANDS: Record<PackageManager, string> = {
   pnpm: "pnpm dlx",
   yarn: "npx",
   bun: "bunx",
+  deno: "deno run -A npm:",
   vp: "npx",
 };
 
@@ -33,6 +45,7 @@ const INSTALL_COMMANDS: Record<PackageManager, string> = {
   pnpm: "pnpm install",
   yarn: "yarn install --frozen-lockfile",
   bun: "bun install",
+  deno: "deno install",
   vp: "npm ci",
 };
 
@@ -40,9 +53,11 @@ const generateWorkflow = (packageManager: PackageManager, devCommand: string, de
   const dlx = DLX_COMMANDS[packageManager];
   const install = INSTALL_COMMANDS[packageManager];
 
-  const setupSteps = buildSetupSteps(packageManager);
+  const setupSteps = buildSetupSteps(packageManager, install);
 
-  return `name: Expect Browser Tests
+  return `# Runs Expect browser tests in CI on every pull request.
+# Expect reads the PR diff, generates a test plan, and validates changes in a real browser.
+name: Expect CI
 
 on:
   pull_request:
@@ -58,32 +73,32 @@ jobs:
     env:
       ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}
       # Expect uses this local app URL as the browser test target in CI.
-      EXPECT_BASE_URL: "${devUrl}"
+      # Override by setting the EXPECT_BASE_URL repository variable.
+      EXPECT_BASE_URL: \${{ vars.EXPECT_BASE_URL || '${devUrl}' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 ${setupSteps}
-      - name: Install dependencies
-        run: ${install}
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit firefox
 
       # Expect runs against your dev server by default, not a production build or deployed preview.
-      # To test a preview URL instead, set EXPECT_BASE_URL to that URL. You can use
-      # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idneeds
-      # to pass preview URLs from other jobs.
+      # To test a preview URL instead, set the EXPECT_BASE_URL repository variable to skip
+      # local dev server startup entirely.
       - name: Start dev server
+        if: \${{ !vars.EXPECT_BASE_URL }}
         run: ${devCommand} &
 
-      # Wait until the local app is reachable before handing control to the browser agent.
       - name: Wait for dev server
-        run: npx wait-on ${devUrl} --timeout 60000
+        run: npx wait-on $EXPECT_BASE_URL --timeout 60000
 
-      
       - name: Run expect
         env:
-          # Expect uses the GitHub token to comment on the pull request.
           GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
         run: ${dlx} expect-cli@latest --ci
 
-      # Upload browser recordings and traces from .expect so failures are debuggable after the run.
       - name: Upload test artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -94,7 +109,7 @@ ${setupSteps}
 `;
 };
 
-const buildSetupSteps = (packageManager: PackageManager): string => {
+const buildSetupSteps = (packageManager: PackageManager, install: string): string => {
   if (packageManager === "pnpm") {
     return `
       - uses: pnpm/action-setup@v4
@@ -102,12 +117,18 @@ const buildSetupSteps = (packageManager: PackageManager): string => {
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm`;
+          cache: pnpm
+
+      - name: Install dependencies
+        run: ${install}`;
   }
 
   if (packageManager === "bun") {
     return `
-      - uses: oven-sh/setup-bun@v2`;
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: ${install}`;
   }
 
   if (packageManager === "yarn") {
@@ -115,14 +136,20 @@ const buildSetupSteps = (packageManager: PackageManager): string => {
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: yarn`;
+          cache: yarn
+
+      - name: Install dependencies
+        run: ${install}`;
   }
 
   return `
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm`;
+          cache: npm
+
+      - name: Install dependencies
+        run: ${install}`;
 };
 
 export const runAddGithubAction = async (options: AddGithubActionOptions = {}) => {
@@ -182,14 +209,93 @@ export const runAddGithubAction = async (options: AddGithubActionOptions = {}) =
 
   logger.break();
   logger.success("Created .github/workflows/expect.yml");
+  logger.dim("  Expect will automatically test every pull request in CI.");
   logger.break();
-  logger.log(`  Add ${highlighter.info("ANTHROPIC_API_KEY")} to your repository secrets:`);
+
+  const ghAvailable = await Effect.runPromise(hasGhCli);
+  const ghAuthed = ghAvailable && (await Effect.runPromise(isGithubCliAuthenticated));
+  const agents = options.agents ?? detectAvailableAgents();
+  const hasClaude = agents.includes("claude");
+
+  if (ghAvailable && !ghAuthed) {
+    logger.dim(
+      `  ${highlighter.info("gh")} is installed but not authenticated. Run ${highlighter.info("gh auth login")} first.`,
+    );
+    logger.break();
+  }
+
+  let secretSet = false;
+
+  if (ghAuthed && hasClaude && !nonInteractive) {
+    const response = await prompts({
+      type: "confirm",
+      name: "generateToken",
+      message: `Generate API token via ${highlighter.info("claude setup-token")} and set as ${highlighter.info("ANTHROPIC_API_KEY")} secret?`,
+      initial: true,
+    });
+
+    if (response.generateToken) {
+      logger.break();
+
+      const tokenResult = await Effect.runPromise(
+        generateClaudeToken.pipe(
+          Effect.andThen((token) =>
+            setGhSecret("ANTHROPIC_API_KEY", token).pipe(
+              Effect.as({ status: "secret-set" as const }),
+            ),
+          ),
+          Effect.provide(NodeServices.layer),
+          Effect.catchTag("ClaudeTokenGenerateError", (error) =>
+            Effect.succeed({ status: "token-failed" as const, reason: error.reason }),
+          ),
+          Effect.catchTag("GhSecretSetError", (error) =>
+            Effect.succeed({
+              status: "secret-failed" as const,
+              reason: error.reason,
+            }),
+          ),
+        ),
+      );
+
+      logger.break();
+
+      if (tokenResult.status === "secret-set") {
+        logger.success("ANTHROPIC_API_KEY secret set.");
+        secretSet = true;
+      } else if (tokenResult.status === "token-failed") {
+        logger.warn(`Could not generate token: ${tokenResult.reason}`);
+        logger.log(
+          `  You can set it manually: ${highlighter.dim("gh secret set ANTHROPIC_API_KEY")}`,
+        );
+      } else {
+        logger.warn("Token generated but failed to set secret via gh.");
+        if (tokenResult.reason) {
+          logger.dim(`  ${tokenResult.reason}`);
+        }
+        logger.log(
+          `  You can set it manually: ${highlighter.dim("gh secret set ANTHROPIC_API_KEY")}`,
+        );
+      }
+    }
+  }
+
+  if (!secretSet) {
+    logManualInstructions(ghAvailable, "ANTHROPIC_API_KEY", "secret");
+  }
+};
+
+const logManualInstructions = (ghAvailable: boolean, name: string, kind: "secret" | "variable") => {
+  const ghCommand = kind === "secret" ? "gh secret set" : "gh variable set";
+  logger.log(`  Add ${highlighter.info(name)} to your repository ${kind}s:`);
   logger.break();
-  logger.log(`  You can use the ${highlighter.info("gh")} CLI to add repository secrets:`);
-  logger.log(
-    `  ${highlighter.dim("claude setup-token")} ${highlighter.dim("# use Claude Code to generate a token, then paste it into ANTHROPIC_API_KEY")}`,
-  );
-  logger.log(
-    `  ${highlighter.dim("gh secret set ANTHROPIC_API_KEY")} ${highlighter.dim("# for an Anthropic API key or a token from claude setup-token")}`,
-  );
+  if (ghAvailable) {
+    logger.log(`  ${highlighter.dim(`${ghCommand} ${name}`)}`);
+  } else {
+    logger.log(`  Install the ${highlighter.info("gh")} CLI, then run:`);
+    logger.log(`  ${highlighter.dim(`${ghCommand} ${name}`)}`);
+    logger.break();
+    logger.log(
+      `  Or add it at ${highlighter.dim(`https://github.com/<owner>/<repo>/settings/${kind}s/actions`)}`,
+    );
+  }
 };

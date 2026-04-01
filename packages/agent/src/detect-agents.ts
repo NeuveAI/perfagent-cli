@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { isCommandAvailable } from "@expect/shared/is-command-available";
 
 export type SupportedAgent =
   | "claude"
@@ -10,35 +10,30 @@ export type SupportedAgent =
   | "droid";
 
 interface AgentMeta {
-  readonly binary: string;
-  readonly skillsCliName: string;
+  readonly binaries: readonly string[];
+  readonly displayName: string;
+  readonly skillDir: string;
 }
 
 const SUPPORTED_AGENTS: Record<SupportedAgent, AgentMeta> = {
-  claude: { binary: "claude", skillsCliName: "claude-code" },
-  codex: { binary: "codex", skillsCliName: "codex" },
-  copilot: { binary: "copilot", skillsCliName: "github-copilot" },
-  gemini: { binary: "gemini", skillsCliName: "gemini-cli" },
-  cursor: { binary: "agent", skillsCliName: "cursor" },
-  opencode: { binary: "opencode", skillsCliName: "opencode" },
-  droid: { binary: "droid", skillsCliName: "droid" },
-};
-
-const WHICH_COMMAND = process.platform === "win32" ? "where" : "/usr/bin/which";
-
-const isCommandAvailable = (command: string): boolean => {
-  try {
-    execSync(`${WHICH_COMMAND} ${command}`, { stdio: "pipe" });
-    return true;
-  } catch {
-    return false;
-  }
+  claude: { binaries: ["claude"], displayName: "Claude Code", skillDir: ".claude/skills" },
+  codex: { binaries: ["codex"], displayName: "Codex", skillDir: ".codex/skills" },
+  copilot: {
+    binaries: ["copilot"],
+    displayName: "GitHub Copilot",
+    skillDir: ".github/copilot/skills",
+  },
+  gemini: { binaries: ["gemini"], displayName: "Gemini CLI", skillDir: ".gemini/skills" },
+  cursor: { binaries: ["cursor", "agent"], displayName: "Cursor", skillDir: ".cursor/skills" },
+  opencode: { binaries: ["opencode"], displayName: "OpenCode", skillDir: ".opencode/skills" },
+  droid: { binaries: ["droid"], displayName: "Factory Droid", skillDir: ".droid/skills" },
 };
 
 export const detectAvailableAgents = (): SupportedAgent[] =>
   (Object.keys(SUPPORTED_AGENTS) as SupportedAgent[]).filter((agent) =>
-    isCommandAvailable(SUPPORTED_AGENTS[agent].binary),
+    SUPPORTED_AGENTS[agent].binaries.some(isCommandAvailable),
   );
 
-export const toSkillsCliName = (agent: SupportedAgent): string =>
-  SUPPORTED_AGENTS[agent].skillsCliName;
+export const toDisplayName = (agent: SupportedAgent): string => SUPPORTED_AGENTS[agent].displayName;
+
+export const toSkillDir = (agent: SupportedAgent): string => SUPPORTED_AGENTS[agent].skillDir;

@@ -1,7 +1,8 @@
 import { Browsers, Cookies, layerLive, browserKeyOf, Cookie } from "@expect/cookies";
 import type { Browser as BrowserProfile } from "@expect/cookies";
-import { chromium } from "playwright";
+import { chromium, webkit, firefox } from "playwright";
 import type { Locator, Page } from "playwright";
+import type { BrowserEngine } from "./types";
 import { Array as Arr, Effect, Layer, Option, ServiceMap } from "effect";
 
 const cookiesLayer = Layer.mergeAll(layerLive, Cookies.layer);
@@ -40,6 +41,11 @@ import type {
   RefMap,
   SnapshotOptions,
 } from "./types";
+import type { ScrollContainerResult } from "./runtime/scroll-detection";
+
+const BROWSER_ENGINES = { chromium, webkit, firefox } as const;
+
+const resolveBrowserType = (engine: BrowserEngine) => BROWSER_ENGINES[engine];
 
 const shouldAssignRef = (role: string, name: string, interactive?: boolean): boolean => {
   if (INTERACTIVE_ROLES.has(role)) return true;
@@ -187,12 +193,15 @@ export class Browser extends ServiceMap.Service<Browser>()("@browser/Browser", {
       url: string | undefined,
       options: CreatePageOptions = {},
     ) {
+      const engine = options.browserType ?? "chromium";
       yield* Effect.annotateCurrentSpan({
         url: url ?? "about:blank",
         cdp: Boolean(options.cdpUrl),
+        browserType: engine,
       });
 
-      const cdpEndpoint = options.cdpUrl;
+      const cdpEndpoint = engine === "chromium" ? options.cdpUrl : undefined;
+      const browserType = resolveBrowserType(engine);
       const browser = cdpEndpoint
         ? yield* Effect.tryPromise({
             try: () => chromium.connectOverCDP(cdpEndpoint),
@@ -204,10 +213,10 @@ export class Browser extends ServiceMap.Service<Browser>()("@browser/Browser", {
           })
         : yield* Effect.tryPromise({
             try: () =>
-              chromium.launch({
+              browserType.launch({
                 headless: !options.headed,
                 executablePath: options.executablePath,
-                args: options.headed ? [] : HEADLESS_CHROMIUM_ARGS,
+                args: engine === "chromium" && !options.headed ? HEADLESS_CHROMIUM_ARGS : [],
               }),
             catch: toBrowserLaunchError,
           });
@@ -305,23 +314,58 @@ export class Browser extends ServiceMap.Service<Browser>()("@browser/Browser", {
       );
     });
 
+    const NO_SCROLL_CONTAINERS: ScrollContainerResult[] = [];
+
+    const takeAriaSnapshot = Effect.fn("Browser.takeAriaSnapshot")(function* (
+      page: Page,
+      options: SnapshotOptions,
+    ) {
+      const timeout = options.timeout ?? SNAPSHOT_TIMEOUT_MS;
+      const selector = options.selector ?? "body";
+      const useViewportAware = options.viewportAware ?? true;
+
+      const scrollContainers: ScrollContainerResult[] = useViewportAware
+        ? yield* evaluateRuntime(page, "prepareViewportSnapshot").pipe(
+            Effect.catchCause((cause) =>
+              Effect.logDebug("Viewport snapshot preparation failed, falling back to full tree", {
+                cause,
+              }).pipe(Effect.as(NO_SCROLL_CONTAINERS)),
+            ),
+          )
+        : NO_SCROLL_CONTAINERS;
+
+      const restore =
+        scrollContainers.length > 0
+          ? evaluateRuntime(page, "restoreViewportSnapshot").pipe(
+              Effect.catchCause((cause) =>
+                Effect.logDebug("Viewport snapshot restoration failed", { cause }),
+              ),
+            )
+          : Effect.void;
+
+      const rawTree = yield* Effect.ensuring(
+        Effect.tryPromise({
+          try: () => page.locator(selector).ariaSnapshot({ timeout }),
+          catch: (cause) =>
+            new SnapshotTimeoutError({
+              selector,
+              timeoutMs: timeout,
+              cause: cause instanceof Error ? cause.message : String(cause),
+            }),
+        }),
+        restore,
+      );
+
+      return { rawTree, scrollContainers };
+    });
+
     const snapshot = Effect.fn("Browser.snapshot")(function* (
       page: Page,
       options: SnapshotOptions = {},
     ) {
-      const timeout = options.timeout ?? SNAPSHOT_TIMEOUT_MS;
-      const selector = options.selector ?? "body";
-      yield* Effect.annotateCurrentSpan({ selector });
+      yield* Effect.annotateCurrentSpan({ selector: options.selector ?? "body" });
 
-      const rawTree = yield* Effect.tryPromise({
-        try: () => page.locator(selector).ariaSnapshot({ timeout }),
-        catch: (cause) =>
-          new SnapshotTimeoutError({
-            selector,
-            timeoutMs: timeout,
-            cause: cause instanceof Error ? cause.message : String(cause),
-          }),
-      });
+      const { rawTree, scrollContainers } = yield* takeAriaSnapshot(page, options);
 
       const refs: RefMap = {};
       const filteredLines: string[] = [];
@@ -364,7 +408,7 @@ export class Browser extends ServiceMap.Service<Browser>()("@browser/Browser", {
       if (options.interactive && refCount === 0) tree = "(no interactive elements)";
       if (options.compact) tree = compactTree(tree);
 
-      const stats = computeSnapshotStats(tree, refs);
+      const stats = computeSnapshotStats(tree, refs, scrollContainers);
 
       return { tree, refs, stats, locator: createLocator(page, refs) };
     });
@@ -410,7 +454,7 @@ export class Browser extends ServiceMap.Service<Browser>()("@browser/Browser", {
       yield* injectOverlayLabels(page, labelPositions);
       return yield* Effect.ensuring(
         Effect.tryPromise({
-          try: () => page.screenshot({ fullPage: options.fullPage }),
+          try: () => page.screenshot({ fullPage: options.fullPage, scale: "css" }),
           catch: toBrowserLaunchError,
         }).pipe(Effect.map((screenshotBuffer) => ({ screenshot: screenshotBuffer, annotations }))),
         // HACK: overlay removal is best-effort cleanup — evaluateRuntime uses Effect.promise which defects on failure

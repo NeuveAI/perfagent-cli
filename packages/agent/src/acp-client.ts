@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ import {
   Effect,
   FiberMap,
   FileSystem,
+  Filter,
   Layer,
   Match,
   Option,
@@ -162,7 +163,11 @@ export class AcpAdapterNotFoundError extends Schema.ErrorClass<AcpAdapterNotFoun
   )}`;
 }
 
-type SessionQueueError = Cause.Done | AcpStreamError;
+type SessionQueueError =
+  | Cause.Done
+  | AcpStreamError
+  | AcpProviderUnauthenticatedError
+  | AcpProviderUsageLimitError;
 
 const makeRequire = () =>
   createRequire(typeof __filename !== "undefined" ? __filename : import.meta.url);
@@ -254,7 +259,7 @@ export class AcpAdapter extends ServiceMap.Service<
       return yield* Effect.try({
         try: () => {
           const require = makeRequire();
-          const binPath = require.resolve("@zed-industries/claude-agent-acp/dist/index.js");
+          const binPath = require.resolve("@agentclientprotocol/claude-agent-acp/dist/index.js");
           return AcpAdapter.of({
             provider: "claude",
             bin: process.execPath,
@@ -264,7 +269,7 @@ export class AcpAdapter extends ServiceMap.Service<
         },
         catch: (cause) =>
           new AcpAdapterNotFoundError({
-            packageName: "@zed-industries/claude-agent-acp",
+            packageName: "@agentclientprotocol/claude-agent-acp",
             cause,
           }),
       });
@@ -498,6 +503,30 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@expect/AcpClien
       Queue.Queue<AcpSessionUpdate, SessionQueueError>
     >();
 
+    const AUTH_FAILURE_PATTERNS = [
+      "invalid api key",
+      "authentication failed",
+      "authentication error",
+      "unauthorized",
+      "invalid_api_key",
+    ];
+
+    const USAGE_LIMIT_PATTERNS = ["out of usage", "limits exceeded", "usage exceeded"];
+
+    const getAdapterSessionError = (line: string): Option.Option<SessionQueueError> => {
+      const normalizedLine = line.toLowerCase();
+
+      if (AUTH_FAILURE_PATTERNS.some((pattern) => normalizedLine.includes(pattern))) {
+        return Option.some(new AcpProviderUnauthenticatedError({ provider: adapter.provider }));
+      }
+
+      if (USAGE_LIMIT_PATTERNS.some((pattern) => normalizedLine.includes(pattern))) {
+        return Option.some(new AcpProviderUsageLimitError({ provider: adapter.provider }));
+      }
+
+      return Option.none();
+    };
+
     const client: acp.Client = {
       requestPermission: (params) =>
         Promise.resolve({
@@ -530,10 +559,30 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@expect/AcpClien
     yield* Effect.logDebug("ACP adapter subprocess spawned");
     /** @note(rasmus): we run all the writable queue entries into the process stdin */
     yield* Stream.fromQueue(writableQueue).pipe(Stream.run(childProcess.stdin), Effect.forkScoped);
+
+    // HACK: ACP adapters report fatal errors (invalid API key, usage limits) via stderr
+    // rather than through the protocol. We scan stderr lines for known patterns and, on the
+    // first match, fail all active session queues so consumers surface the error immediately.
+    // Stream.take(1) ensures we only act on the first fatal error and stop scanning.
+    // If we don't immediately fail the session queues, consumers will hang indefinitely.
     yield* childProcess.stderr.pipe(
       Stream.decodeText(),
       Stream.splitLines,
       Stream.tap((line) => Effect.logDebug("ACP adapter stderr", { line })),
+      Stream.filterMap(Filter.fromPredicateOption(getAdapterSessionError)),
+      Stream.take(1),
+      Stream.tap((adapterSessionError) =>
+        Effect.andThen(
+          Effect.logWarning("ACP adapter reported fatal error", {
+            provider: adapter.provider,
+          }),
+          Effect.forEach(
+            Array.from(sessionUpdatesMap.values()),
+            (updatesQueue) => Queue.fail(updatesQueue, adapterSessionError),
+            { concurrency: "unbounded" },
+          ),
+        ),
+      ),
       Stream.runDrain,
       Effect.forkScoped,
     );
@@ -546,7 +595,11 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@expect/AcpClien
 
     const connection = new acp.ClientSideConnection((_agent) => client, ndJsonStream);
 
-    const browserMcpBinPath = fileURLToPath(new URL("./browser-mcp.js", import.meta.url));
+    const browserMcpBinPath = (() => {
+      const colocated = fileURLToPath(new URL("./browser-mcp.js", import.meta.url));
+      if (existsSync(colocated)) return colocated;
+      return fileURLToPath(new URL("../../../apps/cli/dist/browser-mcp.js", import.meta.url));
+    })();
 
     const buildMcpServers = (
       env: ReadonlyArray<{ name: string; value: string }>,

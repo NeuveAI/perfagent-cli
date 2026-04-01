@@ -8,8 +8,8 @@ import { evaluateRuntime } from "../utils/evaluate-runtime";
 import { runAccessibilityAudit } from "../accessibility";
 import { formatPerformanceTrace } from "../performance-trace";
 import { McpSession } from "./mcp-session";
-import { DEFAULT_SWIPE_DURATION_MS } from "../ios/constants";
 import { autoDiscoverCdp } from "../cdp-discovery";
+import { DUPLICATE_REQUEST_WINDOW_MS } from "./constants";
 
 const textResult = (text: string) => ({
   content: [{ type: "text" as const, text }],
@@ -55,7 +55,7 @@ export const createBrowserMcpServer = <E>(
     {
       title: "Open URL",
       description:
-        "Navigate to a URL, launching a browser if needed. Set 'device' to an iOS simulator name (e.g. 'iPhone 16 Pro') to open in Safari on an iOS Simulator via Appium. Set 'cdp' to a WebSocket URL (e.g. 'ws://localhost:9222/devtools/browser/...') to connect to an already-running Chrome via CDP instead of launching a new browser.",
+        "Navigate to a URL, launching a browser if needed. Set 'cdp' to a WebSocket URL (e.g. 'ws://localhost:9222/devtools/browser/...') to connect to an already-running Chrome via CDP instead of launching a new browser.",
       inputSchema: {
         url: z.string().describe("URL to navigate to"),
         headed: z.boolean().optional().describe("Show browser window"),
@@ -67,36 +67,24 @@ export const createBrowserMcpServer = <E>(
           .enum(["load", "domcontentloaded", "networkidle", "commit"])
           .optional()
           .describe("Wait strategy"),
-        device: z
-          .string()
-          .optional()
-          .describe(
-            "iOS simulator device name (e.g. 'iPhone 16 Pro'). Opens Safari on iOS Simulator instead of desktop Chromium. Requires Xcode and Appium.",
-          ),
         cdp: z
           .string()
           .optional()
           .describe(
             "CDP WebSocket endpoint URL to connect to an existing Chrome instance (e.g. 'ws://localhost:9222/devtools/browser/...'). Use 'auto' to auto-discover a running Chrome.",
           ),
+        browser: z
+          .enum(["chromium", "webkit", "firefox"])
+          .optional()
+          .describe(
+            "Browser engine to launch (default: chromium). Use 'webkit' for Safari-like testing or 'firefox' for Firefox testing. CDP connections are only supported with chromium.",
+          ),
       },
     },
-    ({ url, headed, cookies, waitUntil, device, cdp }) =>
+    ({ url, headed, cookies, waitUntil, cdp, browser: browserType }) =>
       runMcp(
         Effect.gen(function* () {
           const session = yield* McpSession;
-
-          if (device) {
-            if (session.hasIosSession()) {
-              const ios = yield* session.requireIosSession();
-              yield* ios.client.navigate(url);
-              return textResult(`Navigated to ${url} on iOS Simulator`);
-            }
-            const result = yield* session.openIos(url, device);
-            return textResult(
-              `Opened ${url} on iOS Simulator (${result.device}, UDID: ${result.udid})`,
-            );
-          }
 
           if (session.hasSession()) {
             yield* session.navigate(url, { waitUntil });
@@ -111,15 +99,22 @@ export const createBrowserMcpServer = <E>(
             cdpUrl = cdp;
           }
 
-          const result = yield* session.open(url, { headed, cookies, waitUntil, cdpUrl });
+          const result = yield* session.open(url, {
+            headed,
+            cookies,
+            waitUntil,
+            cdpUrl,
+            browserType,
+          });
+          const engineSuffix = browserType && browserType !== "chromium" ? ` [${browserType}]` : "";
           const cdpSuffix = cdpUrl ? ` (connected via CDP: ${cdpUrl})` : "";
           return textResult(
-            `Opened ${url}${cdpSuffix}` +
+            `Opened ${url}${engineSuffix}${cdpSuffix}` +
               (result.injectedCookieCount > 0
                 ? ` (${result.injectedCookieCount} cookies synced from local browser)`
                 : ""),
           );
-        }),
+        }).pipe(Effect.withSpan(`mcp.tool.open`)),
       ),
   );
 
@@ -128,12 +123,18 @@ export const createBrowserMcpServer = <E>(
     {
       title: "Execute Playwright",
       description:
-        "Execute Playwright code in the Node.js context. Available globals: page (Page), context (BrowserContext), browser (Browser), ref (function: ref ID from snapshot → Playwright Locator). Use `return` to send a value back as JSON. Supports await.",
+        "Execute Playwright code in the Node.js context. Available globals: page (Page), context (BrowserContext), browser (Browser), ref (function: ref ID from snapshot → Playwright Locator). Use `return` to send a value back as JSON. Supports await. Set snapshotAfter=true to automatically take a fresh ARIA snapshot after execution and get updated refs — useful after actions that change the DOM (opening dropdowns, dialogs, navigating).",
       inputSchema: {
         code: z.string().describe("Playwright code to execute"),
+        snapshotAfter: z
+          .boolean()
+          .optional()
+          .describe(
+            "Take a fresh ARIA snapshot after execution and return it alongside the result. Use after actions that change the DOM (dropdowns, dialogs, navigation).",
+          ),
       },
     },
-    ({ code }) =>
+    ({ code, snapshotAfter }) =>
       runMcp(
         Effect.gen(function* () {
           const session = yield* McpSession;
@@ -145,7 +146,7 @@ export const createBrowserMcpServer = <E>(
             return Effect.runSync(sessionData.lastSnapshot.locator(refId));
           };
 
-          return yield* Effect.promise(async () => {
+          const codeResult = yield* Effect.promise(async () => {
             try {
               const userFunction = new AsyncFunction("page", "context", "browser", "ref", code);
               const result = await userFunction(
@@ -154,13 +155,45 @@ export const createBrowserMcpServer = <E>(
                 sessionData.browser,
                 ref,
               );
-              if (result === undefined) return textResult("OK");
-              return jsonResult(result);
+              return { success: true as const, value: result };
             } catch (error) {
-              return textResult(`Error: ${error instanceof Error ? error.message : String(error)}`);
+              return {
+                success: false as const,
+                error: error instanceof Error ? error.message : String(error),
+              };
             }
           });
-        }),
+
+          if (!codeResult.success) {
+            return textResult(`Error: ${codeResult.error}`);
+          }
+
+          if (snapshotAfter) {
+            const snapshotResult = yield* session.snapshot(sessionData.page);
+            yield* session.updateLastSnapshot(snapshotResult);
+            const resultPayload =
+              codeResult.value === undefined
+                ? {
+                    snapshot: {
+                      tree: snapshotResult.tree,
+                      refs: snapshotResult.refs,
+                      stats: snapshotResult.stats,
+                    },
+                  }
+                : {
+                    result: codeResult.value,
+                    snapshot: {
+                      tree: snapshotResult.tree,
+                      refs: snapshotResult.refs,
+                      stats: snapshotResult.stats,
+                    },
+                  };
+            return jsonResult(resultPayload);
+          }
+
+          if (codeResult.value === undefined) return textResult("OK");
+          return jsonResult(codeResult.value);
+        }).pipe(Effect.withSpan(`mcp.tool.playwright`)),
       ),
   );
 
@@ -176,31 +209,32 @@ export const createBrowserMcpServer = <E>(
           .enum(["screenshot", "snapshot", "annotated"])
           .optional()
           .describe("Capture mode (default: screenshot)"),
-        fullPage: z.boolean().optional().describe("Capture the full scrollable page"),
+        fullPage: z
+          .boolean()
+          .optional()
+          .describe(
+            "Capture the full page. For screenshot/annotated: captures full scrollable page. For snapshot: includes all elements in scroll containers instead of only visible ones.",
+          ),
       },
     },
     ({ mode, fullPage }) =>
       runMcp(
         Effect.gen(function* () {
           const session = yield* McpSession;
-
-          if (session.hasIosSession()) {
-            const ios = yield* session.requireIosSession();
-            const base64 = yield* ios.client.screenshot();
-            return imageResult(base64);
-          }
-
           const page = yield* session.requirePage();
           const resolvedMode = mode ?? "screenshot";
 
           if (resolvedMode === "snapshot") {
-            const result = yield* session.snapshot(page);
+            const result = yield* session.snapshot(page, {
+              viewportAware: !fullPage,
+            });
             yield* session.updateLastSnapshot(result);
             return jsonResult({ tree: result.tree, refs: result.refs, stats: result.stats });
           }
 
           if (resolvedMode === "annotated") {
             const result = yield* session.annotatedScreenshot(page, { fullPage });
+            yield* session.saveScreenshot(result.screenshot);
             return {
               content: [
                 {
@@ -221,9 +255,12 @@ export const createBrowserMcpServer = <E>(
             };
           }
 
-          const buffer = yield* Effect.tryPromise(() => page.screenshot({ fullPage }));
+          const buffer = yield* Effect.tryPromise(() =>
+            page.screenshot({ fullPage, scale: "css" }),
+          );
+          yield* session.saveScreenshot(buffer);
           return imageResult(buffer.toString("base64"));
-        }),
+        }).pipe(Effect.withSpan(`mcp.tool.screenshot`)),
       ),
   );
 
@@ -251,10 +288,17 @@ export const createBrowserMcpServer = <E>(
             ? sessionData.consoleMessages.filter((entry) => entry.type === type)
             : sessionData.consoleMessages;
           if (clear) sessionData.consoleMessages.length = 0;
-          return entries.length === 0
-            ? textResult("No console messages captured.")
-            : jsonResult(entries);
-        }),
+          if (entries.length === 0) return textResult("No console messages captured.");
+
+          const errorCount = entries.filter((entry) => entry.type === "error").length;
+          const warningCount = entries.filter((entry) => entry.type === "warning").length;
+          const summary =
+            errorCount > 0 || warningCount > 0
+              ? `${errorCount} error(s), ${warningCount} warning(s) out of ${entries.length} total messages\n\n`
+              : "";
+
+          return jsonResult({ summary: summary || undefined, messages: entries });
+        }).pipe(Effect.withSpan(`mcp.tool.console_logs`)),
       ),
   );
 
@@ -263,7 +307,7 @@ export const createBrowserMcpServer = <E>(
     {
       title: "Network Requests",
       description:
-        "Get captured network requests. Optionally filter by HTTP method, URL substring, or resource type (document, script, stylesheet, image, xhr, fetch, etc.).",
+        "Get captured network requests with automatic issue detection. Flags failed requests (4xx/5xx), duplicate requests (same URL+method within 500ms), and mixed content (HTTP on HTTPS pages). Optionally filter by HTTP method, URL substring, or resource type.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         method: z.string().optional().describe("Filter by HTTP method (e.g. 'GET', 'POST')"),
@@ -289,10 +333,58 @@ export const createBrowserMcpServer = <E>(
               (!normalizedResourceType || entry.resourceType === normalizedResourceType),
           );
           if (clear) sessionData.networkRequests.length = 0;
-          return entries.length === 0
-            ? textResult("No network requests captured.")
-            : jsonResult(entries);
-        }),
+          if (entries.length === 0) return textResult("No network requests captured.");
+
+          const failed = entries.filter(
+            (entry) => entry.status !== undefined && entry.status >= 400,
+          );
+
+          const duplicateMap = new Map<string, { url: string; method: string; count: number }>();
+          const lastTimestamp = new Map<string, number>();
+          for (const entry of entries) {
+            const key = `${entry.method}:${entry.url}`;
+            const previous = lastTimestamp.get(key);
+            if (
+              previous !== undefined &&
+              Math.abs(entry.timestamp - previous) < DUPLICATE_REQUEST_WINDOW_MS
+            ) {
+              const existing = duplicateMap.get(key);
+              if (existing) {
+                existing.count++;
+              } else {
+                duplicateMap.set(key, { url: entry.url, method: entry.method, count: 2 });
+              }
+            }
+            lastTimestamp.set(key, entry.timestamp);
+          }
+          const duplicates = Array.from(duplicateMap.values());
+
+          const isHttps = entries.some(
+            (entry) => entry.resourceType === "document" && entry.url.startsWith("https://"),
+          );
+          const mixedContent = isHttps
+            ? entries.filter(
+                (entry) => entry.resourceType !== "document" && entry.url.startsWith("http://"),
+              )
+            : [];
+
+          const issues = {
+            failedRequests: failed.map((entry) => ({
+              url: entry.url,
+              method: entry.method,
+              status: entry.status,
+            })),
+            duplicateRequests: duplicates,
+            mixedContent: mixedContent.map((entry) => entry.url),
+          };
+
+          const hasIssues = failed.length > 0 || duplicates.length > 0 || mixedContent.length > 0;
+
+          return jsonResult({
+            issues: hasIssues ? issues : undefined,
+            requests: entries,
+          });
+        }).pipe(Effect.withSpan(`mcp.tool.network_requests`)),
       ),
   );
 
@@ -348,10 +440,11 @@ export const createBrowserMcpServer = <E>(
           summary.push(
             `\nResources: ${trace.resources.totalCount} loaded (${Math.round(trace.resources.totalTransferSizeBytes / 1024)}KB total)`,
           );
+
           summary.push(`\nFull trace: ${tracePath}`);
 
           return textResult(summary.join("\n"));
-        }),
+        }).pipe(Effect.withSpan(`mcp.tool.performance_metrics`)),
       ),
   );
 
@@ -385,117 +478,7 @@ export const createBrowserMcpServer = <E>(
             return textResult("No accessibility violations found.");
           }
           return jsonResult(result);
-        }),
-      ),
-  );
-
-  server.registerTool(
-    "ios_devices",
-    {
-      title: "List iOS Devices",
-      description:
-        "List available iOS simulators and connected real devices. Use this to find device names for the 'open' tool's 'device' parameter.",
-      annotations: { readOnlyHint: true },
-      inputSchema: {},
-    },
-    () =>
-      runMcp(
-        Effect.gen(function* () {
-          const session = yield* McpSession;
-          const devices = yield* session.listIosDevices();
-          if (devices.length === 0) {
-            return textResult(
-              "No iOS devices found. Make sure Xcode is installed with iOS simulators.",
-            );
-          }
-          return jsonResult(devices);
-        }),
-      ),
-  );
-
-  server.registerTool(
-    "tap",
-    {
-      title: "Tap (iOS)",
-      description: "Perform a touch tap at the given coordinates on the iOS Simulator.",
-      inputSchema: {
-        x: z.number().describe("X coordinate to tap"),
-        y: z.number().describe("Y coordinate to tap"),
-      },
-    },
-    ({ x, y }) =>
-      runMcp(
-        Effect.gen(function* () {
-          const session = yield* McpSession;
-          const ios = yield* session.requireIosSession();
-          yield* ios.tap(x, y);
-          return textResult(`Tapped at (${x}, ${y})`);
-        }),
-      ),
-  );
-
-  server.registerTool(
-    "swipe",
-    {
-      title: "Swipe (iOS)",
-      description:
-        "Perform a swipe gesture on the iOS Simulator from start coordinates to end coordinates.",
-      inputSchema: {
-        startX: z.number().describe("Starting X coordinate"),
-        startY: z.number().describe("Starting Y coordinate"),
-        endX: z.number().describe("Ending X coordinate"),
-        endY: z.number().describe("Ending Y coordinate"),
-        duration: z.number().optional().describe("Swipe duration in milliseconds (default: 300)"),
-      },
-    },
-    ({ startX, startY, endX, endY, duration }) =>
-      runMcp(
-        Effect.gen(function* () {
-          const session = yield* McpSession;
-          const ios = yield* session.requireIosSession();
-          yield* ios.swipe(startX, startY, endX, endY, duration ?? DEFAULT_SWIPE_DURATION_MS);
-          return textResult(`Swiped from (${startX}, ${startY}) to (${endX}, ${endY})`);
-        }),
-      ),
-  );
-
-  server.registerTool(
-    "ios_execute",
-    {
-      title: "Execute JavaScript (iOS)",
-      description:
-        "Execute JavaScript in the Safari context on the iOS Simulator. Returns the result as JSON.",
-      inputSchema: {
-        script: z.string().describe("JavaScript code to execute in Safari"),
-      },
-    },
-    ({ script }) =>
-      runMcp(
-        Effect.gen(function* () {
-          const session = yield* McpSession;
-          const ios = yield* session.requireIosSession();
-          const result = yield* ios.client.executeScript(script);
-          if (result === undefined) return textResult("OK");
-          return jsonResult(result);
-        }),
-      ),
-  );
-
-  server.registerTool(
-    "ios_source",
-    {
-      title: "Page Source (iOS)",
-      description: "Get the HTML page source from Safari on the iOS Simulator.",
-      annotations: { readOnlyHint: true },
-      inputSchema: {},
-    },
-    () =>
-      runMcp(
-        Effect.gen(function* () {
-          const session = yield* McpSession;
-          const ios = yield* session.requireIosSession();
-          return textResult(yield* ios.client.getPageSource());
-        }),
+        }).pipe(Effect.withSpan(`mcp.tool.accessibility_audit`)),
       ),
   );
 
@@ -525,8 +508,11 @@ export const createBrowserMcpServer = <E>(
           } else if (result.videoPath) {
             lines.push(`Playwright video: ${result.videoPath}`);
           }
+          for (const screenshotPath of result.screenshotPaths) {
+            lines.push(`Screenshot: ${screenshotPath}`);
+          }
           return textResult(lines.join("\n"));
-        }),
+        }).pipe(Effect.withSpan(`mcp.tool.close`)),
       ),
   );
 

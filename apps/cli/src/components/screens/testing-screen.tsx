@@ -34,12 +34,15 @@ import { formatToolCall, type FormattedToolCall } from "../../utils/format-tool-
 import { useScrollableList } from "../../hooks/use-scrollable-list";
 import { useStdoutDimensions } from "../../hooks/use-stdout-dimensions";
 
+import type { DevServerHint } from "../../stores/use-navigation";
+
 interface TestingScreenProps {
   changesFor: ChangesFor;
   instruction: string;
   savedFlow?: SavedFlow;
   cookieBrowserKeys?: readonly string[];
   baseUrls?: readonly string[];
+  devServerHints?: readonly DevServerHint[];
 }
 
 interface ToolCallDisplay {
@@ -261,6 +264,7 @@ export const TestingScreen = ({
   savedFlow,
   cookieBrowserKeys = [],
   baseUrls,
+  devServerHints,
 }: TestingScreenProps) => {
   const setScreen = useNavigationStore((state) => state.setScreen);
   const COLORS = useColors();
@@ -411,17 +415,16 @@ export const TestingScreen = ({
     setRunStartedAt(Date.now());
 
     const baseUrl = baseUrls && baseUrls.length > 0 ? baseUrls.join(", ") : undefined;
-    const urlTags = baseUrls ? baseUrls.map((url) => `[url: ${url}]`).join(" ") : undefined;
-    const instructionWithUrls = urlTags ? `${instruction} ${urlTags}` : instruction;
 
     triggerExecute({
       options: {
         changesFor,
-        instruction: instructionWithUrls,
+        instruction,
         isHeadless: !browserHeaded,
         cookieBrowserKeys: [...cookieBrowserKeys],
         savedFlow,
         baseUrl,
+        devServerHints: devServerHints ? [...devServerHints] : undefined,
         modelPreference:
           modelPreferenceConfigId && modelPreferenceValue
             ? { configId: modelPreferenceConfigId, value: modelPreferenceValue }
@@ -451,6 +454,7 @@ export const TestingScreen = ({
     savedFlow,
     cookieBrowserKeys,
     baseUrls,
+    devServerHints,
     replayHost,
     modelPreferenceConfigId,
     modelPreferenceValue,

@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { Option } from "effect";
 import { Command } from "commander";
 import { ChangesFor } from "@expect/supervisor";
@@ -14,7 +16,14 @@ import { useNavigationStore, Screen } from "./stores/use-navigation";
 import { usePreferencesStore } from "./stores/use-preferences";
 import { resolveChangesFor } from "./utils/resolve-changes-for";
 import { renderApp } from "./program";
-import { CI_EXECUTION_TIMEOUT_MS, VERSION } from "./constants";
+import { CI_EXECUTION_TIMEOUT_MS, VERSION, VERSION_API_URL } from "./constants";
+import { prompts } from "./utils/prompts";
+import { highlighter } from "./utils/highlighter";
+import { logger } from "./utils/logger";
+
+try {
+  fetch(`${VERSION_API_URL}?source=cli&t=${Date.now()}`).catch(() => {});
+} catch {}
 
 const DEFAULT_INSTRUCTION =
   "Test all changes from main in the browser and verify they work correctly.";
@@ -38,6 +47,7 @@ interface CommanderOpts {
   ci?: boolean;
   timeout?: number;
   output?: OutputFormat;
+  url?: string[];
 }
 
 const program = new Command()
@@ -58,6 +68,7 @@ const program = new Command()
   .option("--ci", "force CI mode: headless, no cookies, auto-yes, 30-minute timeout")
   .option("--timeout <ms>", "execution timeout in milliseconds", parseInt)
   .option("--output <format>", "output format: text (default) or json")
+  .option("-u, --url <urls...>", "base URL(s) for the dev server (skips port picker)")
   .option("--replay-host <url>", "website host for live replay viewer", "https://expect.dev")
   .addHelpText(
     "after",
@@ -69,21 +80,27 @@ Examples:
   $ expect --target branch                          test all branch changes
   $ expect --target unstaged                        test unstaged changes
   $ expect --no-cookies -m "test" -y                skip system browser cookie extraction
+  $ expect -u http://localhost:3000 -m "test" -y    specify dev server URL directly
   $ expect watch -m "test the login flow"           watch mode`,
   );
 
 const seedStores = (opts: CommanderOpts, changesFor: ChangesFor) => {
   usePreferencesStore.setState({
+    verbose: opts.verbose ?? false,
     browserHeaded: opts.headed ?? false,
     replayHost: opts.replayHost ?? "https://expect.dev",
   });
 
   if (opts.message) {
     useNavigationStore.setState({
-      screen: Screen.Testing({ changesFor, instruction: opts.message }),
+      screen: Screen.Testing({ changesFor, instruction: opts.message, baseUrls: opts.url }),
     });
   } else {
     useNavigationStore.setState({ screen: Screen.Main() });
+  }
+
+  if (opts.url) {
+    usePreferencesStore.setState({ cliBaseUrls: opts.url });
   }
 };
 
@@ -105,7 +122,30 @@ const runHeadlessForTarget = async (target: Target, opts: CommanderOpts) => {
     ci: ciMode,
     timeoutMs,
     output: opts.output ?? "text",
+    baseUrl: opts.url?.join(", "),
   });
+};
+
+const SKILL_DIR = join(".agents", "skills", "expect");
+
+const isSkillInstalled = (): boolean => existsSync(join(process.cwd(), SKILL_DIR, "SKILL.md"));
+
+const promptSkillInstall = async () => {
+  if (isSkillInstalled()) return;
+
+  logger.break();
+  const response = await prompts({
+    type: "confirm",
+    name: "installSkill",
+    message: `Install the ${highlighter.info("expect")} skill for your coding agents?`,
+    initial: true,
+  });
+
+  if (response.installSkill) {
+    const agents = detectAvailableAgents();
+    await runAddSkill({ agents });
+    logger.break();
+  }
 };
 
 const waitForHydration = async () => {
@@ -138,7 +178,7 @@ const addCommand = program.command("add").description("add integrations to your 
 
 addCommand
   .command("github-action")
-  .description("generate a GitHub Actions workflow for CI testing")
+  .description("add a GitHub Actions workflow that tests every PR in CI")
   .option("-y, --yes", "use defaults without prompting")
   .action(async (opts: { yes?: boolean }) => {
     await runAddGithubAction(opts);
@@ -172,6 +212,7 @@ program
   .option("--verbose", "enable verbose logging")
   .option("--headed", "show a visible browser window during tests")
   .option("--no-cookies", "skip system browser cookie extraction")
+  .option("-u, --url <urls...>", "base URL(s) for the dev server")
   .option("--replay-host <url>", "website host for live replay viewer", "https://expect.dev")
   .action(async (opts: CommanderOpts) => {
     await runWatchCommand(opts);
@@ -187,12 +228,15 @@ program.action(async () => {
 
   if (opts.ci || isRunningInAgent() || isHeadless()) return runHeadlessForTarget(target, opts);
 
+  await promptSkillInstall();
+
   const hasDirectOptions = Boolean(opts.message || opts.flow || opts.yes);
 
   if (hasDirectOptions) {
     await runInteractiveForTarget(target, opts);
   } else {
     usePreferencesStore.setState({
+      verbose: opts.verbose ?? false,
       browserHeaded: opts.headed ?? false,
       replayHost: opts.replayHost ?? "https://expect.dev",
     });

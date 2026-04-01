@@ -153,7 +153,7 @@ export class Git extends ServiceMap.Service<Git>()("@supervisor/Git", {
 
     const getChangedFiles = Effect.fn("Git.getChangedFiles")(function* (changesFor: ChangesFor) {
       if (changesFor._tag === "WorkingTree") {
-        return yield* raw({
+        const files = yield* raw({
           args: ["status", "--porcelain"],
           operation: "getting working tree changes",
         }).pipe(
@@ -166,8 +166,17 @@ export class Git extends ServiceMap.Service<Git>()("@supervisor/Git", {
               return { path, status: parseStatusLetter(statusLetter) };
             }),
           ),
-          Effect.catchTag("GitError", () => Effect.succeed([] as ChangedFile[])),
+          Effect.catchTag("GitError", (error) =>
+            Effect.logWarning("Git failed to get working tree changes", {
+              error: error.message,
+            }).pipe(Effect.map(() => [] as ChangedFile[])),
+          ),
         );
+        yield* Effect.logDebug("Changed files resolved", {
+          scope: "WorkingTree",
+          count: files.length,
+        });
+        return files;
       }
 
       const diffRange =
@@ -175,7 +184,7 @@ export class Git extends ServiceMap.Service<Git>()("@supervisor/Git", {
           ? `${changesFor.mainBranch}..HEAD`
           : `${changesFor.hash}^..${changesFor.hash}`;
 
-      return yield* raw({
+      const files = yield* raw({
         args: ["diff", "--name-status", diffRange],
         operation: "getting changed files",
         trim: true,
@@ -192,19 +201,41 @@ export class Git extends ServiceMap.Service<Git>()("@supervisor/Git", {
             return { path, status: parseStatusLetter(statusLetter) };
           }),
         ),
-        Effect.catchTag("GitError", () => Effect.succeed([] as ChangedFile[])),
+        Effect.catchTag("GitError", (error) =>
+          Effect.logWarning("Git failed to get changed files", {
+            error: error.message,
+            diffRange,
+          }).pipe(Effect.map(() => [] as ChangedFile[])),
+        ),
       );
+      yield* Effect.logDebug("Changed files resolved", {
+        scope: changesFor._tag,
+        count: files.length,
+      });
+      return files;
     });
 
     // ── Diff preview ─────────────────────────────────────────
 
     const getDiffPreview = Effect.fn("Git.getDiffPreview")(function* (changesFor: ChangesFor) {
       if (changesFor._tag === "WorkingTree") {
-        return yield* raw({
+        const diff = yield* raw({
           args: ["diff", "HEAD"],
           operation: "getting diff preview",
           trim: true,
-        }).pipe(Effect.catchTag("GitError", () => Effect.succeed("")));
+        }).pipe(
+          Effect.catchTag("GitError", (error) =>
+            Effect.logWarning("Git failed to get diff preview", {
+              error: error.message,
+              scope: "WorkingTree",
+            }).pipe(Effect.map(() => "")),
+          ),
+        );
+        yield* Effect.logDebug("Git diff computed", {
+          scope: "WorkingTree",
+          diffLength: diff.length,
+        });
+        return diff;
       }
 
       const diffRange =
@@ -212,17 +243,29 @@ export class Git extends ServiceMap.Service<Git>()("@supervisor/Git", {
           ? `${changesFor.mainBranch}..HEAD`
           : `${changesFor.hash}^..${changesFor.hash}`;
 
-      return yield* raw({
+      const diff = yield* raw({
         args: ["diff", diffRange],
         operation: "getting diff preview",
         trim: true,
-      }).pipe(Effect.catchTag("GitError", () => Effect.succeed("")));
+      }).pipe(
+        Effect.catchTag("GitError", (error) =>
+          Effect.logWarning("Git failed to get diff preview", {
+            error: error.message,
+            diffRange,
+          }).pipe(Effect.map(() => "")),
+        ),
+      );
+      yield* Effect.logDebug("Git diff computed", {
+        scope: changesFor._tag,
+        diffLength: diff.length,
+      });
+      return diff;
     });
 
     // ── Recent commits ───────────────────────────────────────
 
     const getRecentCommits = Effect.fn("Git.getRecentCommits")(function* (range: string) {
-      return yield* raw({
+      const commits = yield* raw({
         args: ["log", "--format=%H\t%h\t%s", range],
         operation: "getting recent commits",
         trim: true,
@@ -240,8 +283,15 @@ export class Git extends ServiceMap.Service<Git>()("@supervisor/Git", {
             };
           }),
         ),
-        Effect.catchTag("GitError", () => Effect.succeed([] as CommitSummary[])),
+        Effect.catchTag("GitError", (error) =>
+          Effect.logWarning("Git failed to get recent commits", {
+            error: error.message,
+            range,
+          }).pipe(Effect.map(() => [] as CommitSummary[])),
+        ),
       );
+      yield* Effect.logDebug("Recent commits fetched", { range, count: commits.length });
+      return commits;
     });
 
     const getCommitSummary = Effect.fn("Git.getCommitSummary")(function* (hash: string) {

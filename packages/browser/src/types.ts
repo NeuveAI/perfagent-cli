@@ -13,6 +13,7 @@ export interface SnapshotOptions {
   maxDepth?: number;
   selector?: string;
   cursor?: boolean;
+  viewportAware?: boolean;
 }
 
 export interface RefEntry {
@@ -32,6 +33,8 @@ export interface SnapshotStats {
   estimatedTokens: number;
   totalRefs: number;
   interactiveRefs: number;
+  totalNodes?: number;
+  visibleNodes?: number;
 }
 
 export interface SnapshotResult {
@@ -41,6 +44,8 @@ export interface SnapshotResult {
   locator: (ref: string) => Effect.Effect<Locator, RefNotFoundError>;
 }
 
+export type BrowserEngine = "chromium" | "webkit" | "firefox";
+
 export interface CreatePageOptions {
   headed?: boolean;
   executablePath?: string;
@@ -48,6 +53,7 @@ export interface CreatePageOptions {
   waitUntil?: "load" | "domcontentloaded" | "networkidle" | "commit";
   videoOutputDir?: string;
   cdpUrl?: string;
+  browserType?: BrowserEngine;
 }
 
 export interface AnnotatedScreenshotOptions extends SnapshotOptions {

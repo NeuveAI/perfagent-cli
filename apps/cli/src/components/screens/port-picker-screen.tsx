@@ -4,14 +4,14 @@ import figures from "figures";
 import type { ChangesFor, SavedFlow } from "@expect/shared/models";
 import { PORT_PICKER_VISIBLE_COUNT } from "../../constants";
 import { useColors } from "../theme-context";
-import { useNavigationStore, Screen } from "../../stores/use-navigation";
+import { useNavigationStore, Screen, type DevServerHint } from "../../stores/use-navigation";
 import { useProjectPreferencesStore } from "../../stores/use-project-preferences";
 import { useListeningPorts, type Protocol } from "../../hooks/use-listening-ports";
+import { useDetectedProjects } from "../../hooks/use-detected-projects";
 import { useScrollableList } from "../../hooks/use-scrollable-list";
 import { trackEvent } from "../../utils/session-analytics";
 import { SearchBar } from "../ui/search-bar";
 import { Input } from "../ui/input";
-import { Clickable } from "../ui/clickable";
 import { Logo } from "../ui/logo";
 
 interface PortPickerScreenProps {
@@ -22,6 +22,7 @@ interface PortPickerScreenProps {
 }
 
 interface PortEntry {
+  readonly key: string;
   readonly port: number;
   readonly processName: string;
   readonly cwd: string;
@@ -58,6 +59,15 @@ const isPortOrUrl = (value: string): number | undefined => {
   return undefined;
 };
 
+const deduplicateByPort = (entries: PortEntry[]): PortEntry[] => {
+  const seen = new Set<number>();
+  return entries.filter((entry) => {
+    if (seen.has(entry.port)) return false;
+    seen.add(entry.port);
+    return true;
+  });
+};
+
 export const PortPickerScreen = ({
   changesFor,
   instruction,
@@ -69,6 +79,7 @@ export const PortPickerScreen = ({
   const lastBaseUrl = useProjectPreferencesStore((state) => state.lastBaseUrl);
   const setLastBaseUrl = useProjectPreferencesStore((state) => state.setLastBaseUrl);
   const { data: listeningPorts = [] } = useListeningPorts();
+  const { data: detectedProjects = [] } = useDetectedProjects();
 
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -82,12 +93,30 @@ export const PortPickerScreen = ({
   });
   const [customUrls, setCustomUrls] = useState<Set<string>>(new Set());
 
-  const entries: PortEntry[] = listeningPorts.map((listening) => ({
+  const runningEntries: PortEntry[] = listeningPorts.map((listening) => ({
+    key: `running-${listening.port}`,
     port: listening.port,
     processName: listening.processName,
     cwd: listening.cwd,
     protocol: listening.protocol,
   }));
+
+  const runningCwds = new Set(runningEntries.map((entry) => entry.cwd));
+  const runningPorts = new Set(runningEntries.map((entry) => entry.port));
+  const detectedEntries: PortEntry[] = deduplicateByPort(
+    detectedProjects
+      .filter((project) => !runningCwds.has(project.path) && !runningPorts.has(project.defaultPort))
+      .map((project) => ({
+        key: `detected-${project.path}`,
+        port: project.defaultPort,
+        processName: project.framework,
+        cwd: project.path,
+        protocol: "http" satisfies Protocol,
+      })),
+  );
+
+  const entries: PortEntry[] = [...runningEntries, ...detectedEntries];
+  const hasRunningPorts = runningEntries.length > 0;
 
   const filteredEntries = searchQuery
     ? entries.filter((entry) => matchesSearch(entry, searchQuery))
@@ -103,7 +132,25 @@ export const PortPickerScreen = ({
       visibleCount: PORT_PICKER_VISIBLE_COUNT,
     });
 
-  const navigateToTesting = (baseUrls: readonly string[]) => {
+  const buildDevServerHints = (selectedEntries: readonly PortEntry[]): DevServerHint[] =>
+    selectedEntries
+      .filter((entry) => entry.key.startsWith("detected-"))
+      .flatMap((entry) => {
+        const project = detectedProjects.find((detected) => detected.path === entry.cwd);
+        if (!project?.devCommand) return [];
+        return [
+          {
+            url: portEntryToUrl(entry),
+            projectPath: project.path,
+            devCommand: project.devCommand,
+          },
+        ];
+      });
+
+  const navigateToTesting = (
+    baseUrls: readonly string[],
+    selectedEntries: readonly PortEntry[],
+  ) => {
     const allUrls = [...baseUrls, ...customUrls];
     const lastUrl = allUrls.length > 0 ? allUrls[0] : undefined;
     setLastBaseUrl(lastUrl);
@@ -114,8 +161,11 @@ export const PortPickerScreen = ({
       trackEvent("port:selected", {
         port_count: allUrls.length,
         has_custom_url: customUrls.size > 0,
+        source: hasRunningPorts ? "running" : "detected",
       });
     }
+
+    const devServerHints = buildDevServerHints(selectedEntries);
 
     setScreen(
       Screen.Testing({
@@ -124,6 +174,7 @@ export const PortPickerScreen = ({
         savedFlow,
         cookieBrowserKeys,
         baseUrls: allUrls.length > 0 ? allUrls : undefined,
+        devServerHints: devServerHints.length > 0 ? devServerHints : undefined,
       }),
     );
   };
@@ -142,16 +193,15 @@ export const PortPickerScreen = ({
 
   const confirmSelection = () => {
     if (highlightedIndex === skipIndex) {
-      navigateToTesting([]);
+      navigateToTesting([], []);
       return;
     }
 
     if (selectedPorts.size > 0 || customUrls.size > 0) {
-      const urls = entries
+      const selected = entries
         .filter((entry) => selectedPorts.has(entry.port))
-        .sort((left, right) => left.port - right.port)
-        .map(portEntryToUrl);
-      navigateToTesting(urls);
+        .sort((left, right) => left.port - right.port);
+      navigateToTesting(selected.map(portEntryToUrl), selected);
       return;
     }
 
@@ -162,7 +212,7 @@ export const PortPickerScreen = ({
 
     const entry = filteredEntries[highlightedIndex];
     if (entry) {
-      navigateToTesting([portEntryToUrl(entry)]);
+      navigateToTesting([portEntryToUrl(entry)], [entry]);
     }
   };
 
@@ -190,14 +240,6 @@ export const PortPickerScreen = ({
     setCustomUrls((previous) => new Set([...previous, url]));
     setCustomUrlValue("");
     setIsEnteringCustomUrl(false);
-  };
-
-  const removeCustomUrl = (url: string) => {
-    setCustomUrls((previous) => {
-      const next = new Set(previous);
-      next.delete(url);
-      return next;
-    });
   };
 
   const handleSearchChange = (value: string) => {
@@ -286,8 +328,13 @@ export const PortPickerScreen = ({
         </Text>
       </Box>
 
-      <Box marginTop={1}>
+      <Box marginTop={1} flexDirection="column">
         <Text color={COLORS.DIM}>Pick the dev server the agent should open in the browser.</Text>
+        {!hasRunningPorts && detectedEntries.length > 0 && (
+          <Text color={COLORS.YELLOW}>
+            {figures.warning} No running servers found. Showing detected projects:
+          </Text>
+        )}
       </Box>
 
       <Box marginTop={1}>
@@ -318,93 +365,65 @@ export const PortPickerScreen = ({
           const isSelected = selectedPorts.has(entry.port);
 
           return (
-            <Clickable
-              key={entry.port}
-              onClick={() => {
-                setHighlightedIndex(actualIndex);
-                togglePort(entry.port);
-              }}
-            >
-              <Box>
-                <Text color={isHighlighted ? COLORS.PRIMARY : COLORS.DIM}>
-                  {isHighlighted ? `${figures.pointer} ` : "  "}
-                </Text>
-                <Text color={isSelected ? COLORS.PRIMARY : COLORS.DIM}>
-                  {isSelected ? figures.checkboxOn : figures.checkboxOff}{" "}
-                </Text>
-                <Text color={isHighlighted ? COLORS.PRIMARY : COLORS.TEXT} bold={isHighlighted}>
-                  :{entry.port}
-                </Text>
-                {entry.processName && <Text color={COLORS.DIM}> {entry.processName}</Text>}
-                {entry.cwd && <Text color={COLORS.DIM}> {entry.cwd}</Text>}
-              </Box>
-            </Clickable>
+            <Box key={entry.key}>
+              <Text color={isHighlighted ? COLORS.PRIMARY : COLORS.DIM}>
+                {isHighlighted ? `${figures.pointer} ` : "  "}
+              </Text>
+              <Text color={isSelected ? COLORS.PRIMARY : COLORS.DIM}>
+                {isSelected ? figures.checkboxOn : figures.checkboxOff}{" "}
+              </Text>
+              <Text color={isHighlighted ? COLORS.PRIMARY : COLORS.TEXT} bold={isHighlighted}>
+                :{entry.port}
+              </Text>
+              {entry.processName && <Text color={COLORS.DIM}> {entry.processName}</Text>}
+              {entry.cwd && <Text color={COLORS.DIM}> {entry.cwd}</Text>}
+            </Box>
           );
         })}
         {customUrlVisible && (
-          <Clickable
-            onClick={() => {
-              setHighlightedIndex(customUrlIndex);
-              setIsEnteringCustomUrl(true);
-            }}
-          >
-            <Box>
-              <Text color={isCustomUrlHighlighted ? COLORS.PRIMARY : COLORS.DIM}>
-                {isCustomUrlHighlighted ? `${figures.pointer} ` : "  "}
+          <Box>
+            <Text color={isCustomUrlHighlighted ? COLORS.PRIMARY : COLORS.DIM}>
+              {isCustomUrlHighlighted ? `${figures.pointer} ` : "  "}
+            </Text>
+            {isEnteringCustomUrl && (
+              <Box>
+                <Text color={COLORS.PRIMARY}>URL: </Text>
+                <Input
+                  focus
+                  value={customUrlValue}
+                  placeholder="https://localhost:4000 or staging.example.com"
+                  onChange={setCustomUrlValue}
+                  onSubmit={handleCustomUrlSubmit}
+                />
+              </Box>
+            )}
+            {!isEnteringCustomUrl && (
+              <Text
+                color={isCustomUrlHighlighted ? COLORS.PRIMARY : COLORS.TEXT}
+                bold={isCustomUrlHighlighted}
+              >
+                Enter a custom URL{figures.ellipsis}
               </Text>
-              {isEnteringCustomUrl && (
-                <Box>
-                  <Text color={COLORS.PRIMARY}>URL: </Text>
-                  <Input
-                    focus
-                    value={customUrlValue}
-                    placeholder="https://localhost:4000 or staging.example.com"
-                    onChange={setCustomUrlValue}
-                    onSubmit={handleCustomUrlSubmit}
-                  />
-                </Box>
-              )}
-              {!isEnteringCustomUrl && (
-                <Text
-                  color={isCustomUrlHighlighted ? COLORS.PRIMARY : COLORS.TEXT}
-                  bold={isCustomUrlHighlighted}
-                >
-                  Enter a custom URL{figures.ellipsis}
-                </Text>
-              )}
-            </Box>
-          </Clickable>
+            )}
+          </Box>
         )}
         {customUrlVisible &&
           [...customUrls].map((url) => (
-            <Clickable key={url} onClick={() => removeCustomUrl(url)}>
-              <Box>
-                <Text> </Text>
-                <Text color={COLORS.PRIMARY}>{figures.checkboxOn} </Text>
-                <Text color={COLORS.TEXT}>{url}</Text>
-                <Text color={COLORS.DIM}> (click to remove)</Text>
-              </Box>
-            </Clickable>
+            <Box key={url}>
+              <Text> </Text>
+              <Text color={COLORS.PRIMARY}>{figures.checkboxOn} </Text>
+              <Text color={COLORS.TEXT}>{url}</Text>
+            </Box>
           ))}
         {skipVisible && (
-          <Clickable
-            onClick={() => {
-              setHighlightedIndex(skipIndex);
-              navigateToTesting([]);
-            }}
-          >
-            <Box>
-              <Text color={isSkipHighlighted ? COLORS.PRIMARY : COLORS.DIM}>
-                {isSkipHighlighted ? `${figures.pointer} ` : "  "}
-              </Text>
-              <Text
-                color={isSkipHighlighted ? COLORS.PRIMARY : COLORS.DIM}
-                bold={isSkipHighlighted}
-              >
-                Skip {figures.arrowRight} no base URL
-              </Text>
-            </Box>
-          </Clickable>
+          <Box>
+            <Text color={isSkipHighlighted ? COLORS.PRIMARY : COLORS.DIM}>
+              {isSkipHighlighted ? `${figures.pointer} ` : "  "}
+            </Text>
+            <Text color={isSkipHighlighted ? COLORS.PRIMARY : COLORS.DIM} bold={isSkipHighlighted}>
+              Skip {figures.arrowRight} no base URL
+            </Text>
+          </Box>
         )}
         {filteredEntries.length === 0 && !skipVisible && (
           <Text color={COLORS.DIM}>No matching ports</Text>

@@ -1,8 +1,9 @@
+import { spawn } from "node:child_process";
 import { detectAvailableAgents } from "@expect/agent";
 import { Effect } from "effect";
 import figures from "figures";
 import pc from "picocolors";
-import { VERSION } from "../constants";
+import { PLAYWRIGHT_INSTALL_TIMEOUT_MS, VERSION } from "../constants";
 import { highlighter } from "../utils/highlighter";
 import { logger } from "../utils/logger";
 import { prompts, setOnCancel } from "../utils/prompts";
@@ -24,6 +25,7 @@ const GLOBAL_INSTALL_COMMANDS: Record<PackageManager, string> = {
   pnpm: "pnpm add -g expect-cli@latest",
   yarn: "yarn global add expect-cli@latest",
   bun: "bun add -g expect-cli@latest",
+  deno: "deno install -g npm:expect-cli@latest",
   vp: "vp install -g expect-cli@latest",
 };
 
@@ -117,6 +119,32 @@ export const runInit = async (options: InitOptions = {}) => {
     logger.dim(`  Run manually: ${highlighter.info(installCommand)}`);
   }
 
+  logger.log(
+    `  ${highlighter.dim("Installing Playwright browsers (Chromium, WebKit, Firefox)...")}`,
+  );
+  const playwrightSuccess = await new Promise<boolean>((resolve) => {
+    const child = spawn(
+      "npx",
+      ["playwright", "install", "--with-deps", "chromium", "webkit", "firefox"],
+      {
+        shell: true,
+        stdio: "inherit",
+        timeout: PLAYWRIGHT_INSTALL_TIMEOUT_MS,
+      },
+    );
+    child.on("close", (code) => resolve(code === 0));
+    child.on("error", () => resolve(false));
+  });
+
+  if (playwrightSuccess) {
+    logger.success("Playwright browsers installed.");
+  } else {
+    logger.error("Failed to install Playwright browsers.");
+    logger.dim(
+      `  Run manually: ${highlighter.info("npx playwright install --with-deps chromium webkit firefox")}`,
+    );
+  }
+
   logger.break();
 
   await runAddSkill({ yes: options.yes, agents: availableAgents });
@@ -130,14 +158,14 @@ export const runInit = async (options: InitOptions = {}) => {
       const response = await prompts({
         type: "confirm",
         name: "setupGithubAction",
-        message: `Set up ${highlighter.info("GitHub Actions")} for CI testing?`,
+        message: `Set up ${highlighter.info("GitHub Actions")} to continuously test every PR in CI?`,
         initial: true,
       });
       setupGithubAction = response.setupGithubAction;
     }
 
     if (setupGithubAction) {
-      await runAddGithubAction({ yes: options.yes });
+      await runAddGithubAction({ yes: options.yes, agents: availableAgents });
     }
   }
 

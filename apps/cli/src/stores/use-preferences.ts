@@ -6,12 +6,14 @@ import { FLOW_INPUT_HISTORY_LIMIT } from "../constants";
 
 interface PreferencesStore {
   agentBackend: AgentBackend;
+  verbose: boolean;
   browserHeaded: boolean;
   replayHost: string;
   autoSaveFlows: boolean;
   notifications: boolean | undefined;
   instructionHistory: string[];
   modelPreferences: Record<AgentBackend, { configId: string; value: string } | undefined>;
+  cliBaseUrls: readonly string[] | undefined;
   setAgentBackend: (backend: AgentBackend) => void;
   setModelPreference: (agent: AgentBackend, configId: string, modelValue: string) => void;
   toggleAutoSave: () => void;
@@ -23,6 +25,7 @@ export const usePreferencesStore = create<PreferencesStore>()(
   persist(
     (set) => ({
       agentBackend: "claude",
+      verbose: false,
       browserHeaded: false,
       replayHost: "https://expect.dev",
       autoSaveFlows: true,
@@ -37,6 +40,7 @@ export const usePreferencesStore = create<PreferencesStore>()(
         opencode: undefined,
         droid: undefined,
       },
+      cliBaseUrls: undefined,
       setAgentBackend: (backend: AgentBackend) => set({ agentBackend: backend }),
       setModelPreference: (agent: AgentBackend, configId: string, modelValue: string) =>
         set((state) => ({

@@ -34,6 +34,7 @@ export interface ExecutionResult {
   readonly videoUrl?: string;
 }
 
+// HACK: atom is read by testing-screen.tsx but never populated — screenshots are saved via McpSession instead
 export const screenshotPathsAtom = Atom.make<readonly string[]>([]);
 
 const syncReplayProxy = Effect.fn("syncReplayProxy")(function* (
@@ -54,18 +55,29 @@ const syncReplayProxy = Effect.fn("syncReplayProxy")(function* (
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(replayEvents),
       }),
-    ).pipe(Effect.catchCause(() => Effect.void));
+    ).pipe(
+      Effect.catchTag("UnknownError", (error) =>
+        Effect.logWarning("Failed to sync replay events to proxy", error),
+      ),
+    );
   }
 
   yield* pushStepState(proxyBase, toViewerRunState(executed));
 });
 
-const execute = Effect.fnUntraced(
-  function* (input: ExecuteInput, _ctx: Atom.FnContext) {
+const executeCore = (input: ExecuteInput) =>
+  Effect.gen(function* () {
     const reporter = yield* Reporter;
     const executor = yield* Executor;
     const analytics = yield* Analytics;
     const git = yield* Git;
+
+    yield* Effect.logInfo("Execution starting", {
+      agentBackend: input.agentBackend,
+      hasReplayHost: Boolean(input.replayHost),
+      instructionLength: input.options.instruction.length,
+      changesFor: input.options.changesFor._tag,
+    });
 
     const runStartedAt = Date.now();
 
@@ -140,13 +152,23 @@ const execute = Effect.fnUntraced(
       (step) => report.stepStatuses.get(step.id)?.status === "failed",
     ).length;
 
+    const durationMs = Date.now() - runStartedAt;
+
+    yield* Effect.logInfo("Execution completed", {
+      status: report.status,
+      passedCount,
+      failedCount,
+      stepCount: finalExecuted.steps.length,
+      durationMs,
+    });
+
     yield* analytics.capture("run:completed", {
       plan_id: finalExecuted.id ?? "direct",
       passed: passedCount,
       failed: failedCount,
       step_count: finalExecuted.steps.length,
       file_count: 0,
-      duration_ms: Date.now() - runStartedAt,
+      duration_ms: durationMs,
     });
 
     if (report.status === "passed") {
@@ -160,12 +182,10 @@ const execute = Effect.fnUntraced(
       localReplayUrl: artifacts.localReplayUrl,
       videoUrl: artifacts.videoUrl,
     } satisfies ExecutionResult;
-  },
-  Effect.annotateLogs({ fn: "executeFn" }),
-);
+  });
 
-export const executeFn = cliAtomRuntime.fn<ExecuteInput>()((input, ctx) =>
-  stripUndefinedRequirement(execute(input, ctx)).pipe(
+export const executeFn = cliAtomRuntime.fn<ExecuteInput>()((input) =>
+  stripUndefinedRequirement(executeCore(input).pipe(Effect.annotateLogs({ fn: "executeFn" }))).pipe(
     Effect.tapError((error) =>
       Effect.gen(function* () {
         const analytics = yield* Analytics;
@@ -179,110 +199,3 @@ export const executeFn = cliAtomRuntime.fn<ExecuteInput>()((input, ctx) =>
     Effect.provide(NodeServices.layer),
   ),
 );
-
-const executeAtom = Effect.fnUntraced(
-  function* (input: ExecuteInput, _ctx: Atom.FnContext) {
-    const reporter = yield* Reporter;
-    const executor = yield* Executor;
-    const analytics = yield* Analytics;
-    const git = yield* Git;
-
-    const runStartedAt = Date.now();
-
-    const liveViewPort = pickRandomPort();
-    const liveViewUrl = `http://localhost:${liveViewPort}`;
-
-    let replayUrl: string | undefined;
-
-    if (input.replayHost) {
-      const proxyHandle = yield* startReplayProxy({
-        replayHost: input.replayHost,
-        liveViewUrl,
-      });
-      replayUrl = `${proxyHandle.url}/replay`;
-
-      yield* Effect.logInfo("Replay viewer available", { replayUrl });
-      yield* Effect.sync(() => input.onReplayUrl?.(`${replayUrl}?live=true`));
-    }
-
-    const executeOptions: ExecuteOptions = {
-      ...input.options,
-      liveViewUrl,
-      onConfigOptions: input.onConfigOptions,
-    };
-
-    yield* analytics.capture("run:started", { plan_id: "direct" });
-
-    const finalExecuted = yield* executor.execute(executeOptions).pipe(
-      Stream.tap((executed) =>
-        Effect.gen(function* () {
-          input.onUpdate(executed);
-          yield* pushStepState(liveViewUrl, toViewerRunState(executed));
-        }),
-      ),
-      Stream.runLast,
-      Effect.map((option) =>
-        (option._tag === "Some"
-          ? option.value
-          : new ExecutedTestPlan({
-              ...input.options,
-              id: "" as never,
-              changesFor: input.options.changesFor,
-              currentBranch: "",
-              diffPreview: "",
-              fileStats: [],
-              instruction: input.options.instruction,
-              baseUrl: undefined as never,
-              isHeadless: input.options.isHeadless,
-              cookieBrowserKeys: input.options.cookieBrowserKeys,
-              testCoverage: Option.none(),
-              title: input.options.instruction,
-              rationale: "Direct execution",
-              steps: [],
-              events: [],
-            })
-        )
-          .finalizeTextBlock()
-          .synthesizeRunFinished(),
-      ),
-    );
-
-    const artifacts = extractCloseArtifacts(finalExecuted.events);
-
-    yield* syncReplayProxy(replayUrl, liveViewUrl, artifacts.replaySessionPath, finalExecuted);
-
-    const report = yield* reporter.report(finalExecuted);
-
-    const passedCount = report.steps.filter(
-      (step) => report.stepStatuses.get(step.id)?.status === "passed",
-    ).length;
-    const failedCount = report.steps.filter(
-      (step) => report.stepStatuses.get(step.id)?.status === "failed",
-    ).length;
-
-    yield* analytics.capture("run:completed", {
-      plan_id: finalExecuted.id ?? "direct",
-      passed: passedCount,
-      failed: failedCount,
-      step_count: finalExecuted.steps.length,
-      file_count: 0,
-      duration_ms: Date.now() - runStartedAt,
-    });
-
-    if (report.status === "passed") {
-      yield* git.saveTestedFingerprint();
-    }
-
-    return {
-      executedPlan: finalExecuted,
-      report,
-      replayUrl: replayUrl ?? artifacts.localReplayUrl,
-      localReplayUrl: artifacts.localReplayUrl,
-      videoUrl: artifacts.videoUrl,
-    } satisfies ExecutionResult;
-  },
-  Effect.annotateLogs({ fn: "executeAtomFn" }),
-  Effect.provide(NodeServices.layer),
-);
-
-export const executeAtomFn = cliAtomRuntime.fn(executeAtom);

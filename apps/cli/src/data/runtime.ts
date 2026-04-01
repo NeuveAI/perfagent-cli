@@ -4,10 +4,12 @@ import { AgentBackend } from "@expect/agent";
 import { layerCli } from "../layers";
 
 export const agentProviderAtom = Atom.make<Option.Option<AgentBackend>>(Option.none());
+export const verboseAtom = Atom.make(false);
 
 export const cliAtomRuntime = Atom.runtime(
   Effect.fnUntraced(function* (get) {
     const agentProvider = yield* get.some(agentProviderAtom);
-    return layerCli({ verbose: true, agent: agentProvider });
+    const verbose = get(verboseAtom);
+    return layerCli({ verbose, agent: agentProvider });
   }, Layer.unwrap),
 ).pipe(Atom.keepAlive);

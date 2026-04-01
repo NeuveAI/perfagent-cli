@@ -1,17 +1,16 @@
 import { describe, expect, it } from "vite-plus/test";
-import { Effect, Layer, Option, Stream } from "effect";
+import { Effect, Option, Stream } from "effect";
 import { Agent } from "../src/agent";
 import { AgentStreamOptions } from "../src/types";
-import { PlatformError } from "effect/PlatformError";
-import { AcpAdapterNotFoundError, AcpConnectionInitError } from "../src/acp-client";
+import { isCommandAvailable } from "@expect/shared/is-command-available";
 
-const TEST_LAYERS: [
-  string,
-  Layer.Layer<Agent, PlatformError | AcpConnectionInitError | AcpAdapterNotFoundError>,
-][] = [
-  ["codex-acp", Agent.layerCodex],
-  ["claude-acp", Agent.layerClaude],
-];
+const hasCodex = isCommandAvailable("codex");
+const hasClaude = isCommandAvailable("claude");
+
+const TEST_LAYERS = [
+  ["codex-acp", Agent.layerCodex, hasCodex],
+  ["claude-acp", Agent.layerClaude, hasClaude],
+] as const;
 
 const makeOptions = (prompt: string): AgentStreamOptions =>
   new AgentStreamOptions({
@@ -22,8 +21,8 @@ const makeOptions = (prompt: string): AgentStreamOptions =>
   });
 
 describe("Agent", () => {
-  TEST_LAYERS.forEach(([name, layer]) => {
-    describe(name, () => {
+  TEST_LAYERS.forEach(([name, layer, available]) => {
+    describe.skipIf(!available)(name, () => {
       it("streams text response", async () => {
         const parts = await Effect.gen(function* () {
           const agent = yield* Agent;
