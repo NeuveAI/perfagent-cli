@@ -23,29 +23,29 @@ This will guide you through a setup process. Once installed, you can run `/expec
 
 ## FAQ
 
-1. **How is this different from Puppeteer/Playwright/Cypress?**
+**How is this different from Puppeteer/Playwright/Cypress?**
 
 Before Expect: you wrote Playwright/Cypress scripts by hand, maintained selectors, and wired up assertions yourself.
 
 After Expect: Expect reads your code changes, generates a test plan in plain English, and runs it in a real browser. You never write a test file.
 
-2. **How is this different from my coding agent testing?**
+**How is this different from my coding agent testing?**
 
 For longer tasks, your agent needs to verify its work and get feedback. Expect acts like an expert QA tester — it opens a real browser, checks what the agent built, and reports back what's broken so the agent can fix it.
 
-3. **How is this different from computer use / `agent-browser` / Claude in Chrome?**
+**How is this different from computer use / `agent-browser` / Claude in Chrome?**
 
 Those tools give your agent general-purpose browser access via screenshots and mouse coordinates. Expect is purpose-built for testing — it uses Playwright for fast DOM automation, reads your code changes, generates a test plan, and runs it with your real cookies.
 
-4. **When does it run? How does it fit into my workflow?**
+**When does it run? How does it fit into my workflow?**
 
 Your coding agent calls `/expect` as a skill whenever it needs to validate its work in a real browser. You can also trigger it from CI by adding the GitHub Action to test every PR automatically before merge.
 
-5. **Does it work in CI?**
+**Does it work in CI?**
 
 Yes. Use `--ci` or the `add github-action` command to set up a workflow that tests every PR. In CI mode it runs headless, skips cookie extraction, auto-approves the plan, and enforces a 30-minute timeout.
 
-6. **Is there a cloud or enterprise version?**
+**Is there a cloud or enterprise version?**
 
 Coming soon. Email [aiden@million.dev](mailto:aiden@million.dev) if you have questions or ideas.
 
