@@ -29,11 +29,11 @@ Instead of writing scripts, maintaining selectors, and wiring up assertions, Exp
 
 #### 2. How is this different from my coding agent testing?
 
-For longer tasks, your agent needs to verify its work and get feedback. Expect acts like an expert QA tester — it opens a real browser, checks what the agent built, and reports back what's broken so the agent can fix it.
+For longer tasks, your agent needs to verify its work and get feedback. Expect acts like an expert QA tester: it opens a real browser, checks what the agent built, and reports back what's broken so the agent can fix it.
 
 #### 3. How is this different from computer use / agent-browser / Claude in Chrome?
 
-Those tools give your agent general-purpose browser access via screenshots and mouse coordinates. Expect is purpose-built for testing — it uses Playwright for fast DOM automation, reads your code changes, generates a test plan, and runs it with your real cookies.
+Those tools give your agent general-purpose browser access via screenshots and mouse coordinates. Expect is purpose-built for testing: it uses Playwright for fast DOM automation, reads your code changes, generates a test plan, and runs it with your real cookies.
 
 #### 4. When does it run? How does it fit into my workflow?
 
@@ -61,21 +61,21 @@ Coming soon. Email [aiden@million.dev](mailto:aiden@million.dev) if you have que
 
 | Flag                          | Description                                                                            | Default              |
 | ----------------------------- | -------------------------------------------------------------------------------------- | -------------------- |
-| `-m, --message <instruction>` | Natural language instruction for what to test                                          | —                    |
-| `-f, --flow <slug>`           | Reuse a saved flow by its slug                                                         | —                    |
-| `-y, --yes`                   | Run immediately without confirmation                                                   | —                    |
+| `-m, --message <instruction>` | Natural language instruction for what to test                                          | -                    |
+| `-f, --flow <slug>`           | Reuse a saved flow by its slug                                                         | -                    |
+| `-y, --yes`                   | Run immediately without confirmation                                                   | -                    |
 | `-a, --agent <provider>`      | Agent provider (`claude`, `codex`, `copilot`, `gemini`, `cursor`, `opencode`, `droid`) | auto-detect          |
 | `-t, --target <target>`       | What to test: `unstaged`, `branch`, or `changes`                                       | `changes`            |
-| `-u, --url <urls...>`         | Base URL(s) for the dev server (skips port picker)                                     | —                    |
-| `--headed`                    | Show a visible browser window during tests                                             | —                    |
-| `--no-cookies`                | Skip system browser cookie extraction                                                  | —                    |
-| `--ci`                        | Force CI mode: headless, no cookies, auto-yes, 30-min timeout                          | —                    |
-| `--timeout <ms>`              | Execution timeout in milliseconds                                                      | —                    |
+| `-u, --url <urls...>`         | Base URL(s) for the dev server (skips port picker)                                     | -                    |
+| `--headed`                    | Show a visible browser window during tests                                             | -                    |
+| `--no-cookies`                | Skip system browser cookie extraction                                                  | -                    |
+| `--ci`                        | Force CI mode: headless, no cookies, auto-yes, 30-min timeout                          | -                    |
+| `--timeout <ms>`              | Execution timeout in milliseconds                                                      | -                    |
 | `--output <format>`           | Output format: `text` or `json`                                                        | `text`               |
-| `--verbose`                   | Enable verbose logging                                                                 | —                    |
+| `--verbose`                   | Enable verbose logging                                                                 | -                    |
 | `--replay-host <url>`         | Website host for live replay viewer                                                    | `https://expect.dev` |
-| `-v, --version`               | Print version                                                                          | —                    |
-| `-h, --help`                  | Display help                                                                           | —                    |
+| `-v, --version`               | Print version                                                                          | -                    |
+| `-h, --help`                  | Display help                                                                           | -                    |
 
 ## Supported Agents
 
