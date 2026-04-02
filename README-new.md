@@ -9,24 +9,24 @@ Give your agent a browser.
 
 **Catch regressions before your users do.**
 
-- Point it at a branch, unstaged changes, or the full app — Expect figures out what to test.
+- Point it at a branch, unstaged changes, or the full app. Expect figures out what to test.
 - Spins up QA agents that validate design, functionality, accessibility, and performance in a real browser.
 
 **Test like a real user, not a script.**
 
-- Drop-in skill for your existing agent — nothing new to learn, no separate tool to context-switch into.
-- Authenticated sessions using cookies from your actual browser — no mock logins.
+- Drop-in skill for your existing agent. Nothing new to learn, no separate tool to context-switch into.
+- Authenticated sessions using cookies from your actual browser. No mock logins.
 - Seed test data so every run starts from a known state.
 
 **Get a video recording of every test run.**
 
-- Watch exactly what the agent did — every click, every navigation — so you can verify results instead of trusting a text summary.
+- Watch exactly what the agent did, every click, every navigation, so you can verify results instead of trusting a text summary.
 - Recordings replace expensive screenshot loops, keeping token usage low while giving you full visibility.
 
 **Zero test files to write or maintain.**
 
 - No Playwright scripts, no brittle selectors, no fixture boilerplate. Describe what to test in plain English and Expect handles the rest.
-- Tests are generated from your code changes and thrown away after each run — nothing to keep in sync as your app evolves.
+- Tests are generated from your code changes and thrown away after each run. Nothing to keep in sync as your app evolves.
 
 - **Add to your CI**: Add the GitHub Action and every pull request gets browser-tested before merge.
 
