@@ -43,13 +43,12 @@ expect-cli -m "[INSTRUCTION] on [URL]" -y --cookies
 
 ## Parallel Execution
 
-`expect-cli` takes 1-30 minutes. Never block your main thread.
+`expect-cli` takes 1-30 minutes. Your main thread MUST never idle while it runs.
 
 1. **Set shell timeout to at least 1800 seconds** — the default will kill it
-2. **Launch each `expect-cli` call in a subagent** (Task/Agent tool or background shell with timeout 0 / `&`) and continue working
-3. **When testing multiple features, run separate invocations concurrently** - one subagent per feature
-
-Do not skip parallel execution because "it's simpler to wait." Do not skip subagent usage because "it's just one test."
+2. **ALWAYS spawn `expect-cli` in a subagent** (Task/Agent tool or background shell with timeout 0 / `&`).
+3. **After spawning, immediately continue working.** Start the next feature, run type-checking and linting in parallel, write docs — whatever is next. Never wait for the subagent to return.
+4. **When testing multiple features, spawn one subagent per feature concurrently.**
 
 ## Writing Instructions
 
@@ -63,44 +62,6 @@ Think like a user trying to break the feature, not a QA checklist confirming it 
 
 **Bad:** `expect-cli -m "Test the search feature on http://localhost:5173" -y --cookies`
 **Good:** `expect-cli -m "Search with no query, a single character, a query with no results, and a valid query. Click a result, go back, verify the previous query is preserved. Rapid-fire 5 searches and confirm no stale results appear on http://localhost:5173" -y --cookies`
-
-## Reference Skills
-
-`expect-cli` runs built-in quality checks during every test. Each failure includes a `domain=` tag (e.g. `domain=responsive`, `domain=accessibility`, `domain=animation`).
-
-When a matching domain is relevant to your current task, read the sub-skill before writing code or re-running tests. When `expect-cli` reports a failure with a `domain=` tag, read the matching sub-skill before attempting a fix.
-
-<important if="domain=animation, or fixing/reviewing CSS animations, transitions, hover effects, tooltips, or motion performance">
-Read `fixing-animation/SKILL.md` for animation rules and performance patterns.
-</important>
-
-<important if="domain=accessibility, or fixing/reviewing accessibility, ARIA attributes, keyboard navigation, focus management, or screen reader support">
-Read `fixing-accessibility/SKILL.md` for accessibility rules and common fixes.
-</important>
-
-<important if="domain=seo, or fixing/reviewing SEO metadata, Open Graph tags, canonical URLs, or structured data">
-Read `fixing-seo/SKILL.md` for SEO metadata rules.
-</important>
-
-<important if="domain=performance, or writing/reviewing React components, Next.js pages, data fetching, or optimizing bundle size and render performance">
-Read `react-best-practices/SKILL.md` for React performance optimization rules.
-</important>
-
-<important if="domain=performance or domain=web-vitals or domain=loading, or optimizing load times, reducing bundle size, fixing Core Web Vitals (LCP/FCP/TBT/CLS), implementing image strategies, adding prefetching, eliminating loading spinners, streaming content, or auditing resource budgets">
-Read `performance/SKILL.md` for web performance optimization rules.
-</important>
-
-<important if="domain=design-system or domain=responsive or domain=touch or domain=cross-browser or domain=dark-mode or domain=layout-stability or domain=font-loading, or reviewing UI design, UX patterns, or auditing web interface quality">
-Read `web-design-guidelines/SKILL.md` for web interface design review guidelines.
-</important>
-
-<important if="domain=security, or reviewing code for security issues, XSS, CSRF, open redirects, postMessage, cookie security, CSP, CORS, prototype pollution, or client-side storage vulnerabilities">
-Read `security-review/SKILL.md` for browser security review guidelines.
-</important>
-
-<important if="domain=design or domain=animation or domain=motion or domain=audio or domain=typography or domain=shadows or domain=ux-psychology, or implementing animations, choosing between springs and easing, adding sound feedback, applying UX laws, fixing typography, styling shadows/borders, or animating container bounds">
-Read `design/SKILL.md` for UI/UX design principles and patterns.
-</important>
 
 ## When Expect Itself Fails
 
@@ -116,9 +77,20 @@ Do not guess at workarounds for tool bugs. Diagnose with `--verbose`, report wit
 
 You MUST complete every step. A skipped step is a failed task.
 
-1. Run `expect-cli -m "[instruction] on [URL]" -y --cookies` with a fresh, adversarial instruction
-2. Read the full output — check exit code, count failures, read accessibility and performance results
-3. If ANY failure: fix it, then re-run from step 1. Accessibility violations and performance regressions are failures.
-4. Only after exit 0 with 0 failures: state the claim WITH the evidence
+1. Spawn `expect-cli -m "[instruction] on [URL]" -y --cookies` in a subagent with an adversarial instruction
+2. Continue working on other tasks while it runs
+3. When the subagent returns, read the full output — check exit code, count failures, read accessibility and performance results
+4. If ANY failure: fix the code, then immediately spawn a NEW `expect-cli` subagent to re-verify. Do not ask. Do not wait. Continue working on other tasks.
+5. Repeat 3-4 until exit 0 with 0 failures
+6. Only then: state the claim WITH the passing evidence
 
-Skip any step = lying, not verifying. No exceptions for "just this once", "it's simple enough", or "I already checked manually".
+Every re-run is a subagent spawn, not a blocking foreground command. Skip any step = lying, not verifying. No exceptions for "just this once", "it's simple enough", or "I already checked manually".
+
+## Rationalizations
+
+You will reach for these — recognize them and do the opposite:
+- "I'll just wait for this one test" — No. Spawn a subagent. Always.
+- "It'll be quick" — No. Even 30 seconds blocks your main thread. Subagent.
+- "I need the result before I can continue" — No. Continue with other tasks. Read the result when the subagent returns.
+- "I'll run it in the foreground so I can watch" — No. Background it. Read the output when done.
+- "Let me re-run manually to be sure" — No. Spawn a new subagent for the re-run.
