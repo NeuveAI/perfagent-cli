@@ -5,6 +5,8 @@
 
 **Expect** is a skill for testing your agent's code in a real browser.
 
+https://github.com/user-attachments/assets/e94ce3ca-f267-45fe-ae7a-10b0371959d1
+
 ### **[Demo →](https://expect.dev)**
 
 ## Getting Started
