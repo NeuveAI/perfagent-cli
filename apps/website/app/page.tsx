@@ -1191,7 +1191,7 @@ export default function HomePage() {
         />
         <div className="w-full max-w-112.75 relative px-4 sm:px-0">
           <div className="flex justify-center sm:block">
-            <div className="scale-[1.05] sm:scale-[1.15] origin-top sm:origin-top-left translate-x-[30px] sm:translate-x-0">
+            <div className="scale-[0.82] sm:scale-[1.15] origin-top sm:origin-top-left translate-x-[6px] sm:translate-x-0">
               <TerminalIllustration />
             </div>
           </div>
@@ -1241,7 +1241,7 @@ export default function HomePage() {
                   }}
                 >
                   <div
-                    className={`left-0 top-0 [white-space-collapse:preserve] font-['OpenRunde-Medium','Open_Runde',system-ui,sans-serif] font-medium text-[15.5px]/5.75 transition-colors duration-200 ${activeTab === "cli" ? "text-[#414141]" : "text-[#A0A0A0]"}`}
+                    className={`left-0 top-0 [white-space-collapse:preserve] font-['OpenRunde-Medium','Open_Runde',system-ui,sans-serif] font-medium text-[16px]/5.75 transition-colors duration-200 ${activeTab === "cli" ? "text-[#414141]" : "text-[#A0A0A0]"}`}
                   >
                     npx
                   </div>
@@ -1255,7 +1255,7 @@ export default function HomePage() {
                   }}
                 >
                   <div
-                    className={`left-0 top-0 [white-space-collapse:preserve] w-max font-['OpenRunde-Medium','Open_Runde',system-ui,sans-serif] font-medium shrink-0 text-[15.5px]/5.75 transition-colors duration-200 ${activeTab === "agent-prompt" ? "text-[#414141]" : "text-[#A0A0A0]"}`}
+                    className={`left-0 top-0 [white-space-collapse:preserve] w-max font-['OpenRunde-Medium','Open_Runde',system-ui,sans-serif] font-medium shrink-0 text-[16px]/5.75 transition-colors duration-200 ${activeTab === "agent-prompt" ? "text-[#414141]" : "text-[#A0A0A0]"}`}
                   >
                     agent prompt
                   </div>
@@ -1264,13 +1264,13 @@ export default function HomePage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.75 min-w-0">
                   {activeTab === "cli" && (
-                    <div className="left-0 top-0 [white-space-collapse:preserve] w-max text-[#696969] font-['OpenRunde-Medium','Open_Runde',system-ui,sans-serif] font-medium shrink-0 text-[15.5px]/5.75">
+                    <div className="left-0 top-0 [white-space-collapse:preserve] w-max text-[#696969] font-['OpenRunde-Medium','Open_Runde',system-ui,sans-serif] font-medium shrink-0 text-[16px]/5.75">
                       $
                     </div>
                   )}
                   <div
                     ref={commandRef}
-                    className="left-0 top-0 [white-space-collapse:preserve] min-w-0 text-[#414141] font-['OpenRunde-Medium','Open_Runde',system-ui,sans-serif] font-medium text-[15.5px]/5.75 truncate"
+                    className="left-0 top-0 [white-space-collapse:preserve] min-w-0 text-[#414141] font-['OpenRunde-Medium','Open_Runde',system-ui,sans-serif] font-medium text-[16px]/5.75 truncate"
                   >
                     {commandText}
                   </div>
