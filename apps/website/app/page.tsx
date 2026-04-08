@@ -1341,7 +1341,7 @@ export default function HomePage() {
   }, [activeMcpClient]);
 
   return (
-    <div className="[font-synthesis:none] overflow-x-clip antialiased min-h-screen bg-[color(display-p3_0.966_0.966_0.966)] flex flex-col items-center">
+    <div className="[font-synthesis:none] overflow-x-clip antialiased min-h-screen bg-background flex flex-col items-center">
       <div className="w-full pt-3 sm:pt-6 pb-2 sm:pb-4 flex flex-col items-center relative">
         <div
           className="absolute inset-0 pointer-events-none"

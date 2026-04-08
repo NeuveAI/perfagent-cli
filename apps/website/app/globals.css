@@ -70,7 +70,7 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
+  --background: color(display-p3 0.966 0.966 0.966);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
@@ -146,7 +146,7 @@
     @apply bg-background text-foreground;
   }
   html {
-    @apply font-sans;
+    @apply font-sans bg-background;
     scrollbar-gutter: stable;
   }
 }
