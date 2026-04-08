@@ -76,41 +76,20 @@ interface CommanderOpts {
 const program = new Command()
   .name("expect")
   .description("AI-powered browser testing for your changes")
-  .enablePositionalOptions()
-  .passThroughOptions()
   .version(VERSION, "-v, --version")
-  .option("-m, --message <instruction>", "natural language instruction for what to test")
-  .option("-f, --flow <slug>", "reuse a saved flow by its slug")
-  .option("-y, --yes", "run immediately without confirmation")
-  .option(
-    "-a, --agent <provider>",
-    "agent provider to use (claude, codex, copilot, gemini, cursor, opencode, droid, or pi)",
-  )
-  .option("-t, --target <target>", "what to test: unstaged, branch, or changes", "changes")
-  .option("--verbose", "enable verbose logging")
-  .option("--browser-mode <mode>", "browser mode: headed or headless")
-  .option("--cdp <url>", "connect to an existing Chrome via CDP WebSocket URL")
-  .option("--profile <name>", "reuse a Chrome profile by name (e.g. Default)")
-  .option("--no-cookies", "skip system browser cookie extraction")
-  .option("--ci", "force CI mode: headless, no cookies, auto-yes, 30-minute timeout")
-  .option("--timeout <ms>", "execution timeout in milliseconds", (value: string) =>
-    parseInt(value, 10),
-  )
-  .option("--output <format>", "output format: text (default) or json")
-  .option("-u, --url <urls...>", "base URL(s) for the dev server (skips port picker)")
   .addHelpText(
     "after",
     `
 Examples:
-  $ expect                                          open interactive TUI
-  $ expect -m "test the login flow" -y              run immediately
-  $ expect --browser-mode headless -m "smoke test"  run headless
-  $ expect --cdp ws://localhost:9222 -m "test" -y   connect to existing Chrome via CDP
-  $ expect --target branch                          test all branch changes
-  $ expect update                                   update to the latest CLI release
-  $ expect --no-cookies -m "test" -y                skip system browser cookie extraction
-  $ expect -u http://localhost:3000 -m "test" -y    specify dev server URL directly
-  $ expect watch -m "test the login flow"           watch mode`,
+  $ expect tui                                          open interactive TUI
+  $ expect tui -m "test the login flow" -y              run immediately
+  $ expect tui --browser-mode headless -m "smoke test"  run headless
+  $ expect tui --cdp ws://localhost:9222 -m "test" -y   connect to existing Chrome via CDP
+  $ expect tui --target branch                          test all branch changes
+  $ expect update                                       update to the latest CLI release
+  $ expect tui --no-cookies -m "test" -y                skip system browser cookie extraction
+  $ expect tui -u http://localhost:3000 -m "test" -y    specify dev server URL directly
+  $ expect watch -m "test the login flow"               watch mode`,
   );
 
 const resolveBrowserMode = async (opts: CommanderOpts) => {
@@ -409,38 +388,64 @@ program
     killDaemon();
   });
 
-program.action(async () => {
-  const opts = program.opts<CommanderOpts>();
+const tuiCommand = program
+  .command("tui")
+  .description("open the interactive testing TUI")
+  .option("-m, --message <instruction>", "natural language instruction for what to test")
+  .option("-f, --flow <slug>", "reuse a saved flow by its slug")
+  .option("-y, --yes", "run immediately without confirmation")
+  .option(
+    "-a, --agent <provider>",
+    "agent provider to use (claude, codex, copilot, gemini, cursor, opencode, droid, or pi)",
+  )
+  .option("-t, --target <target>", "what to test: unstaged, branch, or changes", "changes")
+  .option("--verbose", "enable verbose logging")
+  .option("--browser-mode <mode>", "browser mode: headed or headless")
+  .option("--cdp <url>", "connect to an existing Chrome via CDP WebSocket URL")
+  .option("--profile <name>", "reuse a Chrome profile by name (e.g. Default)")
+  .option("--no-cookies", "skip system browser cookie extraction")
+  .option("--ci", "force CI mode: headless, no cookies, auto-yes, 30-minute timeout")
+  .option("--timeout <ms>", "execution timeout in milliseconds", (value: string) =>
+    parseInt(value, 10),
+  )
+  .option("--output <format>", "output format: text (default) or json")
+  .option("-u, --url <urls...>", "base URL(s) for the dev server (skips port picker)")
+  .action(async () => {
+    const opts = tuiCommand.opts<CommanderOpts>();
 
-  const target = opts.target ?? "changes";
+    const target = opts.target ?? "changes";
 
-  if (!TARGETS.includes(target)) {
-    program.error(`Unknown target: ${target}. Use ${TARGETS.join(", ")}.`);
-  }
-
-  if (opts.ci || isRunningInAgent() || isHeadless()) return runHeadlessForTarget(target, opts);
-
-  await promptSkillInstall();
-
-  const hasDirectOptions = Boolean(opts.message || opts.flow || opts.yes);
-
-  if (hasDirectOptions) {
-    await runInteractiveForTarget(target, opts);
-  } else {
-    const browserMode = await resolveBrowserMode(opts);
-    usePreferencesStore.setState({
-      verbose: opts.verbose ?? false,
-      browserMode,
-      browserHeaded: browserMode !== "headless",
-      browserProfile: opts.profile,
-    });
-    if (opts.url) {
-      usePreferencesStore.setState({ cliBaseUrls: opts.url });
+    if (!TARGETS.includes(target)) {
+      tuiCommand.error(`Unknown target: ${target}. Use ${TARGETS.join(", ")}.`);
     }
-    await waitForHydration();
-    const persistedAgent = usePreferencesStore.getState().agentBackend;
-    renderApp(resolveAgentProvider(opts.agent ?? persistedAgent));
-  }
+
+    if (opts.ci || isRunningInAgent() || isHeadless()) return runHeadlessForTarget(target, opts);
+
+    await promptSkillInstall();
+
+    const hasDirectOptions = Boolean(opts.message || opts.flow || opts.yes);
+
+    if (hasDirectOptions) {
+      await runInteractiveForTarget(target, opts);
+    } else {
+      const browserMode = await resolveBrowserMode(opts);
+      usePreferencesStore.setState({
+        verbose: opts.verbose ?? false,
+        browserMode,
+        browserHeaded: browserMode !== "headless",
+        browserProfile: opts.profile,
+      });
+      if (opts.url) {
+        usePreferencesStore.setState({ cliBaseUrls: opts.url });
+      }
+      await waitForHydration();
+      const persistedAgent = usePreferencesStore.getState().agentBackend;
+      renderApp(resolveAgentProvider(opts.agent ?? persistedAgent));
+    }
+  });
+
+program.action(() => {
+  program.outputHelp();
 });
 
 program.parse();
