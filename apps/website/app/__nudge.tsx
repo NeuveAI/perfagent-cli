@@ -247,7 +247,7 @@ export function Nudge({ config }: { config?: NudgeConfig | null }) {
   const [confirmed, setConfirmed] = useState(false);
   const [barVisible, setBarVisible] = useState(false);
   const [barMounted, setBarMounted] = useState(false);
-  const exitTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const exitTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const lastIsColorRef = useRef(false);
 
   if (config) lastIsColorRef.current = config.type === "color";
@@ -259,8 +259,8 @@ export function Nudge({ config }: { config?: NudgeConfig | null }) {
   const unitRef = useRef("");
   const optionIndexRef = useRef(0);
   const currentValueRef = useRef("");
-  const nudgeTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const stepValueRef = useRef<(direction: number, shift: boolean) => void>(undefined);
+  const nudgeTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const stepValueRef = useRef<(direction: number, shift: boolean) => void>();
 
   const triggerNudge = useCallback(
     (dir: "up" | "down") => {
@@ -848,18 +848,22 @@ function Bar({
     "margin-right 0.45s cubic-bezier(0.32, 0.72, 0, 1), " +
     "opacity 0.15s ease";
 
+  const baseScale = !visible ? 0.5 : confirmed ? 1.05 : expanded ? 1 : 0.85;
+  const nudgeY = activeKey === "down" ? 1 : activeKey === "up" ? -1 : 0;
+
   return (
     <div
       style={{
         position: "fixed",
         bottom: expanded ? 20 : 12,
         left: "50%",
-        transform: `translateX(-50%) translateY(${activeKey === "down" ? 1 : activeKey === "up" ? -1 : 0}px) scale(${!visible ? 0.5 : expanded ? 1 : 0.85})`,
+        transform: `translateX(-50%) translateY(${nudgeY}px) scale(${baseScale})`,
         opacity: visible ? 1 : 0,
         zIndex: 2147483647,
         display: "flex",
         height: 37,
         alignItems: "center",
+        justifyContent: "center",
         borderRadius: 9999,
         padding: "0 16px",
         background: "#161616",
@@ -868,62 +872,65 @@ function Bar({
         WebkitFontSmoothing: "antialiased",
         pointerEvents: "auto",
         userSelect: "none",
-        transition: activeKey
-          ? "transform 0.1s cubic-bezier(0.2, 0, 0, 1.4), bottom 0.5s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.3s ease"
-          : "transform 0.35s cubic-bezier(0.32, 0.72, 0, 1), bottom 0.5s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.3s ease",
+        transition: confirmed
+          ? "transform 0.35s cubic-bezier(0.32, 0.72, 0, 1), bottom 0.5s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.3s ease"
+          : activeKey
+            ? "transform 0.1s cubic-bezier(0.2, 0, 0, 1.4), bottom 0.5s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.3s ease"
+            : "transform 0.35s cubic-bezier(0.32, 0.72, 0, 1), bottom 0.5s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.3s ease",
       }}
     >
-      <div
-        style={{
-          maxWidth: expanded ? 100 : 0,
-          marginRight: expanded ? 1 : 0,
-          opacity: expanded ? 1 : 0,
-          transition: expanded ? expandTransition : collapseTransition,
-          display: "flex",
-          alignItems: "center",
-        }}
-      >
-        {isColor ? (
-          confirmed ? (
-            <span
-              style={{
-                color: "#fff",
-                fontFamily: FONT,
-                fontWeight: 500,
-                fontSize: 14.5,
-                lineHeight: "22px",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {value}
-            </span>
-          ) : null
-        ) : (
-          <Calligraph
-            variant="slots"
-            animation="snappy"
+      {confirmed ? (
+        <span
+          style={{
+            color: "#fff",
+            fontFamily: FONT,
+            fontWeight: 500,
+            fontSize: 14.5,
+            lineHeight: "22px",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Prompt copied
+        </span>
+      ) : (
+        <>
+          <div
             style={{
-              color: "#fff",
-              fontFamily: FONT,
-              fontWeight: 500,
-              fontSize: 14.5,
-              lineHeight: "22px",
-              whiteSpace: "nowrap",
-              fontVariantNumeric: "tabular-nums",
-              minWidth: 48,
-              textAlign: "left",
-              transition: "color 0.15s ease",
+              maxWidth: expanded ? 100 : 0,
+              marginRight: expanded ? 1 : 0,
+              opacity: expanded ? 1 : 0,
+              transition: expanded ? expandTransition : collapseTransition,
+              display: "flex",
+              alignItems: "center",
             }}
           >
-            {value}
-          </Calligraph>
-        )}
-      </div>
+            {isColor ? null : (
+              <Calligraph
+                variant="slots"
+                animation="snappy"
+                style={{
+                  color: "#fff",
+                  fontFamily: FONT,
+                  fontWeight: 500,
+                  fontSize: 14.5,
+                  lineHeight: "22px",
+                  whiteSpace: "nowrap",
+                  fontVariantNumeric: "tabular-nums",
+                  minWidth: 48,
+                  textAlign: "left",
+                }}
+              >
+                {value}
+              </Calligraph>
+            )}
+          </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-        <Arrow down active={activeKey === "down"} onClick={() => onNudge("down")} />
-        <Arrow active={activeKey === "up"} onClick={() => onNudge("up")} />
-      </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <Arrow down active={activeKey === "down"} onClick={() => onNudge("down")} />
+            <Arrow active={activeKey === "up"} onClick={() => onNudge("up")} />
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -1209,7 +1209,7 @@ export default function HomePage() {
           <div className="flex flex-col gap-[5px] mt-10">
             <div
               className="[white-space-collapse:preserve] font-['OpenRunde-Semibold','Open_Runde',system-ui,sans-serif] font-semibold text-[24px]/9.5 text-[#1a1a1a]"
-              style={{ marginBottom: "6px" }}
+              style={{ marginBottom: "-1px" }}
             >
               Expect
             </div>
@@ -1220,7 +1220,7 @@ export default function HomePage() {
            * https://app.paper.design/file/01KN3QGZ2REZDFZ3FZCNWXEANN?page=01KNK40PV23TWD3DPP1AV1WTS4&node=I51-0
            * on Apr 7, 2026
            */}
-          <div className="flex flex-col gap-2.75 mt-6">
+          <div className="flex flex-col gap-2.75" style={{ marginTop: "23px" }}>
             <div
               onClick={handleSelectCommand}
               className="[font-synthesis:none] flex w-full h-22.25 flex-col rounded-[14px] pt-2.5 pr-3.5 pb-3.5 pl-3.75 gap-5 [box-shadow:#0000000F_0px_0px_0px_1px,#0000000F_0px_1px_2px_-1px,#0000000A_0px_2px_4px] antialiased cursor-text"
@@ -1461,7 +1461,8 @@ export default function HomePage() {
             Expect supports all MCP clients that implement the stdio transport. Below are configuration examples for popular clients.
           </div>
           <div
-            className="[font-synthesis:none] flex w-full flex-col rounded-[14px] [box-shadow:#0000000F_0px_0px_0px_1px,#0000000F_0px_1px_2px_-1px,#0000000A_0px_2px_4px] antialiased cursor-text mt-4"
+            className="[font-synthesis:none] flex w-full flex-col rounded-[14px] [box-shadow:#0000000F_0px_0px_0px_1px,#0000000F_0px_1px_2px_-1px,#0000000A_0px_2px_4px] antialiased cursor-text"
+            style={{ marginTop: "23px" }}
           >
             <div className="flex items-center justify-between bg-white rounded-t-[14px] pt-2.5 pr-3.5 pb-2.5 pl-3.75">
               <div className="flex items-center gap-1.5">
