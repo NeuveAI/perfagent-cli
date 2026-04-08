@@ -1,9 +1,6 @@
 export { Browser, runBrowser } from "./browser";
-export { buildReplayViewerHtml } from "./replay-viewer";
 export { diffSnapshots } from "./diff";
-export { collectEvents, collectAllEvents, loadSession } from "./recorder";
 export { autoDiscoverCdp, discoverCdpUrl } from "./cdp-discovery";
-export { RrVideo, RrVideoConvertError } from "./rrvideo";
 export type {
   Browser as BrowserProfile,
   BrowserKey,
@@ -13,16 +10,21 @@ export type {
 export {
   ActionTimeoutError,
   ActionUnknownError,
+  BrowserAlreadyOpenError,
   BrowserLaunchError,
+  BrowserNotOpenError,
   CdpConnectionError,
   CdpDiscoveryError,
+  ChromeNotFoundError,
+  ChromeSpawnError,
+  ChromeLaunchTimeoutError,
+  ChromeProfileNotFoundError,
+  McpServerStartError,
   NavigationError,
-  RecorderInjectionError,
   RefAmbiguousError,
   RefBlockedError,
   RefNotFoundError,
   RefNotVisibleError,
-  SessionLoadError,
   SnapshotTimeoutError,
 } from "./errors";
 export type { ActionError } from "./errors";
@@ -32,7 +34,6 @@ export type {
   AnnotatedScreenshotResult,
   AriaRole,
   BrowserEngine,
-  CollectResult,
   CreatePageOptions,
   RefEntry,
   RefMap,

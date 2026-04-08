@@ -347,7 +347,7 @@ export class Git extends ServiceMap.Service<Git>()("@supervisor/Git", {
     });
 
     /** @todo(rasmus): cleanup */
-    const ensureStateDir = Effect.fn("ensureStateDir")(function* (baseDir: string) {
+    const ensureStateDir = Effect.fn("Git.ensureStateDir")(function* (baseDir: string) {
       const stateDir = path.join(baseDir, EXPECT_STATE_DIR);
 
       yield* fileSystem
@@ -470,4 +470,16 @@ export class Git extends ServiceMap.Service<Git>()("@supervisor/Git", {
     );
     return Layer.mergeAll(Git.layer.pipe(Layer.provide(repoRootLayer)), repoRootLayer);
   };
+
+  // HACK: falls back to cwd when not inside a git repo — other revparse failures
+  // (permissions, corrupt .git) are also swallowed, but this matches the CLI's
+  // "best effort" behavior where non-repo directories are still usable
+  static resolveProjectRoot = (cwd: string) =>
+    Effect.tryPromise({
+      try: () => simpleGit(cwd).revparse(["--show-toplevel"]),
+      catch: (cause) => new FindRepoRootError({ cause }),
+    }).pipe(
+      Effect.map(Str.trim),
+      Effect.catchTag("FindRepoRootError", () => Effect.succeed(path.resolve(cwd))),
+    );
 }

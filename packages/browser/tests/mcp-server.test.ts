@@ -23,6 +23,7 @@ const TEST_HTML = `<!DOCTYPE html>
 
 let testServerUrl: string;
 let httpServer: ReturnType<typeof http.createServer>;
+let previousNoTelemetry: string | undefined;
 
 let mcpClient: Client;
 let mcpCleanup: () => Promise<void>;
@@ -40,6 +41,8 @@ const textContent = (result: Awaited<ReturnType<typeof callTool>>): string => {
 };
 
 beforeAll(async () => {
+  previousNoTelemetry = process.env.NO_TELEMETRY;
+  process.env.NO_TELEMETRY = "1";
   httpServer = http.createServer((_req, res) => {
     res.writeHead(200, { "Content-Type": "text/html" });
     res.end(TEST_HTML);
@@ -48,7 +51,7 @@ beforeAll(async () => {
   const port = (httpServer.address() as AddressInfo).port;
   testServerUrl = `http://127.0.0.1:${port}`;
 
-  const server = createBrowserMcpServer(McpRuntime);
+  const { server } = createBrowserMcpServer(McpRuntime);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   mcpClient = new Client({ name: "test-client", version: "0.0.1" });
   await server.connect(serverTransport);
@@ -64,6 +67,11 @@ afterAll(async () => {
   await callTool("close").catch(() => {});
   await mcpCleanup();
   httpServer.close();
+  if (previousNoTelemetry === undefined) {
+    delete process.env.NO_TELEMETRY;
+  } else {
+    process.env.NO_TELEMETRY = previousNoTelemetry;
+  }
 });
 
 describe("MCP server tools", () => {
@@ -80,6 +88,24 @@ describe("MCP server tools", () => {
       "playwright",
       "screenshot",
     ]);
+  });
+
+  it("createBrowserMcpServer returns tool handles with handlers", () => {
+    const { tools } = createBrowserMcpServer(McpRuntime);
+    const expectedToolNames = [
+      "open",
+      "playwright",
+      "screenshot",
+      "console_logs",
+      "network_requests",
+      "performance_metrics",
+      "accessibility_audit",
+      "close",
+    ];
+    expect(Object.keys(tools).sort()).toEqual(expectedToolNames.sort());
+    for (const tool of Object.values(tools)) {
+      expect(typeof tool.handler).toBe("function");
+    }
   });
 
   it("open → snapshot → playwright ref click → verify", async () => {

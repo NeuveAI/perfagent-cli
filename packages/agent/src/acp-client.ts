@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
+import * as fs from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as acp from "@agentclientprotocol/sdk";
 import {
@@ -14,6 +14,7 @@ import {
   Layer,
   Match,
   Option,
+  Predicate,
   Queue,
   Ref,
   Schema,
@@ -38,7 +39,14 @@ export const SessionId = Schema.String.pipe(Schema.brand("SessionId"));
 export type SessionId = typeof SessionId.Type;
 
 const ACP_STREAM_INACTIVITY_TIMEOUT_MS = 3 * 60 * 1000;
-const ACP_AUTH_CHECK_TIMEOUT = "3 seconds" as const;
+const ACP_AUTH_CHECK_TIMEOUT = "10 seconds" as const;
+
+const extractErrorDetails = (error: unknown): string => {
+  if (!Predicate.isObject(error)) return "";
+  if (!Predicate.isObject(error["data"])) return "";
+  const details = error["data"]["details"];
+  return typeof details === "string" ? details : "";
+};
 
 export class AcpStreamError extends Schema.ErrorClass<AcpStreamError>("AcpStreamError")({
   _tag: Schema.tag("AcpStreamError"),
@@ -91,6 +99,11 @@ export class AcpProviderNotInstalledError extends Schema.ErrorClass<AcpProviderN
       () =>
         "Factory Droid is not installed. Install it with `npm install -g droid`, or use Claude Code with `expect -a claude`.",
     ),
+    Match.when(
+      "pi",
+      () =>
+        "Pi is not installed. Install it with `npm install -g @mariozechner/pi-coding-agent`, or use Claude Code with `expect -a claude`.",
+    ),
     Match.orElse(
       () => "Your coding agent CLI is not installed. Please install it and then re-run expect.",
     ),
@@ -140,7 +153,7 @@ export class AcpSessionCreateError extends Schema.ErrorClass<AcpSessionCreateErr
   cause: Schema.Unknown,
 }) {
   displayName = `Creating a chat session failed`;
-  message = `Creating session failed: ${Cause.pretty(Cause.fail(this.cause))}`;
+  message = `Creating session failed: ${hasStringMessage(this.cause) ? this.cause.message : String(this.cause)}`;
 }
 
 export class AcpConnectionInitError extends Schema.ErrorClass<AcpConnectionInitError>(
@@ -175,13 +188,13 @@ const makeRequire = () =>
 
 const resolvePackageDir = (require: NodeRequire, packageName: string): string => {
   try {
-    return dirname(require.resolve(`${packageName}/package.json`));
+    return path.dirname(require.resolve(`${packageName}/package.json`));
   } catch {
     const paths = require.resolve.paths(packageName) ?? [];
     for (const searchPath of paths) {
-      const candidate = join(searchPath, packageName);
+      const candidate = path.join(searchPath, packageName);
       try {
-        const content = JSON.parse(readFileSync(join(candidate, "package.json"), "utf-8"));
+        const content = JSON.parse(fs.readFileSync(path.join(candidate, "package.json"), "utf-8"));
         if (content.name === packageName) return candidate;
       } catch {}
     }
@@ -192,17 +205,17 @@ const resolvePackageDir = (require: NodeRequire, packageName: string): string =>
 const resolvePackageBin = (packageName: string): string => {
   const require = makeRequire();
   const packageDir = resolvePackageDir(require, packageName);
-  const packageJson = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf-8"));
+  const packageJson = JSON.parse(fs.readFileSync(path.join(packageDir, "package.json"), "utf-8"));
 
   if (typeof packageJson.bin === "string") {
-    return join(packageDir, packageJson.bin);
+    return path.join(packageDir, packageJson.bin);
   }
   if (typeof packageJson.bin === "object" && packageJson.bin !== null) {
     const firstBinPath = String(Object.values(packageJson.bin)[0]);
-    return join(packageDir, firstBinPath);
+    return path.join(packageDir, firstBinPath);
   }
   if (packageJson.main) {
-    return join(packageDir, packageJson.main);
+    return path.join(packageDir, packageJson.main);
   }
   throw new Error(`Cannot resolve bin entry for ${packageName}`);
 };
@@ -371,13 +384,19 @@ export class AcpAdapter extends ServiceMap.Service<
         spawner.string,
         Effect.timeoutOrElse({
           duration: ACP_AUTH_CHECK_TIMEOUT,
-          onTimeout: () => new AcpProviderNotInstalledError({ provider: "cursor" }).asEffect(),
+          onTimeout: () =>
+            new AcpConnectionInitError({
+              cause:
+                "Cursor agent timed out during version check. Ensure `agent --version` runs quickly.",
+            }).asEffect(),
         }),
         Effect.catchReason("PlatformError", "NotFound", () =>
           new AcpProviderNotInstalledError({ provider: "cursor" }).asEffect(),
         ),
-        Effect.catchTag("PlatformError", () =>
-          new AcpProviderNotInstalledError({ provider: "cursor" }).asEffect(),
+        Effect.catchTag("PlatformError", (platformError) =>
+          new AcpConnectionInitError({
+            cause: `Cursor agent found but failed to run: ${platformError.message}`,
+          }).asEffect(),
         ),
       );
 
@@ -414,13 +433,19 @@ export class AcpAdapter extends ServiceMap.Service<
         spawner.string,
         Effect.timeoutOrElse({
           duration: ACP_AUTH_CHECK_TIMEOUT,
-          onTimeout: () => new AcpProviderNotInstalledError({ provider: "droid" }).asEffect(),
+          onTimeout: () =>
+            new AcpConnectionInitError({
+              cause:
+                "Factory Droid timed out during version check. Ensure `droid --version` runs quickly.",
+            }).asEffect(),
         }),
         Effect.catchReason("PlatformError", "NotFound", () =>
           new AcpProviderNotInstalledError({ provider: "droid" }).asEffect(),
         ),
-        Effect.catchTag("PlatformError", () =>
-          new AcpProviderNotInstalledError({ provider: "droid" }).asEffect(),
+        Effect.catchTag("PlatformError", (platformError) =>
+          new AcpConnectionInitError({
+            cause: `Factory Droid found but failed to run: ${platformError.message}`,
+          }).asEffect(),
         ),
       );
 
@@ -446,13 +471,19 @@ export class AcpAdapter extends ServiceMap.Service<
         spawner.string,
         Effect.timeoutOrElse({
           duration: ACP_AUTH_CHECK_TIMEOUT,
-          onTimeout: () => new AcpProviderNotInstalledError({ provider: "opencode" }).asEffect(),
+          onTimeout: () =>
+            new AcpConnectionInitError({
+              cause:
+                "OpenCode timed out during version check. Ensure `opencode --version` runs quickly.",
+            }).asEffect(),
         }),
         Effect.catchReason("PlatformError", "NotFound", () =>
           new AcpProviderNotInstalledError({ provider: "opencode" }).asEffect(),
         ),
-        Effect.catchTag("PlatformError", () =>
-          new AcpProviderNotInstalledError({ provider: "opencode" }).asEffect(),
+        Effect.catchTag("PlatformError", (platformError) =>
+          new AcpConnectionInitError({
+            cause: `OpenCode found but failed to run: ${platformError.message}`,
+          }).asEffect(),
         ),
       );
 
@@ -475,6 +506,38 @@ export class AcpAdapter extends ServiceMap.Service<
       return AcpAdapter.of({
         provider: "opencode",
         bin: "opencode",
+        args: ["acp"],
+        env: {},
+      });
+    }),
+  ).pipe(Layer.provide(NodeServices.layer));
+
+  static layerPi = Layer.effect(AcpAdapter)(
+    Effect.gen(function* () {
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+
+      yield* ChildProcess.make("pi", ["--version"]).pipe(
+        spawner.string,
+        Effect.timeoutOrElse({
+          duration: ACP_AUTH_CHECK_TIMEOUT,
+          onTimeout: () =>
+            new AcpConnectionInitError({
+              cause: "Pi timed out during version check. Ensure `pi --version` runs quickly.",
+            }).asEffect(),
+        }),
+        Effect.catchReason("PlatformError", "NotFound", () =>
+          new AcpProviderNotInstalledError({ provider: "pi" }).asEffect(),
+        ),
+        Effect.catchTag("PlatformError", (platformError) =>
+          new AcpConnectionInitError({
+            cause: `Pi found but failed to run: ${platformError.message}`,
+          }).asEffect(),
+        ),
+      );
+
+      return AcpAdapter.of({
+        provider: "pi",
+        bin: "pi",
         args: ["acp"],
         env: {},
       });
@@ -604,7 +667,7 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@expect/AcpClien
 
     const browserMcpBinPath = (() => {
       const colocated = fileURLToPath(new URL("./browser-mcp.js", import.meta.url));
-      if (existsSync(colocated)) return colocated;
+      if (fs.existsSync(colocated)) return colocated;
       return fileURLToPath(new URL("../../../apps/cli/dist/browser-mcp.js", import.meta.url));
     })();
 
@@ -660,25 +723,31 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@expect/AcpClien
           }),
         catch: (cause) => {
           const message = hasStringMessage(cause) ? cause.message : String(cause);
+          const details = extractErrorDetails(cause);
+          const searchText = `${message} ${details}`.toLowerCase();
 
-          /**
-           * @note(rasmus): these are best guesses at the type of errors we might hit
-           * if we're reaching usage limits because couldn't simulate this myself manually
-           */
-          const USAGE_LIMIT_ERRORS = ["out of usage", "limits exceeded", "usage exceeded"];
+          const PERMISSION_MODE_PATTERN = /invalid permissions\.defaultmode/i;
+          if (PERMISSION_MODE_PATTERN.test(searchText)) {
+            return new AcpSessionCreateError({
+              cause: `Your Claude settings use an unsupported permissions.defaultMode value. Change "defaultMode" to "default" in ~/.claude/settings.json and try again.`,
+            });
+          }
+
           const AUTH_ERRORS = ["authentication"];
-
-          if (AUTH_ERRORS.some((error) => message.toLowerCase().includes(error))) {
+          if (AUTH_ERRORS.some((error) => searchText.includes(error))) {
             return new AcpProviderUnauthenticatedError({
               provider: adapter.provider,
             });
           }
-          if (USAGE_LIMIT_ERRORS.some((error) => message.toLowerCase().includes(error))) {
+
+          const USAGE_LIMIT_ERRORS = ["out of usage", "limits exceeded", "usage exceeded"];
+          if (USAGE_LIMIT_ERRORS.some((error) => searchText.includes(error))) {
             return new AcpProviderUsageLimitError({
               provider: adapter.provider,
             });
           }
-          return new AcpSessionCreateError({ cause });
+          const causeWithDetails = details ? `${message} — ${details}` : cause;
+          return new AcpSessionCreateError({ cause: causeWithDetails });
         },
       }).pipe(
         Effect.tap((response) =>
@@ -804,7 +873,7 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@expect/AcpClien
           yield* Queue.fail(
             updatesQueue,
             new AcpStreamError({
-              cause: `Agent produced no output for ${ACP_STREAM_INACTIVITY_TIMEOUT_MS / 1000}s — the agent may be stalled`,
+              cause: `Agent produced no output for ${ACP_STREAM_INACTIVITY_TIMEOUT_MS / 1000}s. This usually means the agent couldn't connect to the browser or the target URL is unreachable. Try: (1) verify your dev server is running, (2) use -u to set the correct URL, (3) run with --verbose for more details.`,
             }),
           );
         }

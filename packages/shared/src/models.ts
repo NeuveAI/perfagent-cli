@@ -251,6 +251,7 @@ export const AgentProvider = Schema.Literals([
   "cursor",
   "opencode",
   "droid",
+  "pi",
 ] as const);
 export type AgentProvider = typeof AgentProvider.Type;
 
@@ -262,6 +263,7 @@ export const AGENT_PROVIDER_DISPLAY_NAMES: Record<AgentProvider, string> = {
   cursor: "Cursor",
   opencode: "OpenCode",
   droid: "Factory Droid",
+  pi: "Pi",
 };
 const TOOL_CALL_DISPLAY_TEXT_CHAR_LIMIT = 80;
 
@@ -1108,13 +1110,15 @@ export class TestReport extends ExecutedTestPlan.extend<TestReport>("@supervisor
     const icon = this.status === "passed" ? "\u2705" : "\u274C";
     const summaryParts = [`${passedCount} passed`, `${failedCount} failed`];
     if (skippedCount > 0) summaryParts.push(`${skippedCount} skipped`);
+    const countSummary = summaryParts.join(", ");
+    const summaryText = this.summary.trim();
     const stepWord = this.steps.length === 1 ? "step" : "steps";
     const lines = [
       `${icon} ${this.title} \u2014 ${this.status.toUpperCase()}`,
       "",
       this.steps.length === 0
         ? "agent did not execute any test steps"
-        : `${summaryParts.join(", ")} out of ${this.steps.length} ${stepWord}`,
+        : `${countSummary} out of ${this.steps.length} ${stepWord}`,
       "",
     ];
 
@@ -1133,6 +1137,12 @@ export class TestReport extends ExecutedTestPlan.extend<TestReport>("@supervisor
       if (entry?.summary) {
         lines.push(`    ${entry.summary}`);
       }
+    }
+
+    if (summaryText.length > 0 && summaryText !== countSummary) {
+      lines.push("");
+      lines.push("Summary");
+      lines.push(summaryText);
     }
 
     if (Option.isSome(this.testCoverageReport)) {

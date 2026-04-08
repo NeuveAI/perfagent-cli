@@ -1,7 +1,8 @@
 import { Config, Effect, Option, Schema, Stream } from "effect";
-import { type ChangesFor, CiResultOutput, CiStepResult } from "@expect/shared/models";
+import { type ChangesFor, type PlanId, CiResultOutput, CiStepResult } from "@expect/shared/models";
 import { Executor, ExecutedTestPlan, Reporter, Github } from "@expect/supervisor";
 import { Analytics } from "@expect/shared/observability";
+import { detectParentAgent } from "@expect/shared/launched-from";
 import type { AgentBackend } from "@expect/agent";
 import { ExpectTimeoutError } from "expect-sdk/effect";
 import { VERSION, CI_HEARTBEAT_INTERVAL_MS } from "../constants";
@@ -9,7 +10,6 @@ import { layerCli } from "../layers";
 import { playSound } from "./play-sound";
 import { stripUndefinedRequirement } from "./strip-undefined-requirement";
 import { extractCloseArtifacts } from "./extract-close-artifacts";
-import { RrVideo } from "@expect/browser";
 import { createCiReporter } from "./ci-reporter";
 import { writeGhaOutputs, writeGhaStepSummary } from "./gha-output";
 import { getStepElapsedMs, getTotalElapsedMs } from "./step-elapsed";
@@ -42,7 +42,8 @@ export const runHeadless = (options: HeadlessRunOptions) =>
           const sessionStartedAt = Date.now();
           yield* analytics.capture("session:started", {
             mode: "headless",
-            skip_planning: false,
+            agent: options.agent,
+            parent_agent: detectParentAgent(),
             browser_headed: options.headed,
           });
 
@@ -81,7 +82,7 @@ export const runHeadless = (options: HeadlessRunOptions) =>
             );
           }
 
-          yield* analytics.capture("run:started", { plan_id: "direct" });
+          yield* analytics.capture("run:started");
           const seenEvents = new Set<string>();
           const printNewEvents = (executed: ExecutedTestPlan) => {
             if (isJsonOutput) return;
@@ -135,13 +136,13 @@ export const runHeadless = (options: HeadlessRunOptions) =>
                   option,
                   () =>
                     new ExecutedTestPlan({
-                      id: "" as never,
+                      id: "" as PlanId,
                       changesFor: options.changesFor,
                       currentBranch: "",
                       diffPreview: "",
                       fileStats: [],
                       instruction: options.instruction,
-                      baseUrl: undefined as never,
+                      baseUrl: Option.none(),
                       isHeadless: !options.headed,
                       cookieBrowserKeys: [],
                       testCoverage: Option.none(),
@@ -217,7 +218,6 @@ export const runHeadless = (options: HeadlessRunOptions) =>
           const totalDurationMs = getTotalElapsedMs(report.steps);
 
           yield* analytics.capture("run:completed", {
-            plan_id: finalExecuted.id ?? "direct",
             passed: passedCount,
             failed: failedCount,
             step_count: finalExecuted.steps.length,
@@ -232,32 +232,6 @@ export const runHeadless = (options: HeadlessRunOptions) =>
 
           const artifacts = extractCloseArtifacts(finalExecuted.events);
 
-          let generatedVideoPath: string | undefined;
-          if (artifacts.replaySessionPath && artifacts.replaySessionPath.endsWith(".ndjson")) {
-            const latestJsonPath = artifacts.replaySessionPath.replace(/\.ndjson$/, "-latest.json");
-            const videoOutputPath = artifacts.replaySessionPath.replace(/\.ndjson$/, ".mp4");
-            const rrvideo = yield* RrVideo;
-            generatedVideoPath = yield* rrvideo
-              .convert({
-                inputPath: latestJsonPath,
-                outputPath: videoOutputPath,
-                skipInactive: true,
-                speed: 1,
-              })
-              .pipe(
-                Effect.catchTag("RrVideoConvertError", (error) =>
-                  Effect.sync(() => {
-                    if (!isJsonOutput) {
-                      process.stderr.write(`Warning: video generation failed: ${error.message}\n`);
-                    }
-                    return undefined;
-                  }),
-                ),
-              );
-          }
-
-          const effectiveVideoPath = generatedVideoPath ?? artifacts.videoPath;
-
           if (!isJsonOutput) {
             ciReporter.summary(
               passedCount,
@@ -266,24 +240,15 @@ export const runHeadless = (options: HeadlessRunOptions) =>
               report.steps.length,
               totalDurationMs,
             );
-            ciReporter.artifacts(
-              effectiveVideoPath,
-              artifacts.localReplayUrl,
-              artifacts.screenshotPaths,
-            );
+            ciReporter.artifacts(artifacts.videoPath, artifacts.screenshotPaths);
             for (const screenshotPath of artifacts.screenshotPaths) {
               process.stdout.write(`Screenshot: ${screenshotPath}\n`);
             }
           }
 
           if (isGitHubActions) {
-            yield* writeGhaOutputs(report.status, effectiveVideoPath, artifacts.replayPath);
-            yield* writeGhaStepSummary(
-              report.toPlainText,
-              report.status,
-              effectiveVideoPath,
-              artifacts.replayPath,
-            );
+            yield* writeGhaOutputs(report.status, artifacts.videoPath);
+            yield* writeGhaStepSummary(report.toPlainText, report.status, artifacts.videoPath);
 
             yield* Effect.gen(function* () {
               const github = yield* Github;
@@ -324,7 +289,7 @@ export const runHeadless = (options: HeadlessRunOptions) =>
                 })
                 .join("\n");
 
-              const videoSection = effectiveVideoPath
+              const videoSection = artifacts.videoPath
                 ? `\n**Video:** see workflow artifacts\n`
                 : "";
 
@@ -386,8 +351,7 @@ export const runHeadless = (options: HeadlessRunOptions) =>
               duration_ms: totalDurationMs,
               steps: stepResults,
               artifacts: {
-                ...(effectiveVideoPath ? { video: effectiveVideoPath } : {}),
-                ...(artifacts.replayPath ? { replay: artifacts.replayPath } : {}),
+                ...(artifacts.videoPath ? { video: artifacts.videoPath } : {}),
                 ...(artifacts.screenshotPaths.length > 0
                   ? { screenshots: [...artifacts.screenshotPaths] }
                   : {}),

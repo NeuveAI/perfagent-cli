@@ -1,10 +1,9 @@
 import { Config, Effect, Option } from "effect";
-import { appendFileSync } from "node:fs";
+import * as fs from "node:fs";
 
-export const writeGhaOutputs = Effect.fn("writeGhaOutputs")(function* (
+export const writeGhaOutputs = Effect.fn("GhaOutput.writeGhaOutputs")(function* (
   status: string,
   videoPath: string | undefined,
-  replayPath: string | undefined,
 ) {
   const githubOutputPath = yield* Config.option(Config.string("GITHUB_OUTPUT"));
   if (Option.isNone(githubOutputPath)) return;
@@ -13,18 +12,16 @@ export const writeGhaOutputs = Effect.fn("writeGhaOutputs")(function* (
   if (videoPath) {
     outputLines.push(`video_path=${videoPath}`);
   }
-  if (replayPath) {
-    outputLines.push(`replay_path=${replayPath}`);
-  }
 
-  yield* Effect.sync(() => appendFileSync(githubOutputPath.value, outputLines.join("\n") + "\n"));
+  yield* Effect.sync(() =>
+    fs.appendFileSync(githubOutputPath.value, outputLines.join("\n") + "\n"),
+  );
 });
 
-export const writeGhaStepSummary = Effect.fn("writeGhaStepSummary")(function* (
+export const writeGhaStepSummary = Effect.fn("GhaOutput.writeGhaStepSummary")(function* (
   reportText: string,
   status: string,
   videoPath: string | undefined,
-  replayPath: string | undefined,
 ) {
   const summaryPath = yield* Config.option(Config.string("GITHUB_STEP_SUMMARY"));
   if (Option.isNone(summaryPath)) return;
@@ -34,9 +31,6 @@ export const writeGhaStepSummary = Effect.fn("writeGhaStepSummary")(function* (
   if (videoPath) {
     artifactLines.push("**Video:** uploaded as artifact (see workflow artifacts above)");
   }
-  if (replayPath) {
-    artifactLines.push("**Replay:** uploaded as artifact (see workflow artifacts above)");
-  }
   const artifactSection = artifactLines.length > 0 ? `\n${artifactLines.join("\n")}\n` : "";
   const maxBacktickRun = (reportText.match(/`+/g) ?? []).reduce(
     (max, run) => Math.max(max, run.length),
@@ -45,5 +39,5 @@ export const writeGhaStepSummary = Effect.fn("writeGhaStepSummary")(function* (
   const fence = "`".repeat(maxBacktickRun + 1);
   const summary = `## expect test results\n\n${badge}\n\n${fence}\n${reportText}\n${fence}\n${artifactSection}`;
 
-  yield* Effect.sync(() => appendFileSync(summaryPath.value, summary));
+  yield* Effect.sync(() => fs.appendFileSync(summaryPath.value, summary));
 });

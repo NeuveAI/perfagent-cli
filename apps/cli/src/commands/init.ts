@@ -1,71 +1,89 @@
-import { spawn, spawnSync } from "node:child_process";
-import { detectAvailableAgents } from "@expect/agent";
-import { isCommandAvailable } from "@expect/shared/is-command-available";
-import { Effect } from "effect";
+import { detectAvailableAgents, toDisplayName } from "@expect/agent";
 import figures from "figures";
 import pc from "picocolors";
-import { PLAYWRIGHT_INSTALL_TIMEOUT_MS, VERSION } from "../constants";
+import { VERSION } from "../constants";
 import { highlighter } from "../utils/highlighter";
 import { logger } from "../utils/logger";
 import { prompts, setOnCancel } from "../utils/prompts";
 import { spinner } from "../utils/spinner";
-import { runAddSkill } from "./add-skill";
-import { runAddGithubAction } from "./add-github-action";
 import {
-  type PackageManager,
-  detectNonInteractive,
-  detectPackageManager,
-  hasGitHubRemote,
-  tryRun,
-} from "./init-utils";
+  type BrowserMode,
+  isValidBrowserMode,
+  writeProjectPreference,
+} from "../utils/project-preferences-io";
+import { resolveProjectRoot } from "../utils/project-root";
+import {
+  formatExpectMcpInstallSummary,
+  getSupportedExpectMcpAgents,
+  getUnsupportedExpectMcpAgents,
+  installExpectMcpForAgents,
+  selectExpectMcpAgents,
+  selectExpectMcpInstallScope,
+} from "../mcp/install-expect-mcp";
+import { runAddSkill } from "./add-skill";
 
 export { detectAvailableAgents };
 
-interface InstallCommand {
-  binary: string;
-  args: readonly string[];
-}
-
-const GLOBAL_INSTALL_COMMANDS: Record<PackageManager, InstallCommand> = {
-  npm: { binary: "npm", args: ["install", "-g", "expect-cli@latest"] },
-  pnpm: { binary: "pnpm", args: ["add", "-g", "expect-cli@latest"] },
-  yarn: { binary: "yarn", args: ["global", "add", "expect-cli@latest"] },
-  bun: { binary: "bun", args: ["add", "-g", "expect-cli@latest"] },
-  deno: { binary: "deno", args: ["install", "-g", "npm:expect-cli@latest"] },
-  vp: { binary: "vp", args: ["install", "-g", "expect-cli@latest"] },
-};
-
 interface InitOptions {
   yes?: boolean;
+  dry?: boolean;
+  headed?: boolean;
+  headless?: boolean;
 }
+
+const USAGE_PROMPTS = [
+  "Run /expect to test my changes in the browser",
+  "Run /expect to smoke test the app end to end",
+  "Run /expect to check for regressions after my changes",
+];
 
 const logUsageGuide = () => {
   logger.break();
-  logger.log("  Here's how to get started:");
+  logger.log("  Copy one of these into your coding agent to get started:");
   logger.break();
-  logger.log(`  1. ${highlighter.info("cd")} into your project directory`);
-  logger.log(`  2. Start your dev server (e.g. ${highlighter.dim("npm run dev")})`);
-  logger.log(`  3. Run ${highlighter.info("expect-cli")} to open the interactive test runner`);
-  logger.break();
-  logger.log(`  Or run headlessly from your coding agent:`);
-  logger.break();
-  logger.log(
-    `     ${highlighter.dim("$")} ${highlighter.info('expect-cli -m "test the login flow" -y')}`,
-  );
-  logger.break();
-  logger.log(`  Use ${highlighter.info("-u")} to set a custom base URL:`);
-  logger.break();
-  logger.log(
-    `     ${highlighter.dim("$")} ${highlighter.info('expect-cli -u http://localhost:5173 -m "test the homepage" -y')}`,
-  );
+  for (const prompt of USAGE_PROMPTS) {
+    logger.log(`     ${highlighter.info(prompt)}`);
+  }
   logger.break();
 };
 
-export const runInit = async (options: InitOptions = {}) => {
-  const nonInteractive = detectNonInteractive(options.yes ?? false);
-  const packageManager = detectPackageManager();
-  const { binary: installBinary, args: installArgs } = GLOBAL_INSTALL_COMMANDS[packageManager];
+const resolveBrowserModeFromFlags = (options: InitOptions): BrowserMode | undefined => {
+  if (options.headed && options.headless) {
+    logger.warn("  Both --headed and --headless passed. Using --headed.");
+    return "headed";
+  }
+  if (options.headed) return "headed";
+  if (options.headless) return "headless";
+  return undefined;
+};
 
+const promptBrowserMode = async (flagMode: BrowserMode | undefined): Promise<BrowserMode> => {
+  if (flagMode) return flagMode;
+
+  const response = await prompts({
+    type: "select",
+    name: "browserMode",
+    message: "How should Expect launch the browser?",
+    choices: [
+      {
+        title: "Open a browser window (recommended)",
+        description: "Launches a visible browser for each test run",
+        value: "headed",
+      },
+      {
+        title: "Run headless",
+        description: "No visible browser — best for CI and agents",
+        value: "headless",
+      },
+    ],
+    initial: 0,
+  });
+
+  const selected: unknown = response.browserMode;
+  return isValidBrowserMode(selected) ? selected : "headed";
+};
+
+export const runInit = async (options: InitOptions = {}) => {
   setOnCancel(() => {
     logger.break();
     logger.log("Cancelled.");
@@ -81,10 +99,12 @@ export const runInit = async (options: InitOptions = {}) => {
   logger.break();
 
   const availableAgents = detectAvailableAgents();
+  const supportedMcpAgents = getSupportedExpectMcpAgents(availableAgents);
+  const unsupportedMcpAgents = getUnsupportedExpectMcpAgents(availableAgents);
 
   if (availableAgents.length === 0) {
     logger.error(
-      "No supported coding agent found. expect requires one of: Claude Code, Codex, GitHub Copilot, Gemini, Cursor, OpenCode, or Factory Droid.",
+      "No supported coding agent found. expect requires one of: Claude Code, Codex, GitHub Copilot, Gemini, Cursor, OpenCode, Factory Droid, or Pi.",
     );
     logger.break();
     logger.log(`  Install one to get started:`);
@@ -109,84 +129,69 @@ export const runInit = async (options: InitOptions = {}) => {
     logger.log(
       `    ${highlighter.info("Factory Droid")}    ${highlighter.dim("npm install -g droid")}`,
     );
+    logger.log(
+      `    ${highlighter.info("Pi")}               ${highlighter.dim("npm install -g @mariozechner/pi-coding-agent")}`,
+    );
     logger.break();
     process.exit(1);
   }
 
-  const globalSpinner = spinner("Installing expect-cli globally...").start();
-  const globalSuccess = await tryRun(installBinary, installArgs);
+  const projectRoot = await resolveProjectRoot();
 
-  if (globalSuccess) {
-    if (isCommandAvailable("expect-cli")) {
-      globalSpinner.succeed(
-        `Installed! ${highlighter.info("expect-cli")} is now available globally.`,
-      );
+  if (options.dry) {
+    spinner("Installing expect skill...").start().succeed("Skill installed (dry run).");
+  } else {
+    await runAddSkill({ yes: options.yes, agents: availableAgents });
+  }
+
+  logger.break();
+
+  if (unsupportedMcpAgents.length > 0) {
+    logger.warn(
+      `  Skipping MCP install for ${unsupportedMcpAgents.map(toDisplayName).join(", ")}.`,
+    );
+    logger.break();
+  }
+
+  if (supportedMcpAgents.length === 0) {
+    logger.warn("  No MCP-supported agent detected, so only the Expect skill was installed.");
+  } else if (options.dry) {
+    spinner("Installing Expect MCP...").start().succeed("Expect MCP installed (dry run).");
+  } else {
+    const scope = await selectExpectMcpInstallScope(options.yes);
+    const selectedAgents = await selectExpectMcpAgents(supportedMcpAgents, options.yes, scope);
+    const mcpSpinner = spinner("Installing Expect MCP...").start();
+    const installSummary = installExpectMcpForAgents(projectRoot, selectedAgents, { scope });
+
+    if (
+      installSummary.selectedAgents.length > 0 &&
+      installSummary.failed.length === installSummary.selectedAgents.length
+    ) {
+      mcpSpinner.fail("Failed to install Expect MCP.");
+      for (const failure of installSummary.failed) {
+        logger.warn(`  ${toDisplayName(failure.agent)}: ${failure.reason}`);
+      }
+      throw new Error("Failed to install Expect MCP.");
+    }
+
+    if (installSummary.selectedAgents.length === 0) {
+      mcpSpinner.warn("Skipped Expect MCP install.");
     } else {
-      globalSpinner.warn(`Installed, but ${highlighter.info("expect-cli")} is not on your PATH.`);
-      const globalPrefix = spawnSync("npm", ["prefix", "-g"], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      }).stdout?.trim();
-      if (globalPrefix) {
-        logger.dim(
-          `  Add ${highlighter.info(`${globalPrefix}/bin`)} to your PATH, or use ${highlighter.info("npx expect-cli")} instead.`,
-        );
-      } else {
-        logger.dim(`  Use ${highlighter.info("npx expect-cli")} instead.`);
+      mcpSpinner.succeed(formatExpectMcpInstallSummary(installSummary));
+      for (const failure of installSummary.failed) {
+        logger.warn(`  ${toDisplayName(failure.agent)}: ${failure.reason}`);
       }
     }
-  } else {
-    globalSpinner.fail("Failed to install globally.");
-    logger.dim(`  Run manually: ${highlighter.info(`${installBinary} ${installArgs.join(" ")}`)}`);
-  }
-
-  const playwrightSpinner = spinner(
-    "Installing Playwright browsers (Chromium, WebKit, Firefox)...",
-  ).start();
-  const playwrightSuccess = await new Promise<boolean>((resolve) => {
-    const child = spawn(
-      "npx",
-      ["playwright", "install", "--with-deps", "chromium", "webkit", "firefox"],
-      {
-        stdio: "ignore",
-        timeout: PLAYWRIGHT_INSTALL_TIMEOUT_MS,
-      },
-    );
-    child.on("close", (code) => resolve(code === 0));
-    child.on("error", () => resolve(false));
-  });
-
-  if (playwrightSuccess) {
-    playwrightSpinner.succeed("Playwright browsers installed.");
-  } else {
-    playwrightSpinner.fail("Failed to install Playwright browsers.");
-    logger.dim(
-      `  Run manually: ${highlighter.info("npx playwright install --with-deps chromium webkit firefox")}`,
-    );
   }
 
   logger.break();
 
-  await runAddSkill({ yes: options.yes, agents: availableAgents });
+  const nonInteractive = Boolean(options.yes);
+  const flagMode = resolveBrowserModeFromFlags(options);
+  const browserMode = nonInteractive ? (flagMode ?? "headed") : await promptBrowserMode(flagMode);
 
-  logger.break();
-
-  if (await Effect.runPromise(hasGitHubRemote)) {
-    let setupGithubAction = nonInteractive;
-
-    if (!nonInteractive) {
-      const response = await prompts({
-        type: "confirm",
-        name: "setupGithubAction",
-        message: `Set up ${highlighter.info("GitHub Actions")} to continuously test every PR in CI?`,
-        initial: true,
-      });
-      setupGithubAction = response.setupGithubAction;
-    }
-
-    if (setupGithubAction) {
-      await runAddGithubAction({ yes: options.yes, agents: availableAgents });
-    }
+  if (!options.dry) {
+    writeProjectPreference(projectRoot, "browserMode", browserMode);
   }
 
   logger.break();

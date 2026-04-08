@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { Box, useApp, useInput } from "ink";
-import { spawnSync } from "node:child_process";
+import { Box, Text, useApp, useInput } from "ink";
 import { PrPickerScreen } from "./screens/pr-picker-screen";
 import { CookieSyncConfirmScreen } from "./screens/cookie-sync-confirm-screen";
 import { PortPickerScreen } from "./screens/port-picker-screen";
@@ -16,9 +15,10 @@ import { useNavigationStore, Screen } from "../stores/use-navigation";
 import { usePlanExecutionStore } from "../stores/use-plan-execution-store";
 import { useGitState } from "../hooks/use-git-state";
 import { useUpdateCheck } from "../hooks/use-update-check";
+import { runUpdateCommand } from "../commands/update";
 import { clearInkDisplay } from "../utils/clear-ink-display";
 import { useStdoutDimensions } from "../hooks/use-stdout-dimensions";
-import { ALT_SCREEN_OFF, NPM_PACKAGE_NAME } from "../constants";
+import { ALT_SCREEN_OFF } from "../constants";
 import { AgentBackend } from "@expect/agent";
 import { useAtomSet } from "@effect/atom-react";
 import { agentProviderAtom } from "../data/runtime";
@@ -58,7 +58,7 @@ export const App = ({ agent }: { agent: AgentBackend }) => {
     }
   };
 
-  const { updateAvailable } = useUpdateCheck();
+  const { latestVersion, updateAvailable } = useUpdateCheck();
   const { exit } = useApp();
 
   const [, setRefreshTick] = useState(0);
@@ -73,9 +73,7 @@ export const App = ({ agent }: { agent: AgentBackend }) => {
     if (key.ctrl && input === "u" && updateAvailable) {
       exit();
       process.stdout.write(ALT_SCREEN_OFF);
-      spawnSync("npm", ["install", "-g", `${NPM_PACKAGE_NAME}@latest`], {
-        stdio: "inherit",
-      });
+      void runUpdateCommand(latestVersion);
       return;
     }
     if (key.escape && screen._tag !== "Main") {
@@ -128,14 +126,7 @@ export const App = ({ agent }: { agent: AgentBackend }) => {
           />
         );
       case "Results":
-        return (
-          <ResultsScreen
-            report={screen.report}
-            replayUrl={screen.replayUrl}
-            localReplayUrl={screen.localReplayUrl}
-            videoUrl={screen.videoUrl}
-          />
-        );
+        return <ResultsScreen report={screen.report} videoUrl={screen.videoUrl} />;
       case "SelectPr":
         return <PrPickerScreen />;
       case "CookieSyncConfirm":
@@ -166,6 +157,14 @@ export const App = ({ agent }: { agent: AgentBackend }) => {
 
   return (
     <Box flexDirection="column" width="100%" height={rows}>
+      <Box paddingX={1} paddingY={0}>
+        <Text color="yellow">⚠ </Text>
+        <Text dimColor>The TUI is deprecated. Use </Text>
+        <Text color="cyan">/expect</Text>
+        <Text dimColor> from your coding agent instead. Run </Text>
+        <Text color="cyan">npx expect-cli@latest init</Text>
+        <Text dimColor> to set up.</Text>
+      </Box>
       <Box flexGrow={1}>{renderScreen()}</Box>
       <Modeline />
     </Box>

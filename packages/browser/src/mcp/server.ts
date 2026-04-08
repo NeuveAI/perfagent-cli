@@ -1,16 +1,15 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import * as path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod/v4";
-import { Effect, type ManagedRuntime } from "effect";
+import { Effect, Option, type ManagedRuntime } from "effect";
+import { FileSystem } from "effect/FileSystem";
 import { evaluateRuntime } from "../utils/evaluate-runtime";
 import { runAccessibilityAudit } from "../accessibility";
 import { formatPerformanceTrace } from "../performance-trace";
 import { McpSession } from "./mcp-session";
-import { autoDiscoverCdp } from "../cdp-discovery";
-import { DUPLICATE_REQUEST_WINDOW_MS } from "./constants";
-import { registerRulesResources } from "./rules-resources";
+import { OverlayController } from "./overlay-controller";
+import { DUPLICATE_REQUEST_WINDOW_MS, TMP_ARTIFACT_OUTPUT_DIRECTORY } from "./constants";
 
 const textResult = (text: string) => ({
   content: [{ type: "text" as const, text }],
@@ -37,21 +36,88 @@ const imageResult = (base64: string) => ({
   content: [{ type: "image" as const, data: base64, mimeType: "image/png" }],
 });
 
+// HACK: get AsyncFunction constructor for dynamic code evaluation in playwright tool
 const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
 
-// Tool annotations (readOnlyHint, destructiveHint) enable parallel execution in the Claude Agent SDK.
-// See: https://platform.claude.com/docs/en/agent-sdk/agent-loop#parallel-tool-execution
+const buildExpectGuide = (): string =>
+  [
+    "You validate code changes that were just generated or modified by testing them in a real browser. Your job is to find bugs, verify correctness, audit accessibility, and measure performance before the changes are considered complete.",
+    "",
+    "You are the quality gate — the agent made code changes, and now you verify they actually work.",
+    "",
+    "<subagent_strategy>",
+    "Always run browser interactions inside a subagent/sub-task. This keeps browser state (snapshots, console logs, network captures) isolated from your main conversation, improving context performance and reducing token usage.",
+    "",
+    "CRITICAL: The subagent MUST use the expect MCP tools (open, playwright, screenshot, console_logs, network_requests, performance_metrics, accessibility_audit, close) for all browser interactions. Do NOT use any other browser automation tools. The expect MCP server is the only way to interact with the browser.",
+    "",
+    "Workflow:",
+    "1. Spawn a subagent for browser work. Instruct it to use ONLY the expect MCP tools listed below.",
+    "2. Inside the subagent: use the expect `open` tool to launch a browser and navigate to a URL, interact using `playwright` and `screenshot`, observe with `console_logs` and `network_requests`, audit with `accessibility_audit` and `performance_metrics`, then `close`.",
+    "3. Return only the relevant findings (bugs, evidence, answers) to the main context.",
+    "4. One browser session per subagent. If you need to test a different engine (WebKit, Firefox), spawn a separate subagent.",
+    "</subagent_strategy>",
+    "",
+    "<expect_mcp_tools>",
+    "These are the ONLY tools you should use for browser interactions. They are provided by the expect MCP server. Do NOT use any other browser tools.",
+    "",
+    "1. open: launch a browser and navigate to a URL. Pass headed=true to show the browser window. Pass cookies=true to reuse local browser cookies. Pass browser='webkit' or browser='firefox' for cross-browser testing. Pass cdp='ws://...' to connect to an existing Chrome instance.",
+    "2. playwright: execute Playwright code in Node.js context. Globals: page (Page), context (BrowserContext), browser (Browser), ref (function: snapshot ref ID → Locator). Use `return` to send values back. Set snapshotAfter=true to auto-snapshot after DOM-changing actions.",
+    "3. screenshot: capture page state. Modes: 'snapshot' (ARIA accessibility tree with element refs — preferred for interaction), 'screenshot' (PNG image), 'annotated' (PNG with numbered labels on interactive elements). Pass fullPage=true for full scrollable content.",
+    "4. console_logs: get browser console messages. Filter by type ('error', 'warning', 'log'). Pass clear=true to reset after reading.",
+    "5. network_requests: get captured HTTP requests with automatic issue detection (4xx/5xx failures, duplicate requests, mixed content). Filter by method, URL, or resource type.",
+    "6. performance_metrics: collect Core Web Vitals (FCP, LCP, CLS, INP), navigation timing (TTFB), Long Animation Frames (LoAF) with script attribution, and resource breakdown.",
+    "7. accessibility_audit: run a WCAG accessibility audit using axe-core + IBM Equal Access. Returns violations sorted by severity with CSS selectors, HTML context, and fix guidance.",
+    "8. close: close the browser and end the session. Always call this when done — it flushes the session video and screenshots to disk.",
+    "</expect_mcp_tools>",
+    "",
+    "<snapshot_workflow>",
+    "Prefer screenshot mode 'snapshot' for observing page state. Use 'screenshot' or 'annotated' only for purely visual checks.",
+    "",
+    "1. Call screenshot with mode='snapshot' to get the ARIA tree with refs like [ref=e4].",
+    "2. Use ref() in playwright to act on elements: await ref('e3').fill('test@example.com'); await ref('e4').click();",
+    "3. Take a new snapshot only when the page structure changes (navigation, modal open/close, new content loaded).",
+    "4. Always snapshot first, then use ref() to act. Never guess CSS selectors when refs are available.",
+    "",
+    "Batch actions that do NOT change DOM structure into a single playwright call. Do NOT batch across DOM-changing boundaries (dropdown open, modal, dialog, navigation). After a DOM-changing action, take a new snapshot for fresh refs.",
+    "",
+    "Layered interactions (dropdowns, menus, popovers): click trigger, wait briefly, take a NEW snapshot, then click the revealed option. For native <select> elements, use ref('eN').selectOption('value') directly.",
+    "",
+    "Scroll-aware snapshots: snapshots only show visible elements. Hidden items appear as '- note \"N items hidden above/below\"'. To reveal hidden content, scroll using playwright: await page.evaluate(() => document.querySelector('[aria-label=\"List\"]').scrollTop += 500). Then take a new snapshot. Use fullPage=true to include all elements.",
+    "</snapshot_workflow>",
+    "",
+    "<stability_and_recovery>",
+    "- After navigation or major UI changes, wait for the page to settle: await page.waitForLoadState('networkidle').",
+    "- Use event-driven waits (waitForSelector, waitForURL, waitForFunction) instead of timed delays. Take a new snapshot after each wait resolves.",
+    "- When a ref stops working: take a new snapshot for fresh refs, scroll the target into view, or retry once.",
+    "- Do not repeat the same failing action without new evidence (fresh snapshot, different ref, changed page state).",
+    "- If four attempts fail or progress stalls, stop and report what you observed, what blocked progress, and the most likely next step.",
+    "- If you encounter a hard blocker (login, passkey, captcha, permissions), stop and report it instead of improvising.",
+    "</stability_and_recovery>",
+    "",
+    "<best_practices>",
+    "- After each interaction step, call console_logs with type='error' to catch unexpected errors.",
+    "- Use accessibility_audit before concluding a test session to catch WCAG violations.",
+    "- Use performance_metrics to check for Core Web Vitals issues.",
+    "- When testing forms, use adversarial input: Unicode (umlauts, CJK, RTL), boundary values (0, -1, 999999999), long strings (200+ chars), and XSS payloads.",
+    "- For responsive testing, use page.setViewportSize() at multiple breakpoints: 375x812 (mobile), 768x1024 (tablet), 1280x800 (laptop), 1440x900 (desktop).",
+    "- Assertion-first: navigate, act, then validate before moving on. Check at least two independent signals per step (e.g. URL changed AND new content appeared).",
+    "</best_practices>",
+  ].join("\n");
+
+// HACK: tool annotations (readOnlyHint, destructiveHint) are required for parallel execution in the Claude Agent SDK
 export const createBrowserMcpServer = <E>(
-  runtime: ManagedRuntime.ManagedRuntime<McpSession, E>,
+  runtime: ManagedRuntime.ManagedRuntime<McpSession | OverlayController | FileSystem, E>,
 ) => {
-  const runMcp = <A>(effect: Effect.Effect<A, unknown, McpSession>) => runtime.runPromise(effect);
+  const runMcp = <A>(
+    effect: Effect.Effect<A, unknown, McpSession | OverlayController | FileSystem>,
+  ) => runtime.runPromise(effect);
 
   const server = new McpServer({
     name: "expect",
     version: "0.0.1",
   });
 
-  server.registerTool(
+  const openTool = server.registerTool(
     "open",
     {
       title: "Open URL",
@@ -72,7 +138,7 @@ export const createBrowserMcpServer = <E>(
           .string()
           .optional()
           .describe(
-            "CDP WebSocket endpoint URL to connect to an existing Chrome instance (e.g. 'ws://localhost:9222/devtools/browser/...'). Use 'auto' to auto-discover a running Chrome.",
+            "CDP WebSocket endpoint URL to connect to an existing Chrome instance (e.g. 'ws://localhost:9222/devtools/browser/...').",
           ),
         browser: z
           .enum(["chromium", "webkit", "firefox"])
@@ -86,31 +152,27 @@ export const createBrowserMcpServer = <E>(
       runMcp(
         Effect.gen(function* () {
           const session = yield* McpSession;
+          const overlay = yield* OverlayController;
 
           if (session.hasSession()) {
+            const page = yield* session.requirePage();
+            yield* overlay.updateLabel(page, `Navigating to ${url}`);
             yield* session.navigate(url, { waitUntil });
             return textResult(`Navigated to ${url}`);
-          }
-
-          let cdpUrl: string | undefined;
-          if (cdp === "auto") {
-            cdpUrl = yield* autoDiscoverCdp();
-            yield* Effect.logInfo("Auto-discovered CDP endpoint", { cdpUrl });
-          } else if (cdp) {
-            cdpUrl = cdp;
           }
 
           const result = yield* session.open(url, {
             headed,
             cookies,
             waitUntil,
-            cdpUrl,
+            cdpUrl: Option.fromNullishOr(cdp),
             browserType,
           });
           const engineSuffix = browserType && browserType !== "chromium" ? ` [${browserType}]` : "";
-          const cdpSuffix = cdpUrl ? ` (connected via CDP: ${cdpUrl})` : "";
+          const cdpSuffix = cdp ? ` (connected via CDP: ${cdp})` : "";
+          const chromeSuffix = result.isExternalBrowser ? " (live Chrome)" : "";
           return textResult(
-            `Opened ${url}${engineSuffix}${cdpSuffix}` +
+            `Opened ${url}${engineSuffix}${cdpSuffix}${chromeSuffix}` +
               (result.injectedCookieCount > 0
                 ? ` (${result.injectedCookieCount} cookies synced from local browser)`
                 : ""),
@@ -119,7 +181,7 @@ export const createBrowserMcpServer = <E>(
       ),
   );
 
-  server.registerTool(
+  const playwrightTool = server.registerTool(
     "playwright",
     {
       title: "Execute Playwright",
@@ -127,6 +189,12 @@ export const createBrowserMcpServer = <E>(
         "Execute Playwright code in the Node.js context. Available globals: page (Page), context (BrowserContext), browser (Browser), ref (function: ref ID from snapshot → Playwright Locator). Use `return` to send a value back as JSON. Supports await. Set snapshotAfter=true to automatically take a fresh ARIA snapshot after execution and get updated refs — useful after actions that change the DOM (opening dropdowns, dialogs, navigating).",
       inputSchema: {
         code: z.string().describe("Playwright code to execute"),
+        description: z
+          .string()
+          .optional()
+          .describe(
+            "Short human-readable description of what this action does (e.g. 'Click the login button'). Shown in the overlay tooltip.",
+          ),
         snapshotAfter: z
           .boolean()
           .optional()
@@ -135,11 +203,20 @@ export const createBrowserMcpServer = <E>(
           ),
       },
     },
-    ({ code, snapshotAfter }) =>
+    ({ code, description, snapshotAfter }) =>
       runMcp(
         Effect.gen(function* () {
           const session = yield* McpSession;
+          const overlay = yield* OverlayController;
           const sessionData = yield* session.requireSession();
+          const cursorLabel = description ?? "Working…";
+
+          yield* overlay.positionCursorForCode(
+            sessionData.page,
+            code,
+            cursorLabel,
+            sessionData.lastSnapshot,
+          );
 
           const ref = (refId: string) => {
             if (!sessionData.lastSnapshot)
@@ -164,6 +241,8 @@ export const createBrowserMcpServer = <E>(
               };
             }
           });
+
+          yield* overlay.logAction(sessionData.page, cursorLabel, code);
 
           if (!codeResult.success) {
             return textResult(`Error: ${codeResult.error}`);
@@ -198,7 +277,7 @@ export const createBrowserMcpServer = <E>(
       ),
   );
 
-  server.registerTool(
+  const screenshotTool = server.registerTool(
     "screenshot",
     {
       title: "Screenshot",
@@ -222,13 +301,16 @@ export const createBrowserMcpServer = <E>(
       runMcp(
         Effect.gen(function* () {
           const session = yield* McpSession;
+          const overlay = yield* OverlayController;
           const page = yield* session.requirePage();
           const resolvedMode = mode ?? "screenshot";
+          yield* overlay.updateLabel(page, `Taking ${resolvedMode}`);
 
           if (resolvedMode === "snapshot") {
-            const result = yield* session.snapshot(page, {
-              viewportAware: !fullPage,
-            });
+            const result = yield* overlay.withHidden(
+              page,
+              session.snapshot(page, { viewportAware: !fullPage }),
+            );
             yield* session.updateLastSnapshot(result);
             return jsonResult({ tree: result.tree, refs: result.refs, stats: result.stats });
           }
@@ -256,8 +338,9 @@ export const createBrowserMcpServer = <E>(
             };
           }
 
-          const buffer = yield* Effect.tryPromise(() =>
-            page.screenshot({ fullPage, scale: "css" }),
+          const buffer = yield* overlay.withHidden(
+            page,
+            Effect.tryPromise(() => page.screenshot({ fullPage, scale: "css" })),
           );
           yield* session.saveScreenshot(buffer);
           return imageResult(buffer.toString("base64"));
@@ -265,7 +348,7 @@ export const createBrowserMcpServer = <E>(
       ),
   );
 
-  server.registerTool(
+  const consoleLogsTool = server.registerTool(
     "console_logs",
     {
       title: "Console Logs",
@@ -284,7 +367,9 @@ export const createBrowserMcpServer = <E>(
       runMcp(
         Effect.gen(function* () {
           const session = yield* McpSession;
+          const overlay = yield* OverlayController;
           const sessionData = yield* session.requireSession();
+          yield* overlay.updateLabel(sessionData.page, "Reading console logs");
           const entries = type
             ? sessionData.consoleMessages.filter((entry) => entry.type === type)
             : sessionData.consoleMessages;
@@ -303,7 +388,7 @@ export const createBrowserMcpServer = <E>(
       ),
   );
 
-  server.registerTool(
+  const networkRequestsTool = server.registerTool(
     "network_requests",
     {
       title: "Network Requests",
@@ -324,7 +409,9 @@ export const createBrowserMcpServer = <E>(
       runMcp(
         Effect.gen(function* () {
           const session = yield* McpSession;
+          const overlay = yield* OverlayController;
           const sessionData = yield* session.requireSession();
+          yield* overlay.updateLabel(sessionData.page, "Checking network requests");
           const normalizedMethod = method?.toUpperCase();
           const normalizedResourceType = resourceType?.toLowerCase();
           const entries = sessionData.networkRequests.filter(
@@ -389,7 +476,7 @@ export const createBrowserMcpServer = <E>(
       ),
   );
 
-  server.registerTool(
+  const performanceMetricsTool = server.registerTool(
     "performance_metrics",
     {
       title: "Performance Metrics",
@@ -402,7 +489,9 @@ export const createBrowserMcpServer = <E>(
       runMcp(
         Effect.gen(function* () {
           const session = yield* McpSession;
+          const overlay = yield* OverlayController;
           const page = yield* session.requirePage();
+          yield* overlay.updateLabel(page, "Collecting performance metrics");
           const trace = yield* evaluateRuntime(page, "getPerformanceTrace");
 
           const hasMetrics = trace.webVitals.fcp || trace.webVitals.lcp || trace.webVitals.inp;
@@ -411,12 +500,19 @@ export const createBrowserMcpServer = <E>(
           }
 
           const traceDocument = formatPerformanceTrace(trace);
-          const traceDir = "/tmp/expect-replays";
-          const tracePath = path.join(traceDir, `performance-trace-${Date.now()}.md`);
-          yield* Effect.sync(() => {
-            mkdirSync(traceDir, { recursive: true });
-            writeFileSync(tracePath, traceDocument);
-          });
+          const tracePath = path.join(
+            TMP_ARTIFACT_OUTPUT_DIRECTORY,
+            `performance-trace-${Date.now()}.md`,
+          );
+          const fileSystem = yield* FileSystem;
+          yield* fileSystem
+            .makeDirectory(TMP_ARTIFACT_OUTPUT_DIRECTORY, { recursive: true })
+            .pipe(
+              Effect.catchCause((cause) =>
+                Effect.logDebug("Failed to create artifact directory", { cause }),
+              ),
+            );
+          yield* fileSystem.writeFileString(tracePath, traceDocument);
 
           const summary = [`Performance trace written to: ${tracePath}`, "", "Web Vitals:"];
           const { webVitals } = trace;
@@ -449,7 +545,7 @@ export const createBrowserMcpServer = <E>(
       ),
   );
 
-  server.registerTool(
+  const accessibilityAuditTool = server.registerTool(
     "accessibility_audit",
     {
       title: "Accessibility Audit",
@@ -473,7 +569,9 @@ export const createBrowserMcpServer = <E>(
       runMcp(
         Effect.gen(function* () {
           const session = yield* McpSession;
+          const overlay = yield* OverlayController;
           const page = yield* session.requirePage();
+          yield* overlay.updateLabel(page, "Running accessibility audit");
           const result = yield* runAccessibilityAudit(page, { selector, tags });
           if (result.violations.length === 0) {
             return textResult("No accessibility violations found.");
@@ -483,7 +581,7 @@ export const createBrowserMcpServer = <E>(
       ),
   );
 
-  server.registerTool(
+  const closeTool = server.registerTool(
     "close",
     {
       title: "Close Browser",
@@ -495,15 +593,14 @@ export const createBrowserMcpServer = <E>(
       runMcp(
         Effect.gen(function* () {
           const session = yield* McpSession;
+          const overlay = yield* OverlayController;
+          if (session.hasSession()) {
+            const page = yield* session.requirePage();
+            yield* overlay.updateLabel(page, "Closing browser");
+          }
           const result = yield* session.close();
           if (!result) return textResult("No browser open.");
           const lines = ["Browser closed."];
-          if (result.tmpReplaySessionPath) {
-            lines.push(`rrweb replay: ${result.tmpReplaySessionPath}`);
-          }
-          if (result.tmpReportPath) {
-            lines.push(`rrweb report: ${result.tmpReportPath}`);
-          }
           if (result.tmpVideoPath) {
             lines.push(`Playwright video: ${result.tmpVideoPath}`);
           } else if (result.videoPath) {
@@ -517,15 +614,45 @@ export const createBrowserMcpServer = <E>(
       ),
   );
 
-  registerRulesResources(server);
+  server.registerPrompt(
+    "run",
+    {
+      description:
+        "Validate code changes in a real browser. Use after generating or modifying code to verify correctness, find bugs, audit accessibility, and measure performance.",
+    },
+    () => ({
+      messages: [
+        {
+          role: "user" as const,
+          content: {
+            type: "text" as const,
+            text: buildExpectGuide(),
+          },
+        },
+      ],
+    }),
+  );
 
-  return server;
+  const tools = {
+    open: openTool,
+    playwright: playwrightTool,
+    screenshot: screenshotTool,
+    console_logs: consoleLogsTool,
+    network_requests: networkRequestsTool,
+    performance_metrics: performanceMetricsTool,
+    accessibility_audit: accessibilityAuditTool,
+    close: closeTool,
+  };
+
+  return { server, tools };
 };
 
+export type BrowserToolMap = ReturnType<typeof createBrowserMcpServer>["tools"];
+
 export const startBrowserMcpServer = async <E>(
-  runtime: ManagedRuntime.ManagedRuntime<McpSession, E>,
+  runtime: ManagedRuntime.ManagedRuntime<McpSession | OverlayController | FileSystem, E>,
 ) => {
-  const server = createBrowserMcpServer(runtime);
+  const { server } = createBrowserMcpServer(runtime);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 };

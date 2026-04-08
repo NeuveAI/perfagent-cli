@@ -82,23 +82,6 @@ export class NavigationError extends Schema.ErrorClass<NavigationError>("Navigat
   message = `Navigation to "${this.url}" failed: ${this.cause}`;
 }
 
-export class RecorderInjectionError extends Schema.ErrorClass<RecorderInjectionError>(
-  "RecorderInjectionError",
-)({
-  _tag: Schema.tag("RecorderInjectionError"),
-  cause: Schema.String,
-}) {
-  message = `Failed to inject rrweb recorder: ${this.cause}`;
-}
-
-export class SessionLoadError extends Schema.ErrorClass<SessionLoadError>("SessionLoadError")({
-  _tag: Schema.tag("SessionLoadError"),
-  path: Schema.String,
-  cause: Schema.String,
-}) {
-  message = `Failed to load session from ${this.path}: ${this.cause}`;
-}
-
 export class CdpDiscoveryError extends Schema.ErrorClass<CdpDiscoveryError>("CdpDiscoveryError")({
   _tag: Schema.tag("CdpDiscoveryError"),
   cause: Schema.String,
@@ -114,6 +97,66 @@ export class CdpConnectionError extends Schema.ErrorClass<CdpConnectionError>("C
   },
 ) {
   message = `Failed to connect to CDP endpoint ${this.endpointUrl}: ${this.cause}`;
+}
+
+export class BrowserAlreadyOpenError extends Schema.ErrorClass<BrowserAlreadyOpenError>(
+  "BrowserAlreadyOpenError",
+)({
+  _tag: Schema.tag("BrowserAlreadyOpenError"),
+}) {
+  message = "A browser session is already open";
+}
+
+export class BrowserNotOpenError extends Schema.ErrorClass<BrowserNotOpenError>(
+  "BrowserNotOpenError",
+)({
+  _tag: Schema.tag("BrowserNotOpenError"),
+}) {
+  message = "No browser session is open";
+}
+
+export class McpServerStartError extends Schema.ErrorClass<McpServerStartError>(
+  "McpServerStartError",
+)({
+  _tag: Schema.tag("McpServerStartError"),
+  cause: Schema.String,
+}) {
+  message = `Failed to start MCP server: ${this.cause}`;
+}
+
+export class ChromeNotFoundError extends Schema.ErrorClass<ChromeNotFoundError>(
+  "ChromeNotFoundError",
+)({
+  _tag: Schema.tag("ChromeNotFoundError"),
+}) {
+  message =
+    "No system Chrome installation found. Install Google Chrome or pass an explicit executable path.";
+}
+
+export class ChromeSpawnError extends Schema.ErrorClass<ChromeSpawnError>("ChromeSpawnError")({
+  _tag: Schema.tag("ChromeSpawnError"),
+  cause: Schema.String,
+}) {
+  message = `Failed to spawn Chrome process: ${this.cause}`;
+}
+
+export class ChromeLaunchTimeoutError extends Schema.ErrorClass<ChromeLaunchTimeoutError>(
+  "ChromeLaunchTimeoutError",
+)({
+  _tag: Schema.tag("ChromeLaunchTimeoutError"),
+  timeoutMs: Schema.Number,
+  cause: Schema.String,
+}) {
+  message = `Chrome launch failed (timeout ${this.timeoutMs}ms): ${this.cause}`;
+}
+
+export class ChromeProfileNotFoundError extends Schema.ErrorClass<ChromeProfileNotFoundError>(
+  "ChromeProfileNotFoundError",
+)({
+  _tag: Schema.tag("ChromeProfileNotFoundError"),
+  profileName: Schema.String,
+}) {
+  message = `Chrome profile "${this.profileName}" not found. Available profiles can be found in your Chrome user data directory.`;
 }
 
 export type ActionError =

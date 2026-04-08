@@ -20,9 +20,6 @@ export const CONTEXT_PICKER_VISIBLE_COUNT = 8;
 export const TEST_FILE_CONTENT_SIZE_LIMIT_BYTES = 256 * 1024;
 export const TEST_FILE_SCAN_LIMIT = 50;
 
-export const AUDIT_LINT_KEYWORDS = ["lint", "check", "format", "typecheck", "type-check"];
-export const AUDIT_SCRIPT_TIMEOUT_MS = 120_000;
-
 export const GIT_REMOTE_TIMEOUT_MS = 5_000;
 export const GIT_STATE_TIMEOUT_MS = 10_000;
 export const TEST_COVERAGE_TIMEOUT_MS = 15_000;
@@ -49,10 +46,11 @@ export const CI_EXECUTION_TIMEOUT_MS = 30 * 60 * 1000;
 export const CI_HEARTBEAT_INTERVAL_MS = 60_000;
 
 export const NPM_PACKAGE_NAME = "expect-cli";
+export const EXPECT_MCP_SERVER_NAME = "expect";
 export const VERSION_API_URL = "https://expect.dev/api/version";
 export const UPDATE_CHECK_STALE_MS = 3_600_000;
 export const UPDATE_CHECK_TIMEOUT_MS = 5_000;
-export const PLAYWRIGHT_INSTALL_TIMEOUT_MS = 300_000;
+export const SKILL_FETCH_TIMEOUT_MS = 5_000;
 export const GLOBAL_INSTALL_TIMEOUT_MS = 60_000;
 
 export type PackageManager = "npm" | "pnpm" | "yarn" | "bun" | "deno" | "vp";

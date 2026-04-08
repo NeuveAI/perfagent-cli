@@ -7,16 +7,18 @@ import { Array as Arr, Effect, Layer, Option, ServiceMap } from "effect";
 
 const cookiesLayer = Layer.mergeAll(layerLive, Cookies.layer);
 import {
+  AGENT_OVERLAY_CONTAINER_ID,
   CONTENT_ROLES,
   HEADLESS_CHROMIUM_ARGS,
   INTERACTIVE_ROLES,
   NAVIGATION_DETECT_DELAY_MS,
   OVERLAY_CONTAINER_ID,
   POST_NAVIGATION_SETTLE_MS,
-  REPLAY_PLAYER_HEIGHT_PX,
-  REPLAY_PLAYER_WIDTH_PX,
+  VIDEO_HEIGHT_PX,
+  VIDEO_WIDTH_PX,
   REF_PREFIX,
   SNAPSHOT_TIMEOUT_MS,
+  CDP_CONNECT_TIMEOUT_MS,
 } from "./constants";
 import {
   BrowserLaunchError,
@@ -41,7 +43,7 @@ import type {
   RefMap,
   SnapshotOptions,
 } from "./types";
-import type { ScrollContainerResult } from "./runtime/scroll-detection";
+import type { ScrollContainerResult } from "./runtime/lib/scroll-detection";
 
 const BROWSER_ENGINES = { chromium, webkit, firefox } as const;
 
@@ -82,7 +84,7 @@ const extractCookiesForProfile = Effect.fn("Browser.extractCookiesForProfile")(
   }),
 );
 
-const dedupCookies = (cookies: Cookie[]) =>
+const dedupCookies = (cookies: readonly Cookie[]) =>
   Arr.dedupeWith(
     cookies,
     (cookieA, cookieB) =>
@@ -91,17 +93,6 @@ const dedupCookies = (cookies: Cookie[]) =>
       cookieA.path === cookieB.path,
   );
 
-const isSiblingProfile = (profile: BrowserProfile, reference: BrowserProfile) => {
-  if (profile._tag !== reference._tag) return false;
-  if (profile._tag === "ChromiumBrowser" && reference._tag === "ChromiumBrowser") {
-    return profile.key === reference.key && profile.profilePath !== reference.profilePath;
-  }
-  if (profile._tag === "FirefoxBrowser" && reference._tag === "FirefoxBrowser") {
-    return profile.profilePath !== reference.profilePath;
-  }
-  return false;
-};
-
 const extractDefaultBrowserCookies = Effect.fn("Browser.extractDefaultBrowserCookies")(function* (
   url: string,
   preferredProfile: BrowserProfile | undefined,
@@ -109,23 +100,8 @@ const extractDefaultBrowserCookies = Effect.fn("Browser.extractDefaultBrowserCoo
   if (!preferredProfile) return [];
 
   const cookiesService = yield* Cookies;
-  const browsers = yield* Browsers;
-
-  const allProfiles = yield* browsers.list.pipe(
-    Effect.catchTag("ListBrowsersError", () => Effect.succeed<BrowserProfile[]>([])),
-  );
-
-  const results = yield* Effect.forEach(
-    [
-      preferredProfile,
-      ...allProfiles.filter((profile) => isSiblingProfile(profile, preferredProfile)),
-    ],
-    (profile) => extractCookiesForProfile(cookiesService, profile),
-    { concurrency: "unbounded" },
-  );
-
-  // Preferred profile is first, so its cookies win when multiple profiles share the same cookie identity.
-  return dedupCookies(results.flat());
+  const cookies = yield* extractCookiesForProfile(cookiesService, preferredProfile);
+  return dedupCookies(cookies);
 }, Effect.provide(cookiesLayer));
 
 const extractCookiesForBrowserKeys = Effect.fn("Browser.extractCookiesForBrowserKeys")(function* (
@@ -188,38 +164,49 @@ const injectOverlayLabels = (page: Page, labels: Array<{ label: number; x: numbe
   evaluateRuntime(page, "injectOverlayLabels", OVERLAY_CONTAINER_ID, labels);
 
 export class Browser extends ServiceMap.Service<Browser>()("@browser/Browser", {
+  // oxlint-disable-next-line require-yield
   make: Effect.gen(function* () {
     const createPage = Effect.fn("Browser.createPage")(function* (
       url: string | undefined,
       options: CreatePageOptions = {},
     ) {
       const engine = options.browserType ?? "chromium";
+      const cdpUrl = engine === "chromium" ? (options.cdpUrl ?? Option.none()) : Option.none();
       yield* Effect.annotateCurrentSpan({
         url: url ?? "about:blank",
-        cdp: Boolean(options.cdpUrl),
+        cdp: Option.isSome(cdpUrl),
         browserType: engine,
       });
 
-      const cdpEndpoint = engine === "chromium" ? options.cdpUrl : undefined;
       const browserType = resolveBrowserType(engine);
-      const browser = cdpEndpoint
-        ? yield* Effect.tryPromise({
-            try: () => chromium.connectOverCDP(cdpEndpoint),
-            catch: (cause) =>
-              new CdpConnectionError({
-                endpointUrl: cdpEndpoint,
-                cause: cause instanceof Error ? cause.message : String(cause),
+      const browser =
+        cdpUrl._tag === "Some"
+          ? yield* Effect.tryPromise({
+              try: () => chromium.connectOverCDP(cdpUrl.value),
+              catch: (cause) =>
+                new CdpConnectionError({
+                  endpointUrl: cdpUrl.value,
+                  cause: cause instanceof Error ? cause.message : String(cause),
+                }),
+            }).pipe(
+              Effect.timeoutOrElse({
+                duration: `${CDP_CONNECT_TIMEOUT_MS} millis`,
+                onTimeout: () =>
+                  new CdpConnectionError({
+                    endpointUrl: cdpUrl.value,
+                    cause: `Connection timed out after ${CDP_CONNECT_TIMEOUT_MS}ms`,
+                  }).asEffect(),
               }),
-          })
-        : yield* Effect.tryPromise({
-            try: () =>
-              browserType.launch({
-                headless: !options.headed,
-                executablePath: options.executablePath,
-                args: engine === "chromium" && !options.headed ? HEADLESS_CHROMIUM_ARGS : [],
-              }),
-            catch: toBrowserLaunchError,
-          });
+            )
+          : yield* Effect.tryPromise({
+              try: () =>
+                browserType.launch({
+                  headless: !options.headed,
+                  executablePath: options.executablePath,
+                  args: engine === "chromium" && !options.headed ? HEADLESS_CHROMIUM_ARGS : [],
+                }),
+              catch: toBrowserLaunchError,
+            });
 
       const setupPage = Effect.gen(function* () {
         const defaultBrowserContext =
@@ -232,18 +219,20 @@ export class Browser extends ServiceMap.Service<Browser>()("@browser/Browser", {
             ? defaultBrowserContext.preferredProfile.locale
             : undefined;
 
-        const contextOptions: Parameters<typeof browser.newContext>[0] = {};
+        const contextOptions: Parameters<typeof browser.newContext>[0] = {
+          ignoreHTTPSErrors: true,
+        };
         if (profileLocale) {
           contextOptions.locale = profileLocale;
         }
         if (options.videoOutputDir) {
           contextOptions.recordVideo = {
             dir: options.videoOutputDir,
-            size: { width: REPLAY_PLAYER_WIDTH_PX, height: REPLAY_PLAYER_HEIGHT_PX },
+            size: { width: VIDEO_WIDTH_PX, height: VIDEO_HEIGHT_PX },
           };
         }
 
-        const isCdpConnected = Boolean(cdpEndpoint);
+        const isCdpConnected = Option.isSome(cdpUrl);
         const existingContexts = isCdpConnected ? browser.contexts() : [];
         const context =
           existingContexts.length > 0
@@ -264,7 +253,11 @@ export class Browser extends ServiceMap.Service<Browser>()("@browser/Browser", {
             yield* Effect.tryPromise({
               try: () => existingPage.evaluate(RUNTIME_SCRIPT),
               catch: toBrowserLaunchError,
-            }).pipe(Effect.catchTag("BrowserLaunchError", () => Effect.void));
+            }).pipe(
+              Effect.catchTag("BrowserLaunchError", (cause) =>
+                Effect.logDebug("Failed to inject runtime into existing CDP page", { cause }),
+              ),
+            );
           }
         }
 
@@ -281,14 +274,10 @@ export class Browser extends ServiceMap.Service<Browser>()("@browser/Browser", {
           });
         }
 
-        const existingPages = context.pages();
-        const page =
-          isCdpConnected && existingPages.length > 0
-            ? existingPages[0]!
-            : yield* Effect.tryPromise({
-                try: () => context.newPage(),
-                catch: toBrowserLaunchError,
-              });
+        const page = yield* Effect.tryPromise({
+          try: () => context.newPage(),
+          catch: toBrowserLaunchError,
+        });
 
         if (url) {
           yield* Effect.tryPromise({
@@ -301,12 +290,12 @@ export class Browser extends ServiceMap.Service<Browser>()("@browser/Browser", {
           });
         }
 
-        return { browser, context, page };
+        return { browser, context, page, cleanup: Effect.void, isExternalBrowser: isCdpConnected };
       });
 
       return yield* setupPage.pipe(
         Effect.tapError(() => {
-          if (cdpEndpoint) return Effect.void;
+          if (Option.isSome(cdpUrl)) return Effect.void;
           return Effect.tryPromise(() => browser.close()).pipe(
             Effect.catchTag("UnknownError", () => Effect.void),
           );
@@ -451,6 +440,11 @@ export class Browser extends ServiceMap.Service<Browser>()("@browser/Browser", {
         labelPositions.push({ label: labelCounter, x: box.x, y: box.y });
       }
 
+      yield* evaluateRuntime(page, "hideAgentOverlay", AGENT_OVERLAY_CONTAINER_ID).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Failed to hide agent overlay for capture", { cause }),
+        ),
+      );
       yield* injectOverlayLabels(page, labelPositions);
       return yield* Effect.ensuring(
         Effect.tryPromise({
@@ -459,7 +453,16 @@ export class Browser extends ServiceMap.Service<Browser>()("@browser/Browser", {
         }).pipe(Effect.map((screenshotBuffer) => ({ screenshot: screenshotBuffer, annotations }))),
         // HACK: overlay removal is best-effort cleanup — evaluateRuntime uses Effect.promise which defects on failure
         evaluateRuntime(page, "removeOverlay", OVERLAY_CONTAINER_ID).pipe(
-          Effect.catchCause(() => Effect.void),
+          Effect.catchCause((cause) =>
+            Effect.logWarning("Failed to remove annotation overlay", { cause }),
+          ),
+          Effect.tap(() =>
+            evaluateRuntime(page, "showAgentOverlay", AGENT_OVERLAY_CONTAINER_ID).pipe(
+              Effect.catchCause((cause) =>
+                Effect.logWarning("Failed to show agent overlay after capture", { cause }),
+              ),
+            ),
+          ),
         ),
       );
     });
@@ -497,6 +500,22 @@ export class Browser extends ServiceMap.Service<Browser>()("@browser/Browser", {
       return yield* extractDefaultBrowserCookies("", preferredProfile);
     });
 
+    const resolveProfile = Effect.fn("Browser.resolveProfile")(function* (profileName: string) {
+      const browsers = yield* Browsers;
+      const allBrowsers = yield* browsers.list;
+      const chromiumProfile = allBrowsers.find(
+        (browser) => browser._tag === "ChromiumBrowser" && browser.profileName === profileName,
+      );
+      return chromiumProfile?._tag === "ChromiumBrowser" ? chromiumProfile : undefined;
+    }, Effect.provide(layerLive));
+
+    const resolveProfilePath = Effect.fn("Browser.resolveProfilePath")(function* (
+      profileName: string,
+    ) {
+      const chromiumProfile = yield* resolveProfile(profileName);
+      return chromiumProfile?.profilePath;
+    }, Effect.provide(layerLive));
+
     return {
       createPage,
       snapshot,
@@ -504,6 +523,8 @@ export class Browser extends ServiceMap.Service<Browser>()("@browser/Browser", {
       annotatedScreenshot,
       waitForNavigationSettle,
       preExtractCookies,
+      resolveProfile,
+      resolveProfilePath,
     } as const;
   }),
 }) {

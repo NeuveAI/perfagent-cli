@@ -1,5 +1,4 @@
-import type { eventWithTime } from "@rrweb/types";
-import type { Effect } from "effect";
+import type { Effect, Option } from "effect";
 import type { Cookie } from "@expect/cookies";
 import type { Locator, Page } from "playwright";
 import type { RefNotFoundError } from "./errors";
@@ -52,7 +51,7 @@ export interface CreatePageOptions {
   cookies?: boolean | Cookie[];
   waitUntil?: "load" | "domcontentloaded" | "networkidle" | "commit";
   videoOutputDir?: string;
-  cdpUrl?: string;
+  cdpUrl?: Option.Option<string>;
   browserType?: BrowserEngine;
 }
 
@@ -78,9 +77,4 @@ export interface SnapshotDiff {
   removals: number;
   unchanged: number;
   changed: boolean;
-}
-
-export interface CollectResult {
-  readonly events: ReadonlyArray<eventWithTime>;
-  readonly total: number;
 }

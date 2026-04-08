@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import type { Page } from "playwright";
 import { Effect, Schema } from "effect";
@@ -66,12 +66,12 @@ const loadAceScript = () => {
   if (!cachedAceScript) {
     const require = createRequire(import.meta.url);
     const aceScriptPath = require.resolve("accessibility-checker-engine/ace.js");
-    cachedAceScript = readFileSync(aceScriptPath, "utf8");
+    cachedAceScript = fs.readFileSync(aceScriptPath, "utf8");
   }
   return cachedAceScript;
 };
 
-export const runAccessibilityAudit = Effect.fn("runAccessibilityAudit")(function* (
+export const runAccessibilityAudit = Effect.fn("Accessibility.runAccessibilityAudit")(function* (
   page: Page,
   options: AccessibilityAuditOptions = {},
 ) {

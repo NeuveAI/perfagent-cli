@@ -280,13 +280,13 @@ export const TestingScreen = ({
     (state) => state.modelPreferences[agentBackend]?.value,
   );
   const browserHeaded = usePreferencesStore((state) => state.browserHeaded);
-  const replayHost = usePreferencesStore((state) => state.replayHost);
+  const browserProfile = usePreferencesStore((state) => state.browserProfile);
+  const cdpUrl = usePreferencesStore((state) => state.cdpUrl);
   const toggleNotifications = usePreferencesStore((state) => state.toggleNotifications);
   const [executionResult, triggerExecute] = useAtom(executeFn, {
     mode: "promiseExit",
   });
   const screenshotPaths = useAtomValue(screenshotPathsAtom);
-  const [liveReplayUrl, setLiveReplayUrl] = useState<string | undefined>(undefined);
 
   const isExecuting = AsyncResult.isWaiting(executionResult);
   const isExecutionComplete = AsyncResult.isSuccess(executionResult);
@@ -421,6 +421,8 @@ export const TestingScreen = ({
         changesFor,
         instruction,
         isHeadless: !browserHeaded,
+        cdpUrl,
+        profileName: browserProfile,
         cookieBrowserKeys: [...cookieBrowserKeys],
         savedFlow,
         baseUrl,
@@ -431,9 +433,7 @@ export const TestingScreen = ({
             : undefined,
       },
       agentBackend,
-      replayHost,
       onUpdate: setExecutedPlan,
-      onReplayUrl: setLiveReplayUrl,
       onConfigOptions: (configOptions) => {
         setConfigOptions((previous) => ({
           ...previous,
@@ -449,28 +449,27 @@ export const TestingScreen = ({
     triggerExecute,
     agentBackend,
     browserHeaded,
+    browserProfile,
+    cdpUrl,
     changesFor,
     instruction,
     savedFlow,
     cookieBrowserKeys,
     baseUrls,
     devServerHints,
-    replayHost,
     modelPreferenceConfigId,
     modelPreferenceValue,
     setConfigOptions,
   ]);
 
-  const replayUrl = isExecutionComplete ? executionResult.value.replayUrl : undefined;
-  const localReplayUrl = isExecutionComplete ? executionResult.value.localReplayUrl : undefined;
   const videoUrl = isExecutionComplete ? executionResult.value.videoUrl : undefined;
 
   useEffect(() => {
     if (isExecutionComplete && executedPlan && report) {
       usePlanExecutionStore.getState().setExecutedPlan(executedPlan);
-      setScreen(Screen.Results({ report, replayUrl, localReplayUrl, videoUrl }));
+      setScreen(Screen.Results({ report, videoUrl }));
     }
-  }, [isExecutionComplete, executedPlan, report, replayUrl, localReplayUrl, videoUrl, setScreen]);
+  }, [isExecutionComplete, executedPlan, report, videoUrl, setScreen]);
 
   const goToMain = () => {
     usePlanExecutionStore.getState().setExecutedPlan(undefined);
@@ -499,14 +498,6 @@ export const TestingScreen = ({
       if (key.escape || normalizedInput === "n") {
         setShowCancelConfirmation(false);
       }
-      return;
-    }
-
-    if (normalizedInput === "o" && !key.ctrl && !key.meta && liveReplayUrl) {
-      const { exec } = require("node:child_process") as typeof import("node:child_process");
-      const escapedUrl = liveReplayUrl.replace(/"/g, '\\"');
-      exec(`open "${escapedUrl}"`);
-      trackEvent("live_preview:opened");
       return;
     }
 
@@ -540,7 +531,7 @@ export const TestingScreen = ({
       }
       if (executedPlan && report) {
         usePlanExecutionStore.getState().setExecutedPlan(executedPlan);
-        setScreen(Screen.Results({ report, replayUrl, localReplayUrl, videoUrl }));
+        setScreen(Screen.Results({ report, videoUrl }));
         return;
       }
       goToMain();
@@ -572,23 +563,12 @@ export const TestingScreen = ({
             </Text>
           </Box>
 
-          {liveReplayUrl && isExecuting && (
-            <Box marginTop={0}>
-              <Text color={COLORS.PRIMARY} bold>
-                {"  "}Press{" "}
-                <Text color={COLORS.PRIMARY} bold>
-                  o
-                </Text>{" "}
-                to open live preview
-              </Text>
-            </Box>
-          )}
-
-          {expanded ? (
+          {expanded && (
             <Box flexDirection="column" marginTop={1}>
               {visibleExpandedRows}
             </Box>
-          ) : (
+          )}
+          {!expanded && (
             <>
               {totalCount === 0 &&
                 isExecuting &&
