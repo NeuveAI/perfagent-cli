@@ -848,7 +848,7 @@ function TerminalAnimationView({
   } = animState;
 
   return (
-    <div className="flex flex-col items-center justify-center gap-4 text-xs/4 mt-5 sm:mt-11.5 p-3 pb-4 sm:pb-14">
+    <div className="flex flex-col items-center justify-center gap-4 text-xs/4 mt-8 sm:mt-11.5 p-3 pb-4 sm:pb-14">
       <div className="relative w-68.5 h-46 shrink-0 overflow-visible">
         <BrowserPreview
           slid={slid}
