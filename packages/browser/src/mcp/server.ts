@@ -470,9 +470,8 @@ export const createBrowserMcpServer = <E>(
   const closeTool = server.registerTool(
     "close",
     {
-      title: "Close",
-      description: "Close the DevTools session and browser.",
-      annotations: { destructiveHint: true },
+      title: "Close Page",
+      description: "Close the current browser page. The DevTools connection stays alive for further commands.",
       inputSchema: {},
     },
     () =>
@@ -480,8 +479,8 @@ export const createBrowserMcpServer = <E>(
         Effect.gen(function* () {
           const session = yield* McpSession;
           yield* session.close();
-          yield* Effect.logInfo("DevTools session closed");
-          return textResult("DevTools session closed.");
+          yield* Effect.logInfo("Browser page closed");
+          return textResult("Browser page closed. Connection still active — navigate to continue.");
         }).pipe(Effect.withSpan("mcp.tool.close")),
       ),
   );

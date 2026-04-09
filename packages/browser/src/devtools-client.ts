@@ -145,7 +145,13 @@ export class DevToolsClient extends ServiceMap.Service<DevToolsClient>()(
         return yield* callTool("list_console_messages", options);
       });
 
-      const close = Effect.fn("DevToolsClient.close")(function* () {
+      const closePage = Effect.fn("DevToolsClient.closePage")(function* (
+        options: { pageId?: string } = {},
+      ) {
+        return yield* callTool("close_page", options);
+      });
+
+      const disconnect = Effect.fn("DevToolsClient.disconnect")(function* () {
         yield* Effect.tryPromise({
           try: () => client.close(),
           catch: (cause) =>
@@ -153,7 +159,7 @@ export class DevToolsClient extends ServiceMap.Service<DevToolsClient>()(
               cause: cause instanceof Error ? cause.message : String(cause),
             }),
         });
-        yield* Effect.logInfo("DevTools MCP client closed");
+        yield* Effect.logInfo("DevTools MCP client disconnected");
       });
 
       return {
@@ -170,7 +176,7 @@ export class DevToolsClient extends ServiceMap.Service<DevToolsClient>()(
         evaluateScript,
         listNetworkRequests,
         listConsoleMessages,
-        close,
+        closePage,
       } as const;
     }),
   },

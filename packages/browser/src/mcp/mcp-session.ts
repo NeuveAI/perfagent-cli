@@ -22,8 +22,8 @@ export class McpSession extends ServiceMap.Service<McpSession>()("@devtools/McpS
     };
 
     const close = Effect.fn("McpSession.close")(function* () {
-      yield* devtools.close();
-      yield* Effect.logInfo("McpSession closed");
+      yield* devtools.closePage();
+      yield* Effect.logInfo("McpSession page closed");
     });
 
     return {
