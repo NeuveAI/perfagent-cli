@@ -42,21 +42,29 @@ describe("buildExecutionPrompt", () => {
     expect(prompt).toContain("<scope_strategy>");
   });
 
-  it("includes browser tool descriptions in system prompt", () => {
+  it("includes DevTools tool descriptions in system prompt", () => {
     const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("open: launch a browser");
-    expect(prompt).toContain("playwright: execute Playwright");
-    expect(prompt).toContain("screenshot: capture page state");
-    expect(prompt).toContain("console_logs: get browser console");
-    expect(prompt).toContain("network_requests: get captured requests");
-    expect(prompt).toContain("close: close the browser");
+    expect(prompt).toContain("navigate_page: navigate to a URL");
+    expect(prompt).toContain("take_snapshot: get accessibility tree");
+    expect(prompt).toContain("take_screenshot: capture page as PNG");
+    expect(prompt).toContain("performance_start_trace: start a performance trace");
+    expect(prompt).toContain("performance_stop_trace: stop the active trace");
+    expect(prompt).toContain("performance_analyze_insight: get detailed info");
+    expect(prompt).toContain("emulate: apply CPU/network throttling");
+    expect(prompt).toContain("lighthouse_audit: run Lighthouse");
+    expect(prompt).toContain("take_memory_snapshot: capture heap snapshot");
+    expect(prompt).toContain("list_network_requests: list all network requests");
+    expect(prompt).toContain("list_console_messages: list console messages");
+    expect(prompt).toContain("evaluate_script: execute JavaScript");
+    expect(prompt).toContain("close: close the DevTools session");
   });
 
-  it("documents browser engine switching in open tool description", () => {
+  it("includes profiling workflow in system prompt", () => {
     const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("browser='webkit'");
-    expect(prompt).toContain("browser='firefox'");
-    expect(prompt).toContain("Close the current session first before switching engines");
+    expect(prompt).toContain("<profiling_workflow>");
+    expect(prompt).toContain("cold-load profiling");
+    expect(prompt).toContain("interaction profiling");
+    expect(prompt).toContain("cpuThrottlingRate=4");
   });
 
   it("includes step marker protocol in system prompt", () => {
@@ -71,8 +79,8 @@ describe("buildExecutionPrompt", () => {
   it("describes session summary as a handoff to the outer agent", () => {
     const prompt = buildExecutionSystemPrompt();
     expect(prompt).toContain("handoff to the outer agent");
-    expect(prompt).toContain("what was verified");
-    expect(prompt).toContain("bugs found");
+    expect(prompt).toContain("what was profiled");
+    expect(prompt).toContain("regressions found");
     expect(prompt).toContain("anything learned");
   });
 
@@ -190,8 +198,8 @@ describe("buildExecutionPrompt", () => {
   it("includes snapshot workflow in system prompt", () => {
     const prompt = buildExecutionSystemPrompt();
     expect(prompt).toContain("<snapshot_workflow>");
-    expect(prompt).toContain("ref()");
-    expect(prompt).toContain("Never guess CSS selectors");
+    expect(prompt).toContain("take_snapshot");
+    expect(prompt).toContain("Always snapshot first");
   });
 
   it("wraps system prompt sections in XML tags", () => {
@@ -199,7 +207,7 @@ describe("buildExecutionPrompt", () => {
     expect(prompt).toContain("<change_analysis>");
     expect(prompt).toContain("<coverage_rules>");
     expect(prompt).toContain("<execution_strategy>");
-    expect(prompt).toContain("<ui_quality_rules>");
+    expect(prompt).toContain("<profiling_workflow>");
     expect(prompt).toContain("<tools");
     expect(prompt).toContain("<snapshot_workflow>");
     expect(prompt).toContain("<status_markers>");
@@ -211,34 +219,20 @@ describe("buildExecutionPrompt", () => {
     const prompt = buildExecutionSystemPrompt();
     const changeAnalysis = prompt.indexOf("<change_analysis>");
     const executionStrategy = prompt.indexOf("<execution_strategy>");
-    const dataSeeding = prompt.indexOf("<data_seeding>");
-    const uiQuality = prompt.indexOf("<ui_quality_rules>");
+    const profilingWorkflow = prompt.indexOf("<profiling_workflow>");
     const tools = prompt.indexOf("<tools");
     const statusMarkers = prompt.indexOf("<status_markers>");
     const runCompletion = prompt.indexOf("<run_completion>");
     expect(changeAnalysis).toBeLessThan(executionStrategy);
-    expect(executionStrategy).toBeLessThan(dataSeeding);
-    expect(dataSeeding).toBeLessThan(uiQuality);
-    expect(uiQuality).toBeLessThan(tools);
+    expect(executionStrategy).toBeLessThan(profilingWorkflow);
+    expect(profilingWorkflow).toBeLessThan(tools);
     expect(tools).toBeLessThan(statusMarkers);
     expect(statusMarkers).toBeLessThan(runCompletion);
-  });
-
-  it("includes data seeding section with adversarial test values", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("<data_seeding>");
-    expect(prompt).toContain("MUST have real data");
-    expect(prompt).toContain("MINIMUM 3 records");
-    expect(prompt).toContain("Günther Müller-Lüdenscheid");
-    expect(prompt).toContain("[Setup]");
-    expect(prompt).toContain("<script>alert(1)</script>");
-    expect(prompt).toContain("empty state renders correctly");
   });
 
   it("includes assertion depth guidance in execution strategy", () => {
     const prompt = buildExecutionSystemPrompt();
     expect(prompt).toContain("two independent signals");
-    expect(prompt).toContain("Verify absence when relevant");
   });
 
   it("includes change-analysis guidance in system prompt", () => {
@@ -251,7 +245,7 @@ describe("buildExecutionPrompt", () => {
   it("includes coverage rules in system prompt", () => {
     const prompt = buildExecutionSystemPrompt();
     expect(prompt).toContain("<coverage_rules>");
-    expect(prompt).toContain("test multiple consumers");
+    expect(prompt).toContain("profile multiple consumers");
   });
 
   it("includes code-level testing guidance in system prompt", () => {
@@ -267,29 +261,6 @@ describe("buildExecutionPrompt", () => {
     expect(prompt).toContain("lock files");
   });
 
-  it("includes layered interaction guidance for dropdowns and menus", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("Layered interactions");
-    expect(prompt).toContain("selectOption");
-  });
-
-  it("mentions snapshotAfter in playwright tool description", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("snapshotAfter=true");
-  });
-
-  it("includes batching guidance", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("Batch actions that do NOT change DOM structure");
-    expect(prompt).toContain("DOM-changing");
-  });
-
-  it("includes hover-to-reveal and nested menu guidance", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("Hover-to-reveal");
-    expect(prompt).toContain("Nested menus");
-  });
-
   it("includes stability and recovery guidance in system prompt", () => {
     const prompt = buildExecutionSystemPrompt();
     expect(prompt).toContain("<stability_and_recovery>");
@@ -301,67 +272,16 @@ describe("buildExecutionPrompt", () => {
     const prompt = buildExecutionSystemPrompt();
     expect(prompt).toContain("category=<allowed-category>;");
     expect(prompt).toContain("next-agent-prompt=<one sentence");
-    expect(prompt).toContain("Bad: ASSERTION_FAILED|step-03|button missing");
-    expect(prompt).toContain("Good: ASSERTION_FAILED|step-03|category=app-bug");
+    expect(prompt).toContain("Bad: ASSERTION_FAILED|step-03|page is slow");
+    expect(prompt).toContain("Good: ASSERTION_FAILED|step-03|category=perf-regression");
   });
 
-  it("includes UI quality rules section in system prompt", () => {
+  it("includes performance regression failure categories", () => {
     const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("<ui_quality_rules>");
-    expect(prompt).toContain("these checks are mandatory");
-  });
-
-  it("includes design system conformance rules", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("Design system conformance:");
-    expect(prompt).toContain("tailwind.config");
-    expect(prompt).toContain("hardcoded hex/rgb colors");
-  });
-
-  it("includes responsive viewport sizes with tablet breakpoints", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("Responsive design:");
-    expect(prompt).toContain("375\u00d7812 (iPhone SE)");
-    expect(prompt).toContain("390\u00d7844 (iPhone 14)");
-    expect(prompt).toContain("768\u00d71024 (iPad Mini)");
-    expect(prompt).toContain("810\u00d71080 (iPad Air)");
-    expect(prompt).toContain("1024\u00d7768 (iPad landscape)");
-    expect(prompt).toContain("setViewportSize");
-  });
-
-  it("includes touch interaction testing rules", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("Touch interaction:");
-    expect(prompt).toContain("also complete via tap");
-  });
-
-  it("includes cross-browser Safari/WebKit check", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("Cross-browser (Safari/WebKit):");
-    expect(prompt).toContain("flexbox gap");
-    expect(prompt).toContain("WebKit is unavailable");
-  });
-
-  it("includes dark mode verification rules", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("Dark mode:");
-    expect(prompt).toContain("prefers-color-scheme");
-    expect(prompt).toContain("dark mode");
-  });
-
-  it("includes layout stability (CLS) rules", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("Layout stability (CLS):");
-    expect(prompt).toContain("layout shift");
-    expect(prompt).toContain("0.1");
-  });
-
-  it("includes font loading verification rules", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("Font loading:");
-    expect(prompt).toContain("document.fonts");
-    expect(prompt).toContain("@font-face");
-    expect(prompt).toContain("system stack");
+    expect(prompt).toContain("perf-regression");
+    expect(prompt).toContain("core-web-vitals");
+    expect(prompt).toContain("memory");
+    expect(prompt).toContain("bundle-size");
   });
 
   it("includes self-check before RUN_COMPLETED", () => {
@@ -369,6 +289,25 @@ describe("buildExecutionPrompt", () => {
     expect(prompt).toContain(
       "Review the changed files list and confirm every file is accounted for",
     );
+  });
+
+  it("includes emulation guidance for mobile profiling", () => {
+    const prompt = buildExecutionSystemPrompt();
+    expect(prompt).toContain("cpuThrottlingRate=4");
+    expect(prompt).toContain("Slow 3G");
+  });
+
+  it("includes memory profiling guidance", () => {
+    const prompt = buildExecutionSystemPrompt();
+    expect(prompt).toContain("take_memory_snapshot");
+    expect(prompt).toContain("memory");
+  });
+
+  it("includes Core Web Vitals thresholds in run completion", () => {
+    const prompt = buildExecutionSystemPrompt();
+    expect(prompt).toContain("LCP > 4s");
+    expect(prompt).toContain("INP > 500ms");
+    expect(prompt).toContain("CLS > 0.25");
   });
 });
 
