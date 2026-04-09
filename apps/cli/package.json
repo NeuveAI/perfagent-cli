@@ -81,14 +81,15 @@
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",
+    "@babel/plugin-syntax-typescript": "^7.28.6",
     "@neuve/agent": "workspace:*",
+    "@neuve/sdk": "workspace:*",
     "@neuve/shared": "workspace:*",
     "@neuve/supervisor": "workspace:*",
     "@types/node-notifier": "^8.0.5",
     "@types/prompts": "^2.4.9",
     "@types/react": "^19.2.14",
     "babel-plugin-react-compiler": "^1.0.0",
-    "@neuve/sdk": "workspace:*",
     "typescript": "^5.7.0"
   },
   "optionalDependencies": {

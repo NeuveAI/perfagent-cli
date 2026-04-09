@@ -264,117 +264,94 @@ program
   });
 
 program
-  .command("open")
-  .description("open a browser and navigate to a URL")
+  .command("navigate")
+  .description("navigate to a URL in the browser")
   .argument("<url>", "URL to navigate to")
-  .option("--headed", "show browser window")
-  .option("--cookies", "reuse local browser cookies")
-  .option("--cdp <url>", "CDP WebSocket endpoint URL")
-  .option("--browser <engine>", "browser engine: chromium (default), webkit, or firefox")
-  .option(
-    "--wait-until <strategy>",
-    "wait strategy: load, domcontentloaded, networkidle, or commit",
-  )
-  .action(
-    async (
-      url: string,
-      opts: {
-        headed?: boolean;
-        cookies?: boolean;
-        cdp?: string;
-        browser?: string;
-        waitUntil?: string;
-      },
-    ) => {
-      const result = await callTool("open", {
-        url,
-        headed: opts.headed,
-        cookies: opts.cookies,
-        cdp: opts.cdp,
-        browser: opts.browser,
-        waitUntil: opts.waitUntil,
-      });
-      printToolResult(result);
-    },
-  );
+  .action(async (url: string) => {
+    const result = await callTool("navigate_page", { url });
+    printToolResult(result);
+  });
 
 program
-  .command("playwright")
-  .description("execute Playwright code against the open browser")
-  .argument("<code>", "Playwright code to execute")
-  .option("--snapshot-after", "take a fresh ARIA snapshot after execution")
-  .option("--description <label>", "short description shown in the overlay")
-  .action(async (code: string, opts: { snapshotAfter?: boolean; description?: string }) => {
-    const result = await callTool("playwright", {
-      code,
-      snapshotAfter: opts.snapshotAfter,
-      description: opts.description,
-    });
+  .command("snapshot")
+  .description("take an accessibility tree snapshot of the current page")
+  .option("--verbose", "include all available a11y tree information")
+  .action(async (opts: { verbose?: boolean }) => {
+    const result = await callTool("take_snapshot", { verbose: opts.verbose });
     printToolResult(result);
   });
 
 program
   .command("screenshot")
-  .description("capture the current page state")
-  .option("--mode <mode>", "capture mode: screenshot (default), snapshot (ARIA tree), or annotated")
-  .option("--full-page", "capture the full scrollable page")
-  .action(async (opts: { mode?: string; fullPage?: boolean }) => {
-    const result = await callTool("screenshot", {
+  .description("capture the current page as an image")
+  .option("--format <fmt>", "image format: png (default), jpeg, or webp")
+  .option("--file <path>", "save screenshot to file")
+  .action(async (opts: { format?: string; file?: string }) => {
+    const result = await callTool("take_screenshot", {
+      format: opts.format,
+      filePath: opts.file,
+    });
+    printToolResult(result);
+  });
+
+program
+  .command("trace")
+  .description("start a performance trace (stops automatically)")
+  .option("--no-reload", "skip page reload before tracing")
+  .option("--no-auto-stop", "keep recording until manually stopped")
+  .option("--file <path>", "save raw trace to file (e.g. trace.json.gz)")
+  .action(async (opts: { reload?: boolean; autoStop?: boolean; file?: string }) => {
+    const result = await callTool("performance_start_trace", {
+      reload: opts.reload,
+      autoStop: opts.autoStop,
+      filePath: opts.file,
+    });
+    printToolResult(result);
+  });
+
+program
+  .command("trace-stop")
+  .description("stop the active performance trace")
+  .option("--file <path>", "save raw trace to file")
+  .action(async (opts: { file?: string }) => {
+    const result = await callTool("performance_stop_trace", { filePath: opts.file });
+    printToolResult(result);
+  });
+
+program
+  .command("insight")
+  .description("analyze a specific performance insight from a trace")
+  .argument("<insightSetId>", "insight set ID from trace results")
+  .argument("<insightName>", "insight name (e.g. LCPBreakdown, RenderBlocking)")
+  .action(async (insightSetId: string, insightName: string) => {
+    const result = await callTool("performance_analyze_insight", { insightSetId, insightName });
+    printToolResult(result);
+  });
+
+program
+  .command("emulate")
+  .description("apply CPU/network throttling and device emulation")
+  .option("--cpu <rate>", "CPU slowdown factor (1-20)")
+  .option("--network <preset>", "network preset: Slow 3G, Fast 3G, Offline")
+  .option("--viewport <size>", "viewport as WIDTHxHEIGHT (e.g. 375x812)")
+  .action(async (opts: { cpu?: string; network?: string; viewport?: string }) => {
+    const result = await callTool("emulate", {
+      cpuThrottlingRate: opts.cpu ? Number(opts.cpu) : undefined,
+      networkConditions: opts.network,
+      viewport: opts.viewport,
+    });
+    printToolResult(result);
+  });
+
+program
+  .command("lighthouse")
+  .description("run Lighthouse audit (accessibility, SEO, best practices)")
+  .option("--mode <mode>", "navigation or snapshot (default: navigation)")
+  .option("--device <device>", "desktop or mobile (default: desktop)")
+  .action(async (opts: { mode?: string; device?: string }) => {
+    const result = await callTool("lighthouse_audit", {
       mode: opts.mode,
-      fullPage: opts.fullPage,
-    });
-    printToolResult(result);
-  });
-
-program
-  .command("console_logs")
-  .description("get browser console log messages")
-  .option("--type <type>", "filter by message type (error, warning, log)")
-  .option("--clear", "clear messages after reading")
-  .action(async (opts: { type?: string; clear?: boolean }) => {
-    const result = await callTool("console_logs", {
-      type: opts.type,
-      clear: opts.clear,
-    });
-    printToolResult(result);
-  });
-
-program
-  .command("network_requests")
-  .description("get captured network requests with issue detection")
-  .option("--method <method>", "filter by HTTP method")
-  .option("--url <substring>", "filter by URL substring")
-  .option("--resource-type <type>", "filter by resource type (xhr, fetch, document)")
-  .option("--clear", "clear requests after reading")
-  .action(
-    async (opts: { method?: string; url?: string; resourceType?: string; clear?: boolean }) => {
-      const result = await callTool("network_requests", {
-        method: opts.method,
-        url: opts.url,
-        resourceType: opts.resourceType,
-        clear: opts.clear,
-      });
-      printToolResult(result);
-    },
-  );
-
-program
-  .command("performance_metrics")
-  .description("collect Core Web Vitals and performance trace")
-  .action(async () => {
-    const result = await callTool("performance_metrics");
-    printToolResult(result);
-  });
-
-program
-  .command("accessibility_audit")
-  .description("run a WCAG accessibility audit on the current page")
-  .option("--selector <css>", "CSS selector to scope the audit")
-  .option("--tags <tags...>", "WCAG tags to filter by")
-  .action(async (opts: { selector?: string; tags?: string[] }) => {
-    const result = await callTool("accessibility_audit", {
-      selector: opts.selector,
-      tags: opts.tags,
+      device: opts.device,
     });
     printToolResult(result);
   });
