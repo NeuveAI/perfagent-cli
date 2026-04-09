@@ -5,5 +5,5 @@ export class McpSessionNotOpenError extends Schema.ErrorClass<McpSessionNotOpenE
 )({
   _tag: Schema.tag("McpSessionNotOpenError"),
 }) {
-  message = "No browser open. Call the 'open' tool first.";
+  message = "No DevTools session open. The chrome-devtools-mcp process may not be running.";
 }
