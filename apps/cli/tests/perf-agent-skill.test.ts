@@ -7,13 +7,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import {
   AGENTS_SKILLS_DIR,
   detectInstalledSkillAgents,
-  getExpectSkillStatus,
-  hasInstalledExpectSkill,
+  getPerfAgentSkillStatus,
+  hasInstalledPerfAgentSkill,
   SKILL_NAME,
-} from "../src/utils/expect-skill";
+} from "../src/utils/perf-agent-skill";
 
 const makeSkillFile = (version: string, body: string) => `---
-name: expect
+name: perf-agent
 metadata:
   version: "${version}"
 ---
@@ -21,11 +21,11 @@ metadata:
 ${body}
 `;
 
-describe("expect-skill", () => {
+describe("perf-agent-skill", () => {
   let projectRoot: string;
 
   beforeEach(() => {
-    projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "expect-skill-"));
+    projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "perf-agent-skill-"));
   });
 
   afterEach(() => {
@@ -48,7 +48,7 @@ describe("expect-skill", () => {
     );
 
     const status = await Effect.runPromise(
-      getExpectSkillStatus(projectRoot).pipe(Effect.provide(NodeServices.layer)),
+      getPerfAgentSkillStatus(projectRoot).pipe(Effect.provide(NodeServices.layer)),
     );
 
     expect(status).toEqual({
@@ -75,7 +75,7 @@ describe("expect-skill", () => {
     );
 
     const status = await Effect.runPromise(
-      getExpectSkillStatus(projectRoot).pipe(Effect.provide(NodeServices.layer)),
+      getPerfAgentSkillStatus(projectRoot).pipe(Effect.provide(NodeServices.layer)),
     );
 
     expect(status).toEqual({
@@ -86,7 +86,7 @@ describe("expect-skill", () => {
     });
   });
 
-  it("detects which installed agents already have the expect skill directory", async () => {
+  it("detects which installed agents already have the perf-agent skill directory", async () => {
     const claudeSkillsDir = path.join(projectRoot, ".claude", "skills");
     fs.mkdirSync(claudeSkillsDir, { recursive: true });
     fs.mkdirSync(path.join(claudeSkillsDir, SKILL_NAME), { recursive: true });
@@ -109,7 +109,7 @@ describe("expect-skill", () => {
     fs.writeFileSync(path.join(claudeSkillDir, "SKILL.md"), makeSkillFile("2.2.0", "same skill"));
 
     const result = await Effect.runPromise(
-      hasInstalledExpectSkill(projectRoot, ["claude", "cursor"]).pipe(
+      hasInstalledPerfAgentSkill(projectRoot, ["claude", "cursor"]).pipe(
         Effect.provide(NodeServices.layer),
       ),
     );
@@ -118,7 +118,7 @@ describe("expect-skill", () => {
 
   it("reports not installed when neither shared nor agent-local skills exist", async () => {
     const result = await Effect.runPromise(
-      hasInstalledExpectSkill(projectRoot, ["claude", "cursor"]).pipe(
+      hasInstalledPerfAgentSkill(projectRoot, ["claude", "cursor"]).pipe(
         Effect.provide(NodeServices.layer),
       ),
     );

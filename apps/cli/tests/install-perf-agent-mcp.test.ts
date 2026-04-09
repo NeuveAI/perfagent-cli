@@ -6,14 +6,14 @@ import * as jsoncParser from "jsonc-parser";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { CODEX_MCP_STARTUP_TIMEOUT_SEC } from "../src/constants";
 import {
-  detectInstalledExpectMcpAgents,
-  installExpectMcpForAgents,
-} from "../src/mcp/install-expect-mcp";
+  detectInstalledPerfAgentMcpAgents,
+  installPerfAgentMcpForAgents,
+} from "../src/mcp/install-perf-agent-mcp";
 
 const tempDirectories: string[] = [];
 
 const createTempDirectory = (): string => {
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "expect-mcp-install-"));
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "perf-agent-mcp-install-"));
   tempDirectories.push(tempDirectory);
   return tempDirectory;
 };
@@ -24,20 +24,20 @@ afterEach(() => {
   }
 });
 
-describe("installExpectMcpForAgents", () => {
+describe("installPerfAgentMcpForAgents", () => {
   it("writes a Cursor MCP config", () => {
     const projectRoot = createTempDirectory();
 
-    const summary = installExpectMcpForAgents(projectRoot, ["cursor"], { scope: "project" });
+    const summary = installPerfAgentMcpForAgents(projectRoot, ["cursor"], { scope: "project" });
 
     expect(summary.scope).toBe("project");
     expect(summary.installed).toEqual(["cursor"]);
     expect(JSON.parse(fs.readFileSync(path.join(projectRoot, ".cursor/mcp.json"), "utf8"))).toEqual(
       {
         mcpServers: {
-          expect: {
+          "perf-agent": {
             command: "npx",
-            args: ["-y", "expect-cli@latest", "mcp"],
+            args: ["-y", "@neuve/perf-agent-cli@latest", "mcp"],
           },
         },
       },
@@ -47,7 +47,7 @@ describe("installExpectMcpForAgents", () => {
   it("writes a Codex MCP config", () => {
     const projectRoot = createTempDirectory();
 
-    const summary = installExpectMcpForAgents(projectRoot, ["codex"], {
+    const summary = installPerfAgentMcpForAgents(projectRoot, ["codex"], {
       scope: "project",
       version: "0.0.30",
     });
@@ -57,9 +57,9 @@ describe("installExpectMcpForAgents", () => {
       TOML.parse(fs.readFileSync(path.join(projectRoot, ".codex/config.toml"), "utf8")),
     ).toEqual({
       mcp_servers: {
-        expect: {
+        "perf-agent": {
           command: "npx",
-          args: ["-y", "expect-cli@0.0.30", "mcp"],
+          args: ["-y", "@neuve/perf-agent-cli@0.0.30", "mcp"],
           startup_timeout_sec: CODEX_MCP_STARTUP_TIMEOUT_SEC,
         },
       },
@@ -83,7 +83,7 @@ describe("installExpectMcpForAgents", () => {
 `,
     );
 
-    installExpectMcpForAgents(projectRoot, ["cursor"], { scope: "project" });
+    installPerfAgentMcpForAgents(projectRoot, ["cursor"], { scope: "project" });
 
     const content = fs.readFileSync(path.join(projectRoot, ".cursor/mcp.json"), "utf8");
     expect(content).toContain("// keep me");
@@ -93,9 +93,9 @@ describe("installExpectMcpForAgents", () => {
           command: "node",
           args: ["server.js"],
         },
-        expect: {
+        "perf-agent": {
           command: "npx",
-          args: ["-y", "expect-cli@latest", "mcp"],
+          args: ["-y", "@neuve/perf-agent-cli@latest", "mcp"],
         },
       },
     });
@@ -104,17 +104,17 @@ describe("installExpectMcpForAgents", () => {
   it("writes the OpenCode-specific config shape and detects installs", () => {
     const projectRoot = createTempDirectory();
 
-    const summary = installExpectMcpForAgents(projectRoot, ["opencode"], { scope: "project" });
+    const summary = installPerfAgentMcpForAgents(projectRoot, ["opencode"], { scope: "project" });
 
     expect(summary.installed).toEqual(["opencode"]);
-    expect(detectInstalledExpectMcpAgents(projectRoot, ["opencode", "cursor"], "project")).toEqual([
+    expect(detectInstalledPerfAgentMcpAgents(projectRoot, ["opencode", "cursor"], "project")).toEqual([
       "opencode",
     ]);
     expect(JSON.parse(fs.readFileSync(path.join(projectRoot, "opencode.json"), "utf8"))).toEqual({
       mcp: {
-        expect: {
+        "perf-agent": {
           type: "local",
-          command: ["npx", "-y", "expect-cli@latest", "mcp"],
+          command: ["npx", "-y", "@neuve/perf-agent-cli@latest", "mcp"],
           enabled: true,
         },
       },
