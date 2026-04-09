@@ -1,5 +1,0 @@
-ignoredBuiltDependencies:
-  - sharp
-  - unrs-resolver
-overrides:
-  react-grab: link:../../../react-grab/packages/react-grab
