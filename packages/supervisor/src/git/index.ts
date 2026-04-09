@@ -28,4 +28,4 @@ export {
   type SavedFlow,
   type SavedFlowStep,
   type UpdateContent,
-} from "@expect/shared/models";
+} from "@neuve/shared/models";

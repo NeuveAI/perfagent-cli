@@ -1,1 +1,1 @@
-import "@expect/browser/cli-http";
+import "@neuve/devtools/cli-http";

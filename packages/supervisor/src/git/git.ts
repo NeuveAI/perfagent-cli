@@ -13,8 +13,8 @@ import {
   type CommitSummary,
   FileStat,
   GitState,
-} from "@expect/shared/models";
-import { EXPECT_STATE_DIR, TESTED_FINGERPRINT_FILE } from "../constants";
+} from "@neuve/shared/models";
+import { PERF_AGENT_STATE_DIR, TESTED_FINGERPRINT_FILE } from "../constants";
 import { GitError, FindRepoRootError } from "./errors";
 
 // ── GitRepoRoot context service ──────────────────────────────────────
@@ -348,7 +348,7 @@ export class Git extends ServiceMap.Service<Git>()("@supervisor/Git", {
 
     /** @todo(rasmus): cleanup */
     const ensureStateDir = Effect.fn("Git.ensureStateDir")(function* (baseDir: string) {
-      const stateDir = path.join(baseDir, EXPECT_STATE_DIR);
+      const stateDir = path.join(baseDir, PERF_AGENT_STATE_DIR);
 
       yield* fileSystem
         .makeDirectory(stateDir, { recursive: true })

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import figures from "figures";
-import type { ChangesFor, SavedFlow } from "@expect/shared/models";
+import type { ChangesFor, SavedFlow } from "@neuve/shared/models";
 import { PORT_PICKER_VISIBLE_COUNT } from "../../constants";
 import { useColors } from "../theme-context";
 import { useNavigationStore, Screen, type DevServerHint } from "../../stores/use-navigation";

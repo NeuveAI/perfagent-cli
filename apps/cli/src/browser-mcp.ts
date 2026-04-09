@@ -1,1 +1,1 @@
-import "@expect/browser/cli";
+import "@neuve/devtools/cli";

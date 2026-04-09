@@ -12,7 +12,7 @@ import {
   TestPlanStep,
   type ExecutedTestPlan,
   type ExecutionEvent,
-} from "@expect/shared/models";
+} from "@neuve/shared/models";
 import { TESTING_TIMER_UPDATE_INTERVAL_MS, TESTING_TOOL_TEXT_CHAR_LIMIT } from "../../constants";
 import { useColors, theme } from "../theme-context";
 import InkSpinner from "ink-spinner";

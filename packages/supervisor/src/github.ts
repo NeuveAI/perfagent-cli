@@ -10,7 +10,7 @@ import {
   GhPrListItem,
   PullRequest,
   RemoteBranch,
-} from "@expect/shared/models";
+} from "@neuve/shared/models";
 
 export class GitHubCommandError extends Schema.ErrorClass<GitHubCommandError>("GitHubCommandError")(
   {

@@ -11,7 +11,7 @@ import { useProjectPreferencesStore } from "../../stores/use-project-preferences
 import { usePreferencesStore } from "../../stores/use-preferences";
 import { useUpdateCheck } from "../../hooks/use-update-check";
 import { TextShimmer } from "./text-shimmer";
-import { AGENT_PROVIDER_DISPLAY_NAMES } from "@expect/shared/models";
+import { AGENT_PROVIDER_DISPLAY_NAMES } from "@neuve/shared/models";
 import { useAtomValue } from "@effect/atom-react";
 import { agentProviderAtom } from "../../data/runtime";
 

@@ -1,10 +1,10 @@
 import * as path from "node:path";
 import type { Browser as PlaywrightBrowser, BrowserContext, Page } from "playwright";
 import { Config, Deferred, Effect, Layer, Option, Ref, ServiceMap } from "effect";
-import type { Cookie } from "@expect/cookies";
+import type { Cookie } from "@neuve/cookies";
 import { FileSystem } from "effect/FileSystem";
-import { isRunningInAgent } from "@expect/shared/launched-from";
-import { Analytics } from "@expect/shared/observability";
+import { isRunningInAgent } from "@neuve/shared/launched-from";
+import { Analytics } from "@neuve/shared/observability";
 import { Browser } from "../browser";
 import { NavigationError } from "../errors";
 import { launchSystemChrome, killChromeProcess } from "../chrome-launcher";
@@ -23,11 +23,11 @@ import type {
   SnapshotResult,
 } from "../types";
 import {
-  EXPECT_COOKIE_BROWSERS_ENV_NAME,
-  EXPECT_CDP_URL_ENV_NAME,
-  EXPECT_BASE_URL_ENV_NAME,
-  EXPECT_HEADED_ENV_NAME,
-  EXPECT_PROFILE_ENV_NAME,
+  PERF_AGENT_COOKIE_BROWSERS_ENV_NAME,
+  PERF_AGENT_CDP_URL_ENV_NAME,
+  PERF_AGENT_BASE_URL_ENV_NAME,
+  PERF_AGENT_HEADED_ENV_NAME,
+  PERF_AGENT_PROFILE_ENV_NAME,
   TMP_ARTIFACT_OUTPUT_DIRECTORY,
 } from "./constants";
 import { McpSessionNotOpenError } from "./errors";
@@ -132,23 +132,23 @@ const setupPageTracking = (page: Page, sessionData: BrowserSessionData) => {
   });
 };
 
-export class McpSession extends ServiceMap.Service<McpSession>()("@browser/McpSession", {
+export class McpSession extends ServiceMap.Service<McpSession>()("@devtools/McpSession", {
   make: Effect.gen(function* () {
     const browserService = yield* Browser;
     const analytics = yield* Analytics;
     const fileSystem = yield* FileSystem;
     const cookieBrowsersConfig = yield* Config.option(
-      Config.string(EXPECT_COOKIE_BROWSERS_ENV_NAME),
+      Config.string(PERF_AGENT_COOKIE_BROWSERS_ENV_NAME),
     );
-    const defaultCdpUrl = yield* Config.option(Config.string(EXPECT_CDP_URL_ENV_NAME));
-    const baseUrlConfig = yield* Config.option(Config.string(EXPECT_BASE_URL_ENV_NAME));
+    const defaultCdpUrl = yield* Config.option(Config.string(PERF_AGENT_CDP_URL_ENV_NAME));
+    const baseUrlConfig = yield* Config.option(Config.string(PERF_AGENT_BASE_URL_ENV_NAME));
     const configuredBaseUrl = Option.getOrUndefined(baseUrlConfig);
-    const headedConfig = yield* Config.option(Config.string(EXPECT_HEADED_ENV_NAME));
+    const headedConfig = yield* Config.option(Config.string(PERF_AGENT_HEADED_ENV_NAME));
     const isHeadedDefault = Option.match(headedConfig, {
       onNone: () => !isRunningInAgent(),
       onSome: (value) => value !== "false",
     });
-    const profileConfig = yield* Config.option(Config.string(EXPECT_PROFILE_ENV_NAME));
+    const profileConfig = yield* Config.option(Config.string(PERF_AGENT_PROFILE_ENV_NAME));
     const configuredProfileName = Option.getOrUndefined(profileConfig);
     const cookieBrowserKeys = Option.match(cookieBrowsersConfig, {
       onNone: (): string[] => [],

@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { Effect, Schema, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import { isCommandAvailable } from "@expect/shared/is-command-available";
+import { isCommandAvailable } from "@neuve/shared/is-command-available";
 import {
   CLAUDE_SETUP_TOKEN_TIMEOUT_MS,
   GH_CLI_DETECT_TIMEOUT_MS,
@@ -12,7 +12,7 @@ import {
 } from "../constants";
 
 export type { PackageManager } from "../constants";
-import { isRunningInAgent } from "@expect/shared/launched-from";
+import { isRunningInAgent } from "@neuve/shared/launched-from";
 import { isHeadless } from "../utils/is-headless";
 
 export class ClaudeTokenGenerateError extends Schema.ErrorClass<ClaudeTokenGenerateError>(

@@ -13,8 +13,8 @@ import { agentProviderAtom } from "../../data/runtime";
 import { agentConfigOptionsAtom } from "../../data/config-options";
 import { ScreenHeading } from "../ui/screen-heading";
 import { Spinner } from "../ui/spinner";
-import type { AgentBackend } from "@expect/agent";
-import type { AcpConfigOption, AcpConfigSelectOption } from "@expect/shared/models";
+import type { AgentBackend } from "@neuve/agent";
+import type { AcpConfigOption, AcpConfigSelectOption } from "@neuve/shared/models";
 
 const VISIBLE_COUNT = 15;
 

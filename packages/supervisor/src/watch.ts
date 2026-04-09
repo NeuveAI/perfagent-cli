@@ -1,12 +1,12 @@
 import { Data, Effect, Layer, Option, Ref, Schedule, Schema, ServiceMap, Stream } from "effect";
-import { Agent, AgentStreamOptions } from "@expect/agent";
+import { Agent, AgentStreamOptions } from "@neuve/agent";
 import {
   AcpAgentMessageChunk,
   type ChangedFile,
   type ChangesFor,
   type ExecutedTestPlan,
-} from "@expect/shared/models";
-import { buildWatchAssessmentPrompt } from "@expect/shared/prompts";
+} from "@neuve/shared/models";
+import { buildWatchAssessmentPrompt } from "@neuve/shared/prompts";
 import { Git, GitRepoRoot } from "./git/git";
 import type { ExecuteOptions } from "./executor";
 import { Executor } from "./executor";

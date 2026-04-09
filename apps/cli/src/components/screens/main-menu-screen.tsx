@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import figures from "figures";
-import { ChangesFor, checkoutBranch } from "@expect/supervisor";
-import type { GitState, TestContext } from "@expect/shared/models";
+import { ChangesFor, checkoutBranch } from "@neuve/supervisor";
+import type { GitState, TestContext } from "@neuve/shared/models";
 import { usePreferencesStore } from "../../stores/use-preferences";
 import { useProjectPreferencesStore } from "../../stores/use-project-preferences";
 import {
@@ -47,7 +47,7 @@ const coverageBannerBg = (percent: number): string => {
   return "#331510";
 };
 
-const coverageRecommendation = (_percent: number): string => "Use Expect to test your changes.";
+const coverageRecommendation = (_percent: number): string => "Use Perf Agent to analyze performance.";
 
 const coverageBar = (percent: number): { filled: string; empty: string } => {
   const filledCount = Math.round((percent / 100) * COVERAGE_BAR_WIDTH);

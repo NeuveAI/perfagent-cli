@@ -4,7 +4,7 @@ import { RegistryProvider } from "@effect/atom-react";
 import { Option } from "effect";
 import { App } from "./components/app";
 import { ALT_SCREEN_OFF, ALT_SCREEN_ON } from "./constants";
-import type { AgentBackend } from "@expect/agent";
+import type { AgentBackend } from "@neuve/agent";
 import { queryClient } from "./query-client";
 import { setInkInstance } from "./utils/clear-ink-display";
 import { agentProviderAtom, verboseAtom } from "./data/runtime";

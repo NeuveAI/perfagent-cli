@@ -1,4 +1,4 @@
-export { Expect, Expect as default } from "./expect";
+export { PerfAgent, PerfAgent as default } from "./perf-agent";
 export { tool } from "./tool";
 export { defineConfig, configure } from "./config";
 export { ExpectConfigError } from "./errors";

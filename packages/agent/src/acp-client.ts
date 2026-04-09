@@ -27,9 +27,9 @@ import {
   AcpConfigOptionUpdate,
   AcpSessionUpdate,
   AgentProvider,
-} from "@expect/shared/models";
-import { hasStringMessage } from "@expect/shared/utils";
-import { detectLaunchedFrom } from "@expect/shared/launched-from";
+} from "@neuve/shared/models";
+import { hasStringMessage } from "@neuve/shared/utils";
+import { detectLaunchedFrom } from "@neuve/shared/launched-from";
 import { buildSessionMeta } from "./build-session-meta";
 
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
@@ -67,7 +67,7 @@ export class AcpProviderNotInstalledError extends Schema.ErrorClass<AcpProviderN
     Match.when(
       "claude",
       () =>
-        "Claude Code is not installed. Install it from https://code.claude.com/docs/en/overview#native-install-recommended, or use codex agent with `expect -a codex`.",
+        "Claude Code is not installed. Install it from https://code.claude.com/docs/en/overview#native-install-recommended, or use codex agent with `perf-agent -a codex`.",
     ),
     Match.when(
       "codex",
@@ -77,35 +77,35 @@ export class AcpProviderNotInstalledError extends Schema.ErrorClass<AcpProviderN
     Match.when(
       "copilot",
       () =>
-        "GitHub Copilot CLI is not installed. Install it with `npm install -g @github/copilot`, or use Claude Code with `expect -a claude`.",
+        "GitHub Copilot CLI is not installed. Install it with `npm install -g @github/copilot`, or use Claude Code with `perf-agent -a claude`.",
     ),
     Match.when(
       "gemini",
       () =>
-        "Gemini CLI is not installed. Install it with `npm install -g @google/gemini-cli`, or use Claude Code with `expect -a claude`.",
+        "Gemini CLI is not installed. Install it with `npm install -g @google/gemini-cli`, or use Claude Code with `perf-agent -a claude`.",
     ),
     Match.when(
       "cursor",
       () =>
-        "Cursor agent CLI is not installed. Install it from https://cursor.com/docs/cli/acp, or use Claude Code with `expect -a claude`.",
+        "Cursor agent CLI is not installed. Install it from https://cursor.com/docs/cli/acp, or use Claude Code with `perf-agent -a claude`.",
     ),
     Match.when(
       "opencode",
       () =>
-        "OpenCode is not installed. Install it with `npm install -g opencode-ai`, or use Claude Code with `expect -a claude`.",
+        "OpenCode is not installed. Install it with `npm install -g opencode-ai`, or use Claude Code with `perf-agent -a claude`.",
     ),
     Match.when(
       "droid",
       () =>
-        "Factory Droid is not installed. Install it with `npm install -g droid`, or use Claude Code with `expect -a claude`.",
+        "Factory Droid is not installed. Install it with `npm install -g droid`, or use Claude Code with `perf-agent -a claude`.",
     ),
     Match.when(
       "pi",
       () =>
-        "Pi is not installed. Install it with `npm install -g @mariozechner/pi-coding-agent`, or use Claude Code with `expect -a claude`.",
+        "Pi is not installed. Install it with `npm install -g @mariozechner/pi-coding-agent`, or use Claude Code with `perf-agent -a claude`.",
     ),
     Match.orElse(
-      () => "Your coding agent CLI is not installed. Please install it and then re-run expect.",
+      () => "Your coding agent CLI is not installed. Please install it and then re-run perf-agent.",
     ),
   );
 }
@@ -118,21 +118,21 @@ export class AcpProviderUnauthenticatedError extends Schema.ErrorClass<AcpProvid
 }) {
   displayName = `Your ${this.provider} agent is not authenticated`;
   message = Match.value(this.provider).pipe(
-    Match.when("claude", () => "Please log in using `claude login`, and then re-run expect."),
-    Match.when("codex", () => "Please log in using `codex login`, and then re-run expect."),
-    Match.when("copilot", () => "Please log in using `gh auth login`, and then re-run expect."),
-    Match.when("gemini", () => "Please log in using `gemini auth login`, and then re-run expect."),
-    Match.when("cursor", () => "Please log in using `agent login`, and then re-run expect."),
+    Match.when("claude", () => "Please log in using `claude login`, and then re-run perf-agent."),
+    Match.when("codex", () => "Please log in using `codex login`, and then re-run perf-agent."),
+    Match.when("copilot", () => "Please log in using `gh auth login`, and then re-run perf-agent."),
+    Match.when("gemini", () => "Please log in using `gemini auth login`, and then re-run perf-agent."),
+    Match.when("cursor", () => "Please log in using `agent login`, and then re-run perf-agent."),
     Match.when(
       "opencode",
-      () => "Please log in using `opencode auth login`, and then re-run expect.",
+      () => "Please log in using `opencode auth login`, and then re-run perf-agent.",
     ),
     Match.when(
       "droid",
       () =>
-        "Please set the FACTORY_API_KEY environment variable (get one at app.factory.ai/settings/api-keys), and then re-run expect.",
+        "Please set the FACTORY_API_KEY environment variable (get one at app.factory.ai/settings/api-keys), and then re-run perf-agent.",
     ),
-    Match.orElse(() => "Please sign in to your coding agent, and then re-run expect."),
+    Match.orElse(() => "Please sign in to your coding agent, and then re-run perf-agent."),
   );
 }
 
@@ -228,7 +228,7 @@ export class AcpAdapter extends ServiceMap.Service<
     readonly args: readonly string[];
     readonly env: Record<string, string>;
   }
->()("@expect/AcpAdapter") {
+>()("@neuve/AcpAdapter") {
   static layerCodex = Layer.effect(AcpAdapter)(
     Effect.try({
       try: () => {
@@ -545,7 +545,7 @@ export class AcpAdapter extends ServiceMap.Service<
   ).pipe(Layer.provide(NodeServices.layer));
 }
 
-export class AcpClient extends ServiceMap.Service<AcpClient>()("@expect/AcpClient", {
+export class AcpClient extends ServiceMap.Service<AcpClient>()("@neuve/AcpClient", {
   make: Effect.gen(function* () {
     const adapter = yield* AcpAdapter;
     yield* Effect.annotateLogsScoped({ adapter: adapter.args[0] });

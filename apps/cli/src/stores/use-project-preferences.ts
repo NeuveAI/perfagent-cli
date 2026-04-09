@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { projectPreferencesStorage } from "@expect/supervisor";
+import { projectPreferencesStorage } from "@neuve/supervisor";
 
 export type { BrowserMode } from "../utils/project-preferences-io";
 export { isValidBrowserMode } from "../utils/project-preferences-io";

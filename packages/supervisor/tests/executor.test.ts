@@ -8,7 +8,7 @@ import {
   PlanId,
   ChangesFor,
   AcpSessionUpdate,
-} from "@expect/shared/models";
+} from "@neuve/shared/models";
 
 const makeTestPlan = (): TestPlan =>
   new TestPlan({

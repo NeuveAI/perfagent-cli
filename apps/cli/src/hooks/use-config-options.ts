@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Effect } from "effect";
-import { Agent, type AgentBackend } from "@expect/agent";
-import type { AcpConfigOption } from "@expect/shared/models";
+import { Agent, type AgentBackend } from "@neuve/agent";
+import type { AcpConfigOption } from "@neuve/shared/models";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 
 export const useConfigOptions = (agent: AgentBackend | undefined) =>

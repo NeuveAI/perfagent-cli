@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { gunzipSync } from "node:zlib";
-import { type SupportedAgent, toDisplayName, toSkillDir } from "@expect/agent";
+import { type SupportedAgent, toDisplayName, toSkillDir } from "@neuve/agent";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Schema } from "effect";
 import { highlighter } from "../utils/highlighter";
@@ -15,12 +15,12 @@ import {
   SKILL_NAME,
   SKILL_SOURCE_DIR,
   SKILL_TARBALL_URL,
-} from "../utils/expect-skill";
+} from "../utils/perf-agent-skill";
 import { SKILL_FETCH_TIMEOUT_MS } from "../constants";
 import { resolveProjectRoot } from "../utils/project-root";
 import { detectNonInteractive } from "./init-utils";
 const SKILL_BRANCH = "main";
-const SKILL_ARCHIVE_PREFIX = `expect-${SKILL_BRANCH}/${SKILL_SOURCE_DIR}/`;
+const SKILL_ARCHIVE_PREFIX = `perf-agent-${SKILL_BRANCH}/${SKILL_SOURCE_DIR}/`;
 
 const TAR_HEADER_SIZE = 512;
 const TAR_NAME_OFFSET = 0;
@@ -42,7 +42,7 @@ class ExpectSkillDownloadError extends Schema.ErrorClass<ExpectSkillDownloadErro
   _tag: Schema.tag("ExpectSkillDownloadError"),
   reason: Schema.String,
 }) {
-  message = `Failed to download expect skill: ${this.reason}`;
+  message = `Failed to download perf-agent skill: ${this.reason}`;
 }
 
 export const readNullTerminated = (buffer: Buffer, start: number, length: number): string => {
@@ -126,7 +126,7 @@ const selectAgents = async (agents: readonly SupportedAgent[], nonInteractive: b
   const response = await prompts({
     type: "multiselect",
     name: "agents",
-    message: `Install the ${highlighter.info("expect")} skill for:`,
+    message: `Install the ${highlighter.info("perf-agent")} skill for:`,
     choices: agents.map((agent) => ({
       title: toDisplayName(agent),
       value: agent,
@@ -211,7 +211,7 @@ export const ensureAgentSkillCopy = (
         if (isRecoverableSkillDirectory(installedSkillDir)) {
           fs.rmSync(installedSkillDir, { recursive: true, force: true });
         } else {
-          return `${installedSkillDir} exists and is not an expect skill directory`;
+          return `${installedSkillDir} exists and is not an perf-agent skill directory`;
         }
       } else if (haveMatchingContents(skillSourceDir, installedSkillDir)) {
         return "already-copied";

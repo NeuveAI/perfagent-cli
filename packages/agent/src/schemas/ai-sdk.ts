@@ -1,4 +1,4 @@
-export const PROVIDER_ID = "expect-agent";
+export const PROVIDER_ID = "perf-agent";
 
 export const EMPTY_USAGE = {
   inputTokens: {

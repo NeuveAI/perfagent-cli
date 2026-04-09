@@ -6,7 +6,7 @@ export type {
   BrowserKey,
   Cookie,
   ExtractOptions,
-} from "@expect/cookies";
+} from "@neuve/cookies";
 export {
   ActionTimeoutError,
   ActionUnknownError,

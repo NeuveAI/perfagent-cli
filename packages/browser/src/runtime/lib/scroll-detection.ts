@@ -1,6 +1,6 @@
 const SCROLL_OVERFLOW_THRESHOLD_PX = 10;
 const MIN_SCROLLABLE_CHILDREN = 5;
-const HIDDEN_MARKER_ATTR = "data-expect-scroll-hidden";
+const HIDDEN_MARKER_ATTR = "data-perf-agent-scroll-hidden";
 const PREV_ARIA_HIDDEN_ATTR = "data-expect-prev-aria-hidden";
 const MARKER_ELEMENT_ATTR = "data-expect-scroll-marker";
 const MARKER_STYLE = "position:absolute;width:0;height:0;overflow:hidden;";

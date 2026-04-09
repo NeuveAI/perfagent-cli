@@ -10,7 +10,7 @@ import { WatchScreen } from "./screens/watch-screen";
 import { AgentPickerScreen } from "./screens/agent-picker-screen";
 import { MainMenu } from "./screens/main-menu-screen";
 import { Modeline } from "./ui/modeline";
-import { ChangesFor } from "@expect/supervisor";
+import { ChangesFor } from "@neuve/supervisor";
 import { useNavigationStore, Screen } from "../stores/use-navigation";
 import { usePlanExecutionStore } from "../stores/use-plan-execution-store";
 import { useGitState } from "../hooks/use-git-state";
@@ -19,7 +19,7 @@ import { runUpdateCommand } from "../commands/update";
 import { clearInkDisplay } from "../utils/clear-ink-display";
 import { useStdoutDimensions } from "../hooks/use-stdout-dimensions";
 import { ALT_SCREEN_OFF } from "../constants";
-import { AgentBackend } from "@expect/agent";
+import { AgentBackend } from "@neuve/agent";
 import { useAtomSet } from "@effect/atom-react";
 import { agentProviderAtom } from "../data/runtime";
 import { Option } from "effect";
@@ -160,9 +160,9 @@ export const App = ({ agent }: { agent: AgentBackend }) => {
       <Box paddingX={1} paddingY={0}>
         <Text color="yellow">⚠ </Text>
         <Text dimColor>The TUI is deprecated. Use </Text>
-        <Text color="cyan">/expect</Text>
+        <Text color="cyan">/perf-agent</Text>
         <Text dimColor> from your coding agent instead. Run </Text>
-        <Text color="cyan">npx expect-cli@latest init</Text>
+        <Text color="cyan">npx @neuve/perf-agent-cli@latest init</Text>
         <Text dimColor> to set up.</Text>
       </Box>
       <Box flexGrow={1}>{renderScreen()}</Box>

@@ -1,5 +1,5 @@
-import type { AgentBackend } from "@expect/agent";
-import { resolveAgentProvider } from "@expect/shared/infer-agent";
+import type { AgentBackend } from "@neuve/agent";
+import { resolveAgentProvider } from "@neuve/shared/infer-agent";
 import { resolveChangesFor } from "../utils/resolve-changes-for";
 import { useNavigationStore, Screen } from "../stores/use-navigation";
 import { usePreferencesStore } from "../stores/use-preferences";

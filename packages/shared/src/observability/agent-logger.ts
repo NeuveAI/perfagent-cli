@@ -2,7 +2,7 @@ import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { Effect, FileSystem, Layer, Logger } from "effect";
 import * as path from "node:path";
 
-const LOG_FILE = path.join(process.cwd(), ".expect", "logs.md");
+const LOG_FILE = path.join(process.cwd(), ".perf-agent", "logs.md");
 
 export const DebugFileLogger = Logger.formatLogFmt.pipe(Logger.toFile(LOG_FILE));
 

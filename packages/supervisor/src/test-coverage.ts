@@ -2,7 +2,7 @@ import * as path from "node:path";
 import { execFile } from "node:child_process";
 import { Effect, FileSystem, Layer, ServiceMap } from "effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import type { ChangedFile, TestCoverageReport } from "@expect/shared/models";
+import type { ChangedFile, TestCoverageReport } from "@neuve/shared/models";
 import { GitRepoRoot } from "./git/git";
 import { SKIP_DIRECTORIES, SOURCE_EXTENSIONS, TEST_FILE_SCAN_LIMIT } from "./constants";
 

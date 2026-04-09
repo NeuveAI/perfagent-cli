@@ -11,7 +11,7 @@ import {
   type AcpStreamError,
   type SessionId,
 } from "./acp-client";
-import { AcpSessionUpdate, type AcpConfigOption } from "@expect/shared/models";
+import { AcpSessionUpdate, type AcpConfigOption } from "@neuve/shared/models";
 import { AgentStreamOptions } from "./types";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { PlatformError } from "effect/PlatformError";
@@ -65,7 +65,7 @@ export class Agent extends ServiceMap.Service<
       AcpSessionCreateError | AcpProviderUnauthenticatedError | AcpProviderUsageLimitError
     >;
   }
->()("@expect/Agent") {
+>()("@neuve/Agent") {
   static layerAcp = Layer.effect(Agent)(
     Effect.gen(function* () {
       const acpClient = yield* AcpClient;

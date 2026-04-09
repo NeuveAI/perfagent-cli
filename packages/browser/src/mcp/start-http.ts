@@ -106,6 +106,6 @@ httpServer.listen(0, "127.0.0.1", () => {
   const address = httpServer.address();
   if (typeof address === "object" && address) {
     fs.writeFileSync(CLI_SESSION_FILE, JSON.stringify({ pid: process.pid, port: address.port }));
-    process.stderr.write(`expect daemon listening on 127.0.0.1:${address.port}\n`);
+    process.stderr.write(`perf-agent daemon listening on 127.0.0.1:${address.port}\n`);
   }
 });

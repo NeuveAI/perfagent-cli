@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import { pathToFileURL } from "node:url";
-import { ToolResult } from "@expect/shared/models";
+import { ToolResult } from "@neuve/shared/models";
 import { extractCloseArtifacts } from "../src/utils/extract-close-artifacts";
-import type { ExecutionEvent } from "@expect/shared/models";
+import type { ExecutionEvent } from "@neuve/shared/models";
 
 const makeCloseResult = (result: string): ExecutionEvent =>
   new ToolResult({ toolName: "close", result, isError: false });

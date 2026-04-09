@@ -1,13 +1,13 @@
 import { Effect, Option, Stream } from "effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Executor, type ExecuteOptions } from "@expect/supervisor";
-import { type ExecutedTestPlan, type ExecutionEvent, ChangesFor } from "@expect/shared/models";
+import { Executor, type ExecuteOptions } from "@neuve/supervisor";
+import { type ExecutedTestPlan, type ExecutionEvent, ChangesFor } from "@neuve/shared/models";
 import {
   Cookies as CookiesService,
   Browsers,
   layerLive as cookiesLayerLive,
-} from "@expect/cookies";
-import { ExpectConfigError, ExpectTimeoutError } from "./errors";
+} from "@neuve/cookies";
+import { ExpectConfigError, PerfAgentTimeoutError } from "./errors";
 import { resolveUrl, buildInstruction } from "./build-instruction";
 import { getGlobalConfig } from "./config";
 import { layerSdk } from "./layers";
@@ -46,17 +46,17 @@ const resolveInputUrl = (input: { url?: string; page?: Page }): string => {
     return config.baseUrl;
   }
 
-  throw new ExpectConfigError(
+  throw new PerfAgentConfigError(
     "No URL provided and no baseUrl configured.",
-    `Expect.test({ url: "http://localhost:3000", tests: [...] })\nOr: configure({ baseUrl: "http://localhost:3000" })`,
+    `PerfAgent.test({ url: "http://localhost:3000", tests: [...] })\nOr: configure({ baseUrl: "http://localhost:3000" })`,
   );
 };
 
 const validateTests = (tests: readonly Test[]): void => {
   if (tests.length === 0) {
-    throw new ExpectConfigError(
+    throw new PerfAgentConfigError(
       "tests array is empty.",
-      `Expect.test({ url: "...", tests: ["at least one test"] })`,
+      `PerfAgent.test({ url: "...", tests: ["at least one test"] })`,
     );
   }
 };
@@ -64,34 +64,34 @@ const validateTests = (tests: readonly Test[]): void => {
 const validateTestInput = (input: TestInput): void => {
   validateTests(input.tests);
   if (input.tools && input.tools.length > 0) {
-    throw new ExpectConfigError(
+    throw new PerfAgentConfigError(
       "Custom tools are not yet supported.",
       `Remove the tools field for now. Tool support is coming in a future release.`,
     );
   }
   if (typeof input.before === "function" && !input.page) {
-    throw new ExpectConfigError(
+    throw new PerfAgentConfigError(
       "Function before requires a page.",
-      `Pass a Playwright Page: Expect.test({ page, before: async (page) => { ... }, tests: [...] })`,
+      `Pass a Playwright Page: PerfAgent.test({ page, before: async (page) => { ... }, tests: [...] })`,
     );
   }
   if (typeof input.after === "function" && !input.page) {
-    throw new ExpectConfigError(
+    throw new PerfAgentConfigError(
       "Function after requires a page.",
-      `Pass a Playwright Page: Expect.test({ page, after: async (page) => { ... }, tests: [...] })`,
+      `Pass a Playwright Page: PerfAgent.test({ page, after: async (page) => { ... }, tests: [...] })`,
     );
   }
 };
 
 const validateSessionConfig = (config: SessionConfig): void => {
   if (config.browserContext) {
-    throw new ExpectConfigError(
+    throw new PerfAgentConfigError(
       "External browserContext is not yet supported.",
       `Remove the browserContext field. The SDK manages browser lifecycle internally.`,
     );
   }
   if (config.tools && config.tools.length > 0) {
-    throw new ExpectConfigError(
+    throw new PerfAgentConfigError(
       "Custom tools are not yet supported.",
       `Remove the tools field for now. Tool support is coming in a future release.`,
     );
@@ -181,7 +181,7 @@ const executeTests = Effect.fn("Sdk.executeTests")(function* (
     Stream.runLast,
     Effect.flatMap((option) =>
       Option.match(option, {
-        onNone: () => Effect.fail(new ExpectTimeoutError({ timeoutMs: 0 })),
+        onNone: () => Effect.fail(new PerfAgentTimeoutError({ timeoutMs: 0 })),
         onSome: (executed) => Effect.succeed(executed.finalizeTextBlock().synthesizeRunFinished()),
       }),
     ),
@@ -325,7 +325,7 @@ const runExecution = (
     const program = executeTests(executeOptions, context).pipe(
       Effect.timeoutOrElse({
         duration: `${timeoutMs} millis`,
-        onTimeout: () => Effect.fail(new ExpectTimeoutError({ timeoutMs })),
+        onTimeout: () => Effect.fail(new PerfAgentTimeoutError({ timeoutMs })),
       }),
       Effect.provide(layerSdk(DEFAULT_AGENT_BACKEND, rootDir)),
       Effect.provide(NodeServices.layer),
@@ -387,7 +387,7 @@ const session = (config: SessionConfig): ExpectSession => {
     } else if (globalCfg.baseUrl) {
       resolvedUrl = globalCfg.baseUrl;
     } else {
-      throw new ExpectConfigError(
+      throw new PerfAgentConfigError(
         "No URL provided for session test and no baseUrl configured.",
         `session.test({ url: "/page", tests: [...] })`,
       );

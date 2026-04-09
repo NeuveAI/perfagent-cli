@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import figures from "figures";
 import { Effect, Fiber, Option } from "effect";
-import type { ChangesFor, ExecutedTestPlan, TestPlanStep } from "@expect/shared/models";
-import type { WatchEvent } from "@expect/supervisor";
-import { Watch } from "@expect/supervisor";
+import type { ChangesFor, ExecutedTestPlan, TestPlanStep } from "@neuve/shared/models";
+import type { WatchEvent } from "@neuve/supervisor";
+import { Watch } from "@neuve/supervisor";
 import { useMountEffect } from "../../hooks/use-mount-effect";
 import {
   TESTING_TIMER_UPDATE_INTERVAL_MS,

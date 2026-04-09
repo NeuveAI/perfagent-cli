@@ -23,7 +23,7 @@ export const createCiReporter = (options: CiReporterOptions) => {
         : "";
     writeStderr("");
     writeStderr(
-      ` ${pc.bold(pc.cyan("expect"))} ${pc.dim(`v${options.version}`)}  ${pc.dim("CI")} · ${pc.dim(options.agent)}${pc.dim(timeoutLabel)}`,
+      ` ${pc.bold(pc.cyan("perf-agent"))} ${pc.dim(`v${options.version}`)}  ${pc.dim("CI")} · ${pc.dim(options.agent)}${pc.dim(timeoutLabel)}`,
     );
   };
 
@@ -37,7 +37,7 @@ export const createCiReporter = (options: CiReporterOptions) => {
 
   const groupOpen = () => {
     if (options.isGitHubActions) {
-      writeStdout("::group::expect test execution");
+      writeStdout("::group::perf-agent analysis");
     }
   };
 

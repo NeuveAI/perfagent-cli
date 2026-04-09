@@ -1,5 +1,5 @@
-import { Browsers, Cookies, layerLive, browserKeyOf, Cookie } from "@expect/cookies";
-import type { Browser as BrowserProfile } from "@expect/cookies";
+import { Browsers, Cookies, layerLive, browserKeyOf, Cookie } from "@neuve/cookies";
+import type { Browser as BrowserProfile } from "@neuve/cookies";
 import { chromium, webkit, firefox } from "playwright";
 import type { Locator, Page } from "playwright";
 import type { BrowserEngine } from "./types";
@@ -163,7 +163,7 @@ const appendCursorInteractiveElements = Effect.fn("Browser.appendCursorInteracti
 const injectOverlayLabels = (page: Page, labels: Array<{ label: number; x: number; y: number }>) =>
   evaluateRuntime(page, "injectOverlayLabels", OVERLAY_CONTAINER_ID, labels);
 
-export class Browser extends ServiceMap.Service<Browser>()("@browser/Browser", {
+export class Browser extends ServiceMap.Service<Browser>()("@devtools/Browser", {
   // oxlint-disable-next-line require-yield
   make: Effect.gen(function* () {
     const createPage = Effect.fn("Browser.createPage")(function* (

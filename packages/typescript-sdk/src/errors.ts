@@ -1,15 +1,15 @@
 import { Schema } from "effect";
 
-export class ExpectTimeoutError extends Schema.ErrorClass<ExpectTimeoutError>("ExpectTimeoutError")(
+export class PerfAgentTimeoutError extends Schema.ErrorClass<PerfAgentTimeoutError>("PerfAgentTimeoutError")(
   {
-    _tag: Schema.tag("ExpectTimeoutError"),
+    _tag: Schema.tag("PerfAgentTimeoutError"),
     timeoutMs: Schema.Number,
   },
 ) {
-  message = `expect execution timed out after ${this.timeoutMs}ms`;
+  message = `perf-agent execution timed out after ${this.timeoutMs}ms`;
 }
 
-export class ExpectConfigError extends Error {
+export class PerfAgentConfigError extends Error {
   constructor(message: string, fix: string) {
     super(`${message}\n\nFix: ${fix}`);
     this.name = "ExpectConfigError";

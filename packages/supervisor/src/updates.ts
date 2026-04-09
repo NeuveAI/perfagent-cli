@@ -1,6 +1,6 @@
 import { DateTime, Effect, Layer, PubSub, ServiceMap, Stream } from "effect";
-import type { UpdateContent } from "@expect/shared/models";
-import { Update } from "@expect/shared/models";
+import type { UpdateContent } from "@neuve/shared/models";
+import { Update } from "@neuve/shared/models";
 
 export class Updates extends ServiceMap.Service<Updates>()("@supervisor/Updates", {
   make: Effect.gen(function* () {

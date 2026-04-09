@@ -64,7 +64,7 @@ const IGNORED_DIRECTORIES = new Set([
   ".nuxt",
   ".svelte-kit",
   ".angular",
-  ".expect",
+  ".perf-agent",
 ]);
 
 const readPackageJson = (projectPath: string): Record<string, unknown> | undefined => {

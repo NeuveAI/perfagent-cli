@@ -8,7 +8,7 @@ const VALID_BROWSER_MODES: readonly BrowserMode[] = ["headed", "headless"];
 export const isValidBrowserMode = (value: unknown): value is BrowserMode =>
   typeof value === "string" && VALID_BROWSER_MODES.includes(value as BrowserMode);
 
-const STATE_DIR = ".expect";
+const STATE_DIR = ".perf-agent";
 const PREFERENCES_FILE = "project-preferences.json";
 
 const getPreferencesPath = (projectRoot: string): string =>

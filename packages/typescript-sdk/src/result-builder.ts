@@ -1,5 +1,5 @@
 import { DateTime, Option } from "effect";
-import type { ExecutedTestPlan, TestPlanStep, ExecutionEvent } from "@expect/shared/models";
+import type { ExecutedTestPlan, TestPlanStep, ExecutionEvent } from "@neuve/shared/models";
 import type { Status, StepResult, TestResult, TestEvent } from "./types";
 
 const REPLAY_SESSION_PREFIX = "rrweb replay:";

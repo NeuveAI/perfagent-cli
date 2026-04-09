@@ -1,4 +1,4 @@
-import { detectAvailableAgents, toDisplayName } from "@expect/agent";
+import { detectAvailableAgents, toDisplayName } from "@neuve/agent";
 import figures from "figures";
 import pc from "picocolors";
 import { VERSION } from "../constants";
@@ -13,14 +13,14 @@ import {
 } from "../utils/project-preferences-io";
 import { resolveProjectRoot } from "../utils/project-root";
 import {
-  formatExpectMcpInstallSummary,
-  getSupportedExpectMcpAgents,
-  getUnsupportedExpectMcpAgents,
+  formatPerfAgentMcpInstallSummary,
+  getSupportedPerfAgentMcpAgents,
+  getUnsupportedPerfAgentMcpAgents,
   inferDistTag,
-  installExpectMcpForAgents,
-  selectExpectMcpAgents,
-  selectExpectMcpInstallScope,
-} from "../mcp/install-expect-mcp";
+  installPerfAgentMcpForAgents,
+  selectPerfAgentMcpAgents,
+  selectPerfAgentMcpInstallScope,
+} from "../mcp/install-perf-agent-mcp";
 import { runAddSkill } from "./add-skill";
 
 export { detectAvailableAgents };
@@ -33,9 +33,9 @@ interface InitOptions {
 }
 
 const USAGE_PROMPTS = [
-  "Run /expect to test my changes in the browser",
-  "Run /expect to smoke test the app end to end",
-  "Run /expect to check for regressions after my changes",
+  "Run /perf-agent to test my changes in the browser",
+  "Run /perf-agent to smoke test the app end to end",
+  "Run /perf-agent to check for regressions after my changes",
 ];
 
 const logUsageGuide = () => {
@@ -94,18 +94,18 @@ export const runInit = async (options: InitOptions = {}) => {
 
   logger.break();
   logger.log(
-    `  ${pc.red(figures.cross)}${pc.green(figures.tick)} ${pc.bold("Expect")} ${highlighter.dim(`v${VERSION}`)}`,
+    `  ${pc.red(figures.cross)}${pc.green(figures.tick)} ${pc.bold("Perf Agent")} ${highlighter.dim(`v${VERSION}`)}`,
   );
   logger.dim("  Let agents test your code in a real browser.");
   logger.break();
 
   const availableAgents = detectAvailableAgents();
-  const supportedMcpAgents = getSupportedExpectMcpAgents(availableAgents);
-  const unsupportedMcpAgents = getUnsupportedExpectMcpAgents(availableAgents);
+  const supportedMcpAgents = getSupportedPerfAgentMcpAgents(availableAgents);
+  const unsupportedMcpAgents = getUnsupportedPerfAgentMcpAgents(availableAgents);
 
   if (availableAgents.length === 0) {
     logger.error(
-      "No supported coding agent found. expect requires one of: Claude Code, Codex, GitHub Copilot, Gemini, Cursor, OpenCode, Factory Droid, or Pi.",
+      "No supported coding agent found. perf-agent requires one of: Claude Code, Codex, GitHub Copilot, Gemini, Cursor, OpenCode, Factory Droid, or Pi.",
     );
     logger.break();
     logger.log(`  Install one to get started:`);
@@ -140,7 +140,7 @@ export const runInit = async (options: InitOptions = {}) => {
   const projectRoot = await resolveProjectRoot();
 
   if (options.dry) {
-    spinner("Installing expect skill...").start().succeed("Skill installed (dry run).");
+    spinner("Installing perf-agent skill...").start().succeed("Skill installed (dry run).");
   } else {
     await runAddSkill({ yes: options.yes, agents: availableAgents });
   }
@@ -155,15 +155,15 @@ export const runInit = async (options: InitOptions = {}) => {
   }
 
   if (supportedMcpAgents.length === 0) {
-    logger.warn("  No MCP-supported agent detected, so only the Expect skill was installed.");
+    logger.warn("  No MCP-supported agent detected, so only the Perf Agent skill was installed.");
   } else if (options.dry) {
-    spinner("Installing Expect MCP...").start().succeed("Expect MCP installed (dry run).");
+    spinner("Installing Perf Agent MCP...").start().succeed("Perf Agent MCP installed (dry run).");
   } else {
-    const scope = await selectExpectMcpInstallScope(options.yes);
-    const selectedAgents = await selectExpectMcpAgents(supportedMcpAgents, options.yes, scope);
-    const mcpSpinner = spinner("Installing Expect MCP...").start();
+    const scope = await selectPerfAgentMcpInstallScope(options.yes);
+    const selectedAgents = await selectPerfAgentMcpAgents(supportedMcpAgents, options.yes, scope);
+    const mcpSpinner = spinner("Installing Perf Agent MCP...").start();
     const distTag = inferDistTag(VERSION);
-    const installSummary = installExpectMcpForAgents(projectRoot, selectedAgents, {
+    const installSummary = installPerfAgentMcpForAgents(projectRoot, selectedAgents, {
       scope,
       version: distTag,
     });
@@ -172,17 +172,17 @@ export const runInit = async (options: InitOptions = {}) => {
       installSummary.selectedAgents.length > 0 &&
       installSummary.failed.length === installSummary.selectedAgents.length
     ) {
-      mcpSpinner.fail("Failed to install Expect MCP.");
+      mcpSpinner.fail("Failed to install Perf Agent MCP.");
       for (const failure of installSummary.failed) {
         logger.warn(`  ${toDisplayName(failure.agent)}: ${failure.reason}`);
       }
-      throw new Error("Failed to install Expect MCP.");
+      throw new Error("Failed to install Perf Agent MCP.");
     }
 
     if (installSummary.selectedAgents.length === 0) {
-      mcpSpinner.warn("Skipped Expect MCP install.");
+      mcpSpinner.warn("Skipped Perf Agent MCP install.");
     } else {
-      mcpSpinner.succeed(formatExpectMcpInstallSummary(installSummary));
+      mcpSpinner.succeed(formatPerfAgentMcpInstallSummary(installSummary));
       for (const failure of installSummary.failed) {
         logger.warn(`  ${toDisplayName(failure.agent)}: ${failure.reason}`);
       }

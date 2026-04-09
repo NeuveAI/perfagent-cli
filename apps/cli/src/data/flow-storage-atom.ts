@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import * as Atom from "effect/unstable/reactivity/Atom";
-import { FlowStorage } from "@expect/supervisor";
-import type { TestPlan } from "@expect/shared/models";
+import { FlowStorage } from "@neuve/supervisor";
+import type { TestPlan } from "@neuve/shared/models";
 import { cliAtomRuntime } from "./runtime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 

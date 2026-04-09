@@ -1,10 +1,10 @@
 {
   "mcpServers": {
-    "expect": {
+    "perf-agent": {
       "command": "npx",
       "args": [
         "-y",
-        "expect-cli@latest",
+        "@neuve/perf-agent-cli@latest",
         "mcp"
       ]
     }

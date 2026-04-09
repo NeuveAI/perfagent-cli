@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Fiber, Layer } from "effect";
-import { Analytics } from "@expect/shared/observability";
+import { Analytics } from "@neuve/shared/observability";
 import { Browser } from "../src/browser";
 import { McpSession } from "../src/mcp/mcp-session";
 

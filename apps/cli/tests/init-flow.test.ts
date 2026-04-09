@@ -8,7 +8,7 @@ vi.mock("../src/utils/project-root", () => ({
   resolveProjectRoot: vi.fn().mockResolvedValue("/tmp"),
 }));
 
-vi.mock("@expect/agent", () => ({
+vi.mock("@neuve/agent", () => ({
   detectAvailableAgents: vi.fn().mockReturnValue(["claude"]),
   toDisplayName: vi.fn((agent: string) => {
     const displayNames: Record<string, string> = {
@@ -125,7 +125,7 @@ describe("init flow", () => {
 
     const { resolveProjectRoot } = await import("../src/utils/project-root");
     vi.mocked(resolveProjectRoot).mockResolvedValue(projectRoot);
-    const { detectAvailableAgents } = await import("@expect/agent");
+    const { detectAvailableAgents } = await import("@neuve/agent");
     vi.mocked(detectAvailableAgents).mockReturnValue(["claude"]);
     const { runAddSkill } = await import("../src/commands/add-skill");
     vi.mocked(runAddSkill).mockResolvedValue(undefined);
@@ -276,7 +276,7 @@ describe("init flow", () => {
     });
 
     it("detectAvailableAgents throws — init crashes immediately", async () => {
-      const { detectAvailableAgents } = await import("@expect/agent");
+      const { detectAvailableAgents } = await import("@neuve/agent");
       vi.mocked(detectAvailableAgents).mockImplementation(() => {
         throw new Error("segfault");
       });
@@ -286,7 +286,7 @@ describe("init flow", () => {
     });
 
     it("no agents — exits before any install or config", async () => {
-      const { detectAvailableAgents } = await import("@expect/agent");
+      const { detectAvailableAgents } = await import("@neuve/agent");
       vi.mocked(detectAvailableAgents).mockReturnValue([]);
       const { runAddSkill } = await import("../src/commands/add-skill");
       const { selectExpectMcpInstallScope, installExpectMcpForAgents } =
@@ -484,7 +484,7 @@ describe("init flow", () => {
     });
 
     it("passes detected agents to runAddSkill", async () => {
-      const { detectAvailableAgents } = await import("@expect/agent");
+      const { detectAvailableAgents } = await import("@neuve/agent");
       vi.mocked(detectAvailableAgents).mockReturnValue(["claude", "codex", "cursor"]);
       const { runAddSkill } = await import("../src/commands/add-skill");
 
@@ -498,7 +498,7 @@ describe("init flow", () => {
     });
 
     it("passes MCP-supported agents to selectExpectMcpAgents", async () => {
-      const { detectAvailableAgents } = await import("@expect/agent");
+      const { detectAvailableAgents } = await import("@neuve/agent");
       vi.mocked(detectAvailableAgents).mockReturnValue(["claude", "codex", "cursor"]);
       const { selectExpectMcpAgents } = await import("../src/mcp/install-expect-mcp");
 

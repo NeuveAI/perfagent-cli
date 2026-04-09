@@ -190,7 +190,7 @@ export const launchSystemChrome = Effect.fn("Chrome.launchSystemChrome")(functio
   let tempDir: string | undefined;
   if (!options.profilePath) {
     tempDir = yield* Effect.tryPromise(() =>
-      fs.promises.mkdtemp(path.join(os.tmpdir(), "expect-chrome-")),
+      fs.promises.mkdtemp(path.join(os.tmpdir(), "perf-agent-chrome-")),
     ).pipe(Effect.catchTag("UnknownError", Effect.die));
   }
 

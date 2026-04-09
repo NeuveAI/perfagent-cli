@@ -1,14 +1,14 @@
 import * as path from "node:path";
-import { type SupportedAgent, toSkillDir } from "@expect/agent";
+import { type SupportedAgent, toSkillDir } from "@neuve/agent";
 import { Effect, Schema } from "effect";
 import { FileSystem } from "effect/FileSystem";
 import { SKILL_FETCH_TIMEOUT_MS } from "../constants";
 
 export const AGENTS_SKILLS_DIR = ".agents/skills";
-export const SKILL_NAME = "expect";
-const SKILL_REPO = "millionco/expect";
+export const SKILL_NAME = "perf-agent";
+const SKILL_REPO = "millionco/perf-agent";
 const SKILL_BRANCH = "main";
-export const SKILL_SOURCE_DIR = "packages/expect-skill";
+export const SKILL_SOURCE_DIR = "packages/perf-agent-skill";
 export const SKILL_TARBALL_URL = `https://codeload.github.com/${SKILL_REPO}/tar.gz/${SKILL_BRANCH}`;
 export const SKILL_RAW_URL = `https://raw.githubusercontent.com/${SKILL_REPO}/${SKILL_BRANCH}/${SKILL_SOURCE_DIR}/SKILL.md`;
 
@@ -26,7 +26,7 @@ export class ExpectSkillReadError extends Schema.ErrorClass<ExpectSkillReadError
   installedSkillPath: Schema.String,
   reason: Schema.String,
 }) {
-  message = `Failed to read installed expect skill at ${this.installedSkillPath}: ${this.reason}`;
+  message = `Failed to read installed perf-agent skill at ${this.installedSkillPath}: ${this.reason}`;
 }
 
 export class ExpectSkillFetchError extends Schema.ErrorClass<ExpectSkillFetchError>(
@@ -36,7 +36,7 @@ export class ExpectSkillFetchError extends Schema.ErrorClass<ExpectSkillFetchErr
   url: Schema.String,
   reason: Schema.String,
 }) {
-  message = `Failed to fetch latest expect skill from ${this.url}: ${this.reason}`;
+  message = `Failed to fetch latest perf-agent skill from ${this.url}: ${this.reason}`;
 }
 
 const SKILL_VERSION_PATTERN = /^ {2}version:\s*"([^"]+)"/m;
@@ -148,7 +148,7 @@ export const detectInstalledSkillAgents = Effect.fn("Skill.detectInstalledSkillA
   return results;
 });
 
-export const hasInstalledExpectSkill = Effect.fn("Skill.hasInstalledExpectSkill")(function* (
+export const hasInstalledPerfAgentSkill = Effect.fn("Skill.hasInstalledPerfAgentSkill")(function* (
   projectRoot: string,
   agents: readonly SupportedAgent[],
 ) {

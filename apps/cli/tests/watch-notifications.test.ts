@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { WatchEvent } from "@expect/supervisor";
+import { WatchEvent } from "@neuve/supervisor";
 import { sendWatchNotification } from "../src/utils/watch-notifications";
 
 describe("sendWatchNotification", () => {

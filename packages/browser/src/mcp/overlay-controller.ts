@@ -93,7 +93,7 @@ const resolveCssSelector = (locator: Locator) =>
   );
 
 export class OverlayController extends ServiceMap.Service<OverlayController>()(
-  "@browser/OverlayController",
+  "@devtools/OverlayController",
   {
     make: Effect.gen(function* () {
       const updateLabel = Effect.fn("OverlayController.updateLabel")(function* (

@@ -1,9 +1,9 @@
 // import * as path from "node:path";
-// import { AcpSessionCreateError, AcpStreamError, Agent, AgentStreamOptions } from "@expect/agent";
+// import { AcpSessionCreateError, AcpStreamError, Agent, AgentStreamOptions } from "@neuve/agent";
 // import * as NodeServices from "@effect/platform-node/NodeServices";
 // import { Channel, Effect, FileSystem, Layer, Option, Schema, ServiceMap, Stream } from "effect";
-// import { TestPlan, type TestPlanDraft } from "@expect/shared/models";
-// import { EXPECT_STATE_DIR } from "./constants";
+// import { TestPlan, type TestPlanDraft } from "@neuve/shared/models";
+// import { PERF_AGENT_STATE_DIR } from "./constants";
 
 // export class PlanParseError extends Schema.ErrorClass<PlanParseError>("@supervisor/PlanParseError")(
 //   {
@@ -61,7 +61,7 @@
 //      * ```
 //      */
 //     const plan = Effect.fn("Planner.plan")(function* (draft: TestPlanDraft) {
-//       const stateDir = path.join(process.cwd(), EXPECT_STATE_DIR);
+//       const stateDir = path.join(process.cwd(), PERF_AGENT_STATE_DIR);
 //       yield* fs.makeDirectory(stateDir, { recursive: true });
 //       const sentinelPath = path.join(stateDir, draft.planFileName);
 

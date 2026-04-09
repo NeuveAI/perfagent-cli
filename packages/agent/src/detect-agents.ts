@@ -1,4 +1,4 @@
-import { isCommandAvailable } from "@expect/shared/is-command-available";
+import { isCommandAvailable } from "@neuve/shared/is-command-available";
 
 export type SupportedAgent =
   | "claude"

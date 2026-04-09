@@ -1,28 +1,28 @@
-import { detectAvailableAgents, toDisplayName } from "@expect/agent";
+import { detectAvailableAgents, toDisplayName } from "@neuve/agent";
 import { highlighter } from "../utils/highlighter";
 import { logger } from "../utils/logger";
 import { spinner } from "../utils/spinner";
 import { resolveProjectRoot } from "../utils/project-root";
 import {
-  detectInstalledExpectMcpAgents,
-  formatExpectMcpInstallSummary,
-  formatExpectMcpVersion,
-  getSupportedExpectMcpAgents,
-  getUnsupportedExpectMcpAgents,
-  installExpectMcpForAgents,
+  detectInstalledPerfAgentMcpAgents,
+  formatPerfAgentMcpInstallSummary,
+  formatPerfAgentMcpVersion,
+  getSupportedPerfAgentMcpAgents,
+  getUnsupportedPerfAgentMcpAgents,
+  installPerfAgentMcpForAgents,
   type McpInstallScope,
-} from "../mcp/install-expect-mcp";
+} from "../mcp/install-perf-agent-mcp";
 
 export const runUpdateCommand = async (version?: string) => {
   const availableAgents = detectAvailableAgents();
-  const supportedMcpAgents = getSupportedExpectMcpAgents(availableAgents);
-  const unsupportedMcpAgents = getUnsupportedExpectMcpAgents(availableAgents);
-  const versionLabel = formatExpectMcpVersion(version);
+  const supportedMcpAgents = getSupportedPerfAgentMcpAgents(availableAgents);
+  const unsupportedMcpAgents = getUnsupportedPerfAgentMcpAgents(availableAgents);
+  const versionLabel = formatPerfAgentMcpVersion(version);
 
   if (supportedMcpAgents.length === 0) {
     logger.break();
     logger.error(
-      "No supported coding agent found for Expect MCP. Expect MCP currently supports Claude Code, Codex, GitHub Copilot, Gemini CLI, Cursor, OpenCode, and Pi.",
+      "No supported coding agent found for Perf Agent MCP. Perf Agent MCP currently supports Claude Code, Codex, GitHub Copilot, Gemini CLI, Cursor, OpenCode, and Pi.",
     );
     process.exitCode = 1;
     return;
@@ -39,14 +39,14 @@ export const runUpdateCommand = async (version?: string) => {
   let foundInstalledConfig = false;
 
   logger.break();
-  const updateSpinner = spinner(`Updating Expect MCP to ${versionLabel}...`).start();
+  const updateSpinner = spinner(`Updating Perf Agent MCP to ${versionLabel}...`).start();
 
   for (const scope of scopes) {
-    const installedAgents = detectInstalledExpectMcpAgents(projectRoot, supportedMcpAgents, scope);
+    const installedAgents = detectInstalledPerfAgentMcpAgents(projectRoot, supportedMcpAgents, scope);
     if (installedAgents.length === 0) continue;
     foundInstalledConfig = true;
     summaries.push(
-      installExpectMcpForAgents(projectRoot, installedAgents, {
+      installPerfAgentMcpForAgents(projectRoot, installedAgents, {
         scope,
         version,
       }),
@@ -55,7 +55,7 @@ export const runUpdateCommand = async (version?: string) => {
 
   if (!foundInstalledConfig) {
     summaries.push(
-      installExpectMcpForAgents(projectRoot, supportedMcpAgents, {
+      installPerfAgentMcpForAgents(projectRoot, supportedMcpAgents, {
         scope: "global",
         version,
       }),
@@ -66,22 +66,22 @@ export const runUpdateCommand = async (version?: string) => {
   const allFailed = summaries.flatMap((summary) => summary.failed);
 
   if (allSelected.length > 0 && allFailed.length === allSelected.length) {
-    updateSpinner.fail(`Failed to update Expect MCP to ${versionLabel}.`);
+    updateSpinner.fail(`Failed to update Perf Agent MCP to ${versionLabel}.`);
     for (const failure of allFailed) {
       logger.warn(`  ${toDisplayName(failure.agent)}: ${failure.reason}`);
     }
     logger.dim(
-      `  Re-run ${highlighter.info("expect init")} to recreate the global or project MCP config if needed.`,
+      `  Re-run ${highlighter.info("perf-agent init")} to recreate the global or project MCP config if needed.`,
     );
     process.exitCode = 1;
     return;
   }
 
-  updateSpinner.succeed(summaries.map(formatExpectMcpInstallSummary).join(" "));
+  updateSpinner.succeed(summaries.map(formatPerfAgentMcpInstallSummary).join(" "));
 
   if (!foundInstalledConfig) {
     logger.dim(
-      "  No existing Expect MCP config was found, so it was installed globally for detected agents.",
+      "  No existing Perf Agent MCP config was found, so it was installed globally for detected agents.",
     );
   }
 

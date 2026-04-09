@@ -1,5 +1,5 @@
 import { chromium } from "playwright";
-import type { Cookie } from "@expect/cookies";
+import type { Cookie } from "@neuve/cookies";
 import { HEADLESS_CHROMIUM_ARGS } from "../../src/constants";
 import { injectCookies } from "./inject-cookies";
 

@@ -1,9 +1,9 @@
 import * as fsPromises from "node:fs/promises";
 import * as path from "node:path";
-import { EXPECT_STATE_DIR } from "./constants";
+import { PERF_AGENT_STATE_DIR } from "./constants";
 
 const getStoragePath = (name: string): string =>
-  path.join(process.cwd(), EXPECT_STATE_DIR, `${name}.json`);
+  path.join(process.cwd(), PERF_AGENT_STATE_DIR, `${name}.json`);
 
 const cache = new Map<string, string>();
 

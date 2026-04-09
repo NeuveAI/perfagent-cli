@@ -1,10 +1,10 @@
 import { Config, Effect, Option, Schema, Stream } from "effect";
-import { type ChangesFor, type PlanId, CiResultOutput, CiStepResult } from "@expect/shared/models";
-import { Executor, ExecutedTestPlan, Reporter, Github } from "@expect/supervisor";
-import { Analytics } from "@expect/shared/observability";
-import { detectParentAgent } from "@expect/shared/launched-from";
-import type { AgentBackend } from "@expect/agent";
-import { ExpectTimeoutError } from "expect-sdk/effect";
+import { type ChangesFor, type PlanId, CiResultOutput, CiStepResult } from "@neuve/shared/models";
+import { Executor, ExecutedTestPlan, Reporter, Github } from "@neuve/supervisor";
+import { Analytics } from "@neuve/shared/observability";
+import { detectParentAgent } from "@neuve/shared/launched-from";
+import type { AgentBackend } from "@neuve/agent";
+import { PerfAgentTimeoutError } from "@neuve/sdk/effect";
 import { VERSION, CI_HEARTBEAT_INTERVAL_MS } from "../constants";
 import { layerCli } from "../layers";
 import { playSound } from "./play-sound";
@@ -15,7 +15,7 @@ import { writeGhaOutputs, writeGhaStepSummary } from "./gha-output";
 import { getStepElapsedMs, getTotalElapsedMs } from "./step-elapsed";
 import { formatElapsedTime } from "./format-elapsed-time";
 
-const COMMENT_MARKER = "<!-- expect-ci-result -->";
+const COMMENT_MARKER = "<!-- perf-agent-ci-result -->";
 
 interface HeadlessRunOptions {
   changesFor: ChangesFor;
@@ -162,7 +162,7 @@ export const runHeadless = (options: HeadlessRunOptions) =>
               ? executeStream.pipe(
                   Effect.timeoutOrElse({
                     duration: `${timeoutMs} millis`,
-                    onTimeout: () => Effect.fail(new ExpectTimeoutError({ timeoutMs })),
+                    onTimeout: () => Effect.fail(new PerfAgentTimeoutError({ timeoutMs })),
                   }),
                 )
               : executeStream;
@@ -173,7 +173,7 @@ export const runHeadless = (options: HeadlessRunOptions) =>
                 if (!isJsonOutput) ciReporter.groupClose();
               }),
             ),
-            Effect.catchTag("ExpectTimeoutError", (error) => {
+            Effect.catchTag("PerfAgentTimeoutError", (error) => {
               if (isJsonOutput) {
                 const resultOutput = new CiResultOutput({
                   version: VERSION,
@@ -301,7 +301,7 @@ export const runHeadless = (options: HeadlessRunOptions) =>
 
               const commentBody = [
                 COMMENT_MARKER,
-                `## expect test results`,
+                `## perf-agent analysis results`,
                 "",
                 `**${statusEmoji} ${statusLabel}** \u2014 ${report.steps.length} step${report.steps.length === 1 ? "" : "s"} in ${formatElapsedTime(totalDurationMs)}`,
                 "",
@@ -370,7 +370,7 @@ export const runHeadless = (options: HeadlessRunOptions) =>
           yield* Effect.promise(() => playSound());
           return report.status;
         }).pipe(
-          Effect.withSpan("expect.session"),
+          Effect.withSpan("perf-agent.session"),
           Effect.provide(layerCli({ verbose: options.verbose, agent: options.agent })),
         ),
       ),

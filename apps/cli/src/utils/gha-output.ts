@@ -37,7 +37,7 @@ export const writeGhaStepSummary = Effect.fn("GhaOutput.writeGhaStepSummary")(fu
     2,
   );
   const fence = "`".repeat(maxBacktickRun + 1);
-  const summary = `## expect test results\n\n${badge}\n\n${fence}\n${reportText}\n${fence}\n${artifactSection}`;
+  const summary = `## perf-agent analysis results\n\n${badge}\n\n${fence}\n${reportText}\n${fence}\n${artifactSection}`;
 
   yield* Effect.sync(() => fs.appendFileSync(summaryPath.value, summary));
 });

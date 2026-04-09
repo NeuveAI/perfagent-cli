@@ -1,7 +1,7 @@
 import { Effect, FileSystem, Layer, Option, ServiceMap } from "effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as path from "node:path";
-import { type TestPlan, changesForDisplayName } from "@expect/shared/models";
+import { type TestPlan, changesForDisplayName } from "@neuve/shared/models";
 import { formatSavedFlowFile, parseSavedFlowFile } from "./saved-flow-file";
 import type { SavedFlowFileData } from "./types";
 import {

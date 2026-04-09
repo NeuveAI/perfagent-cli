@@ -1,4 +1,4 @@
-import type { ExecutionEvent } from "@expect/shared/models";
+import type { ExecutionEvent } from "@neuve/shared/models";
 import { pathToFileURL } from "node:url";
 
 const PLAYWRIGHT_VIDEO_PREFIX = "Playwright video:";

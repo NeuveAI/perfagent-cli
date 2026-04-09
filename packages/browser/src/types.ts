@@ -1,5 +1,5 @@
 import type { Effect, Option } from "effect";
-import type { Cookie } from "@expect/cookies";
+import type { Cookie } from "@neuve/cookies";
 import type { Locator, Page } from "playwright";
 import type { RefNotFoundError } from "./errors";
 

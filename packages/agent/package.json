@@ -1,5 +1,5 @@
 {
-  "name": "@expect/agent",
+  "name": "@neuve/agent",
   "version": "0.1.2",
   "private": true,
   "type": "module",
@@ -20,8 +20,8 @@
     "@agentclientprotocol/sdk": "^0.16.1",
     "@ai-sdk/provider": "^3.0.8",
     "@effect/platform-node": "4.0.0-beta.35",
-    "@expect/browser": "workspace:*",
-    "@expect/shared": "workspace:*",
+    "@neuve/devtools": "workspace:*",
+    "@neuve/shared": "workspace:*",
     "@github/copilot": "^1.0.12",
     "@google/gemini-cli": "^0.35.3",
     "@zed-industries/codex-acp": "^0.10.0",

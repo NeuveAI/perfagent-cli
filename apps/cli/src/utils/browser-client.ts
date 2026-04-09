@@ -1,7 +1,7 @@
 import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { CLI_SESSION_FILE, TMP_ARTIFACT_OUTPUT_DIRECTORY } from "@expect/browser/mcp";
+import { CLI_SESSION_FILE, TMP_ARTIFACT_OUTPUT_DIRECTORY } from "@neuve/devtools/mcp";
 
 const DAEMON_POLL_INTERVAL_MS = 100;
 const DAEMON_STARTUP_TIMEOUT_MS = 15_000;

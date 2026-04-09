@@ -1,4 +1,4 @@
-import type { AgentProvider } from "@expect/shared/models";
+import type { AgentProvider } from "@neuve/shared/models";
 
 interface BuildSessionMetaOptions {
   readonly provider: AgentProvider;

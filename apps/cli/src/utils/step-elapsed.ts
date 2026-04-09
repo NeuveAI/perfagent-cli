@@ -1,5 +1,5 @@
 import { DateTime, Option } from "effect";
-import type { TestPlanStep } from "@expect/shared/models";
+import type { TestPlanStep } from "@neuve/shared/models";
 
 export const getStepElapsedMs = (step: TestPlanStep): number | undefined => {
   if (Option.isNone(step.startedAt) || Option.isNone(step.endedAt)) return undefined;

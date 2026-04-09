@@ -1,6 +1,6 @@
 import { Box, Text } from "ink";
 import { useColors } from "../theme-context";
-import { testContextId, type GitState, type TestContext } from "@expect/shared/models";
+import { testContextId, type GitState, type TestContext } from "@neuve/shared/models";
 import { getContextLabel, getContextDescription } from "../../utils/context-options";
 import { CONTEXT_PICKER_VISIBLE_COUNT } from "../../constants";
 import figures from "figures";

@@ -120,7 +120,7 @@ const buildExpectGuide = (): string =>
     "You are the quality gate — the agent made code changes, and now you verify they actually work.",
     "",
     "<execution_strategy>",
-    "Use the expect MCP tools (open, playwright, screenshot, console_logs, network_requests, performance_metrics, accessibility_audit, close) for browser interactions. Do NOT use other browser automation tools (Playwright MCP, chrome tools, etc.).",
+    "Use the perf-agent MCP tools (open, playwright, screenshot, console_logs, network_requests, performance_metrics, accessibility_audit, close) for browser interactions. Do NOT use other browser automation tools (Playwright MCP, chrome tools, etc.).",
     "",
     "Workflow:",
     "1. `open` → interact with `playwright` and `screenshot` → observe with `console_logs` and `network_requests` → audit with `accessibility_audit` and `performance_metrics` → `close`.",
@@ -128,7 +128,7 @@ const buildExpectGuide = (): string =>
     "</execution_strategy>",
     "",
     "<expect_mcp_tools>",
-    "Use these tools for browser interactions. They are provided by the expect MCP server.",
+    "Use these tools for browser interactions. They are provided by the perf-agent MCP server.",
     "",
     "1. open: launch a browser and navigate to a URL. Pass headed=true to show the browser window. Pass cookies=true to reuse local browser cookies. Pass browser='webkit' or browser='firefox' for cross-browser testing. Pass cdp='ws://...' to connect to an existing Chrome instance.",
     "2. playwright: execute Playwright code in Node.js context. Globals: page (Page), context (BrowserContext), browser (Browser), ref (function: snapshot ref ID → Locator). Use `return` to collect data from the page — the response is JSON: { result: <your value>, resultFile: '<path>' }. The result is also written to a tmp file you can read or grep later. Batch multiple actions AND data collection into a single playwright call. Set snapshotAfter=true to auto-snapshot after DOM-changing actions (response adds snapshot alongside result).",
@@ -152,7 +152,7 @@ const buildExpectGuide = (): string =>
     "",
     "Return value format:",
     "- No return → 'OK'",
-    "- With return → JSON: { result: <your value>, resultFile: '/tmp/expect-artifacts/playwright-results/result-<id>.json' }",
+    "- With return → JSON: { result: <your value>, resultFile: '/tmp/perf-agent-artifacts/playwright-results/result-<id>.json' }",
     "- With return + snapshotAfter → JSON: { result: <value>, resultFile: '<path>', snapshot: { tree, refs, stats } }",
     "- snapshotAfter only (no return) → JSON: { snapshot: { tree, refs, stats } }",
     "The resultFile persists until the session closes. Use it to read or grep collected data across multiple steps.",
@@ -192,7 +192,7 @@ export const createBrowserMcpServer = <E>(
   ) => runtime.runPromise(effect);
 
   const server = new McpServer({
-    name: "expect",
+    name: "perf-agent",
     version: "0.0.1",
   });
 

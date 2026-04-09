@@ -1,6 +1,6 @@
 import { Effect } from "effect";
-import { Analytics, type EventMap } from "@expect/shared/observability";
-import { detectParentAgent } from "@expect/shared/launched-from";
+import { Analytics, type EventMap } from "@neuve/shared/observability";
+import { detectParentAgent } from "@neuve/shared/launched-from";
 import { usePreferencesStore } from "../stores/use-preferences";
 
 const analyticsLayer = Analytics.layerPostHog;

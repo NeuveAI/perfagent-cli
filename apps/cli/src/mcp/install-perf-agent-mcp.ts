@@ -1,11 +1,11 @@
 import * as os from "node:os";
 import * as path from "node:path";
-import { type SupportedAgent, toDisplayName } from "@expect/agent";
+import { type SupportedAgent, toDisplayName } from "@neuve/agent";
 import { prompts } from "../utils/prompts";
 import { highlighter } from "../utils/highlighter";
 import {
   CODEX_MCP_STARTUP_TIMEOUT_SEC,
-  EXPECT_MCP_SERVER_NAME,
+  PERF_AGENT_MCP_SERVER_NAME,
   NPM_PACKAGE_NAME,
 } from "../constants";
 import { detectNonInteractive } from "../commands/init-utils";
@@ -32,7 +32,7 @@ interface AgentInstallFailure {
   readonly reason: string;
 }
 
-export interface ExpectMcpInstallSummary {
+export interface PerfAgentMcpInstallSummary {
   readonly scope: McpInstallScope;
   readonly selectedAgents: readonly McpSupportedAgent[];
   readonly installed: readonly McpSupportedAgent[];
@@ -41,7 +41,7 @@ export interface ExpectMcpInstallSummary {
   readonly failed: readonly AgentInstallFailure[];
 }
 
-interface InstallExpectMcpOptions {
+interface InstallPerfAgentMcpOptions {
   readonly scope?: McpInstallScope;
   readonly version?: string;
 }
@@ -159,28 +159,28 @@ const normalizeVersionSpecifier = (version?: string): string => {
   return trimmedVersion;
 };
 
-export const formatExpectMcpVersion = (version?: string): string => {
+export const formatPerfAgentMcpVersion = (version?: string): string => {
   const versionSpecifier = normalizeVersionSpecifier(version);
   return /^\d+\.\d+\.\d+/.test(versionSpecifier) ? `v${versionSpecifier}` : versionSpecifier;
 };
 
-export const getExpectMcpPackageSpecifier = (version?: string): string =>
+export const getPerfAgentMcpPackageSpecifier = (version?: string): string =>
   `${NPM_PACKAGE_NAME}@${normalizeVersionSpecifier(version)}`;
 
-export const buildExpectMcpServerConfig = (version?: string): McpServerConfig => ({
+export const buildPerfAgentMcpServerConfig = (version?: string): McpServerConfig => ({
   command: "npx",
-  args: ["-y", getExpectMcpPackageSpecifier(version), "mcp"],
+  args: ["-y", getPerfAgentMcpPackageSpecifier(version), "mcp"],
 });
 
-export const getSupportedExpectMcpAgents = (
+export const getSupportedPerfAgentMcpAgents = (
   agents: readonly SupportedAgent[],
 ): McpSupportedAgent[] => agents.filter(isMcpSupportedAgent);
 
-export const getUnsupportedExpectMcpAgents = (
+export const getUnsupportedPerfAgentMcpAgents = (
   agents: readonly SupportedAgent[],
 ): SupportedAgent[] => agents.filter((agent) => !isMcpSupportedAgent(agent));
 
-export const selectExpectMcpInstallScope = async (
+export const selectPerfAgentMcpInstallScope = async (
   yes: boolean | undefined,
 ): Promise<McpInstallScope> => {
   if (detectNonInteractive(yes ?? false)) return "global";
@@ -188,7 +188,7 @@ export const selectExpectMcpInstallScope = async (
   const response = await prompts({
     type: "select",
     name: "scope",
-    message: "Where should Expect MCP be installed?",
+    message: "Where should Perf Agent MCP be installed?",
     choices: [
       {
         title: "Install globally (user level)",
@@ -207,12 +207,12 @@ export const selectExpectMcpInstallScope = async (
   return response.scope === "project" ? "project" : "global";
 };
 
-export const selectExpectMcpAgents = async (
+export const selectPerfAgentMcpAgents = async (
   agents: readonly SupportedAgent[],
   yes: boolean | undefined,
   scope: McpInstallScope,
 ): Promise<McpSupportedAgent[]> => {
-  const supportedAgents = getSupportedExpectMcpAgents(agents);
+  const supportedAgents = getSupportedPerfAgentMcpAgents(agents);
   if (detectNonInteractive(yes ?? false)) return supportedAgents;
   if (supportedAgents.length === 0) return [];
 
@@ -221,8 +221,8 @@ export const selectExpectMcpAgents = async (
     name: "agents",
     message:
       scope === "global"
-        ? `Install the ${highlighter.info("expect")} MCP globally for:`
-        : `Install the ${highlighter.info("expect")} MCP in this project for:`,
+        ? `Install the ${highlighter.info("perf-agent")} MCP globally for:`
+        : `Install the ${highlighter.info("perf-agent")} MCP in this project for:`,
     choices: supportedAgents.map((agent) => ({
       title: toDisplayName(agent),
       value: agent,
@@ -259,7 +259,7 @@ const getExpectedAgentConfig = (
   scope: McpInstallScope,
   version?: string,
 ): unknown => {
-  const config = buildExpectMcpServerConfig(version);
+  const config = buildPerfAgentMcpServerConfig(version);
   return MCP_AGENT_CONFIGS[agent].transformConfig?.(config, scope) ?? config;
 };
 
@@ -270,7 +270,7 @@ const buildConfigPatch = (
 ): ConfigRecord => {
   const patch: ConfigRecord = {};
   setNestedValue(patch, getAgentConfigKey(agent, scope), {
-    [EXPECT_MCP_SERVER_NAME]: config,
+    [PERF_AGENT_MCP_SERVER_NAME]: config,
   });
   return patch;
 };
@@ -288,32 +288,32 @@ const readInstalledAgentConfig = (
   );
 };
 
-const getInstalledExpectMcpEntry = (
+const getInstalledPerfAgentMcpEntry = (
   projectRoot: string,
   agent: McpSupportedAgent,
   scope: McpInstallScope,
 ): unknown => {
   const currentConfig = readInstalledAgentConfig(projectRoot, agent, scope);
   if (!isConfigRecord(currentConfig)) return undefined;
-  return currentConfig[EXPECT_MCP_SERVER_NAME];
+  return currentConfig[PERF_AGENT_MCP_SERVER_NAME];
 };
 
 const stringifyConfig = (value: unknown): string => JSON.stringify(value);
 
-export const detectInstalledExpectMcpAgents = (
+export const detectInstalledPerfAgentMcpAgents = (
   projectRoot: string,
   agents: readonly SupportedAgent[],
   scope: McpInstallScope,
 ): McpSupportedAgent[] =>
-  getSupportedExpectMcpAgents(agents).filter(
-    (agent) => getInstalledExpectMcpEntry(projectRoot, agent, scope) !== undefined,
+  getSupportedPerfAgentMcpAgents(agents).filter(
+    (agent) => getInstalledPerfAgentMcpEntry(projectRoot, agent, scope) !== undefined,
   );
 
-export const installExpectMcpForAgents = (
+export const installPerfAgentMcpForAgents = (
   projectRoot: string,
   agents: readonly McpSupportedAgent[],
-  options: InstallExpectMcpOptions = {},
-): ExpectMcpInstallSummary => {
+  options: InstallPerfAgentMcpOptions = {},
+): PerfAgentMcpInstallSummary => {
   const scope = options.scope ?? "project";
   const installed: McpSupportedAgent[] = [];
   const updated: McpSupportedAgent[] = [];
@@ -324,7 +324,7 @@ export const installExpectMcpForAgents = (
     const agentConfig = MCP_AGENT_CONFIGS[agent];
     const configPath = getAgentConfigPath(projectRoot, agent, scope);
     const expectedConfig = getExpectedAgentConfig(agent, scope, options.version);
-    const currentConfig = getInstalledExpectMcpEntry(projectRoot, agent, scope);
+    const currentConfig = getInstalledPerfAgentMcpEntry(projectRoot, agent, scope);
     const configKey = getAgentConfigKey(agent, scope);
 
     if (stringifyConfig(currentConfig) === stringifyConfig(expectedConfig)) {
@@ -363,7 +363,7 @@ export const installExpectMcpForAgents = (
   };
 };
 
-export const formatExpectMcpInstallSummary = (summary: ExpectMcpInstallSummary): string => {
+export const formatPerfAgentMcpInstallSummary = (summary: PerfAgentMcpInstallSummary): string => {
   const parts: string[] = [];
   const scopeLabel = summary.scope === "global" ? "globally" : "in this project";
 
@@ -382,5 +382,5 @@ export const formatExpectMcpInstallSummary = (summary: ExpectMcpInstallSummary):
   }
 
   if (parts.length === 0) return "No MCP config changes were applied.";
-  return `Expect MCP ${parts.join("; ")}.`;
+  return `Perf Agent MCP ${parts.join("; ")}.`;
 };

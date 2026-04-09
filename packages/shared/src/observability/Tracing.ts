@@ -2,9 +2,9 @@ import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import { Layer } from "effect";
 import * as Otlp from "effect/unstable/observability/Otlp";
 
-const AXIOM_DATASET = "expect-cli";
+const AXIOM_DATASET = "@neuve/perf-agent-cli";
 const AXIOM_TOKEN = "xaat-a6ce2fdb-d378-444e-9d72-bb458867187a";
-const AXIOM_DEFAULT_SERVICE_NAME = "expect-cli";
+const AXIOM_DEFAULT_SERVICE_NAME = "@neuve/perf-agent-cli";
 
 export const layerAxiom = (
   serviceName = AXIOM_DEFAULT_SERVICE_NAME /* service name is different from dataset name */,

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { promptHistoryStorage } from "@expect/supervisor";
-import type { AgentBackend } from "@expect/agent";
+import { promptHistoryStorage } from "@neuve/supervisor";
+import type { AgentBackend } from "@neuve/agent";
 import { FLOW_INPUT_HISTORY_LIMIT } from "../constants";
 import type { BrowserMode } from "./use-project-preferences";
 

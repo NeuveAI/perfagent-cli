@@ -5,7 +5,7 @@ import {
   AcpStreamError,
   Agent,
   AgentStreamOptions,
-} from "@expect/agent";
+} from "@neuve/agent";
 import { Effect, Layer, Option, Schema, ServiceMap, Stream } from "effect";
 import {
   type AcpConfigOption,
@@ -18,21 +18,21 @@ import {
   type SavedFlow,
   type TestCoverageReport,
   TestPlan,
-} from "@expect/shared/models";
+} from "@neuve/shared/models";
 import {
   buildExecutionPrompt,
   buildExecutionSystemPrompt,
   type DevServerHint,
-} from "@expect/shared/prompts";
+} from "@neuve/shared/prompts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Git } from "./git/git";
 import {
-  EXPECT_COOKIE_BROWSERS_ENV_NAME,
-  EXPECT_CDP_URL_ENV_NAME,
-  EXPECT_BASE_URL_ENV_NAME,
-  EXPECT_HEADED_ENV_NAME,
-  EXPECT_PROFILE_ENV_NAME,
-} from "@expect/browser/mcp";
+  PERF_AGENT_COOKIE_BROWSERS_ENV_NAME,
+  PERF_AGENT_CDP_URL_ENV_NAME,
+  PERF_AGENT_BASE_URL_ENV_NAME,
+  PERF_AGENT_HEADED_ENV_NAME,
+  PERF_AGENT_PROFILE_ENV_NAME,
+} from "@neuve/devtools/mcp";
 import {
   ALL_STEPS_TERMINAL_GRACE_MS,
   EXECUTION_CONTEXT_FILE_LIMIT,
@@ -177,21 +177,21 @@ export class Executor extends ServiceMap.Service<Executor>()("@supervisor/Execut
 
       const mcpEnv: Array<{ name: string; value: string }> = [];
       if (options.cdpUrl) {
-        mcpEnv.push({ name: EXPECT_CDP_URL_ENV_NAME, value: options.cdpUrl });
+        mcpEnv.push({ name: PERF_AGENT_CDP_URL_ENV_NAME, value: options.cdpUrl });
       }
       if (options.baseUrl) {
-        mcpEnv.push({ name: EXPECT_BASE_URL_ENV_NAME, value: options.baseUrl });
+        mcpEnv.push({ name: PERF_AGENT_BASE_URL_ENV_NAME, value: options.baseUrl });
       }
       mcpEnv.push({
-        name: EXPECT_HEADED_ENV_NAME,
+        name: PERF_AGENT_HEADED_ENV_NAME,
         value: options.isHeadless ? "false" : "true",
       });
       if (options.profileName) {
-        mcpEnv.push({ name: EXPECT_PROFILE_ENV_NAME, value: options.profileName });
+        mcpEnv.push({ name: PERF_AGENT_PROFILE_ENV_NAME, value: options.profileName });
       }
       if (options.cookieBrowserKeys.length > 0) {
         mcpEnv.push({
-          name: EXPECT_COOKIE_BROWSERS_ENV_NAME,
+          name: PERF_AGENT_COOKIE_BROWSERS_ENV_NAME,
           value: options.cookieBrowserKeys.join(","),
         });
       }

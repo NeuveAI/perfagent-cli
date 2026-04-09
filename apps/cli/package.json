@@ -1,31 +1,26 @@
 {
-  "name": "expect-cli",
+  "name": "@neuve/perf-agent-cli",
   "version": "0.1.2",
-  "description": "Let agents test your code in a real browser",
+  "description": "AI-powered performance analysis CLI for coding agents",
   "keywords": [
     "agents",
     "ai",
     "browser-automation",
     "cli",
-    "git-diff",
-    "playwright",
-    "session-recording",
-    "test-plan",
-    "testing"
+    "chrome-devtools",
+    "core-web-vitals",
+    "performance",
+    "web-performance"
   ],
-  "homepage": "https://expect.dev",
   "license": "FSL-1.1-MIT",
-  "author": "Million Software <founders@million.dev>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/millionco/expect",
+    "url": "https://github.com/neuve/perf-agent-cli",
     "directory": "apps/cli"
   },
   "bin": {
-    "expect": "./dist/index.js",
-    "expect-agent": "./dist/index.js",
-    "expect-cli": "./dist/index.js",
-    "expect-mcp": "./dist/browser-mcp.js"
+    "perf-agent": "./dist/index.js",
+    "perf-agent-mcp": "./dist/browser-mcp.js"
   },
   "files": [
     "dist",
@@ -88,14 +83,14 @@
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",
-    "@expect/agent": "workspace:*",
-    "@expect/shared": "workspace:*",
-    "@expect/supervisor": "workspace:*",
+    "@neuve/agent": "workspace:*",
+    "@neuve/shared": "workspace:*",
+    "@neuve/supervisor": "workspace:*",
     "@types/node-notifier": "^8.0.5",
     "@types/prompts": "^2.4.9",
     "@types/react": "^19.2.14",
     "babel-plugin-react-compiler": "^1.0.0",
-    "expect-sdk": "workspace:*",
+    "@neuve/sdk": "workspace:*",
     "typescript": "^5.7.0"
   },
   "optionalDependencies": {

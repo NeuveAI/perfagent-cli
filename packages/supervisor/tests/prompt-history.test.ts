@@ -2,12 +2,12 @@ import * as fsPromises from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { EXPECT_STATE_DIR } from "../src/constants";
+import { PERF_AGENT_STATE_DIR } from "../src/constants";
 import { promptHistoryStorage } from "../src/prompt-history";
 
 vi.mock("node:fs/promises");
 
-const storagePath = (name: string) => path.join(os.homedir(), EXPECT_STATE_DIR, `${name}.json`);
+const storagePath = (name: string) => path.join(os.homedir(), PERF_AGENT_STATE_DIR, `${name}.json`);
 
 describe("promptHistoryStorage", () => {
   beforeEach(() => {

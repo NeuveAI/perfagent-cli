@@ -1,10 +1,10 @@
 import { Layer, References } from "effect";
 import { DevTools } from "effect/unstable/devtools";
-import { FlowStorage, Reporter, Updates, Watch } from "@expect/supervisor";
-import type { AgentBackend } from "@expect/agent";
+import { FlowStorage, Reporter, Updates, Watch } from "@neuve/supervisor";
+import type { AgentBackend } from "@neuve/agent";
 
-import { Analytics, DebugFileLoggerLayer, Tracing } from "@expect/shared/observability";
-import { layerSdk } from "expect-sdk/effect";
+import { Analytics, DebugFileLoggerLayer, Tracing } from "@neuve/shared/observability";
+import { layerSdk } from "@neuve/sdk/effect";
 
 export const layerCli = ({ verbose, agent }: { verbose: boolean; agent: AgentBackend }) => {
   const sdkLayer = layerSdk(agent ?? "claude", process.cwd());
@@ -20,7 +20,7 @@ export const layerCli = ({ verbose, agent }: { verbose: boolean; agent: AgentBac
     watchLayer,
   ).pipe(
     Layer.provide(DebugFileLoggerLayer),
-    Layer.provide(Tracing.layerAxiom("expect-cli")),
+    Layer.provide(Tracing.layerAxiom("@neuve/perf-agent-cli")),
     Layer.provideMerge(Layer.succeed(References.MinimumLogLevel, verbose ? "All" : "Info")),
   );
 };

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { Effect, Option, Stream } from "effect";
 import { Agent } from "../src/agent";
 import { AgentStreamOptions } from "../src/types";
-import { isCommandAvailable } from "@expect/shared/is-command-available";
+import { isCommandAvailable } from "@neuve/shared/is-command-available";
 
 const hasCodex = isCommandAvailable("codex");
 const hasClaude = isCommandAvailable("claude");

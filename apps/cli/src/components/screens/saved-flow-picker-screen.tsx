@@ -1,7 +1,7 @@
 import { Box, Text, useInput } from "ink";
 import figures from "figures";
 import cliTruncate from "cli-truncate";
-import { ChangesFor, type SavedFlowFileData } from "@expect/supervisor";
+import { ChangesFor, type SavedFlowFileData } from "@neuve/supervisor";
 import {
   useNavigationStore,
   Screen,

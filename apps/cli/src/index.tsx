@@ -1,16 +1,16 @@
 import { Effect, Option } from "effect";
 import { Command } from "commander";
-import { ChangesFor } from "@expect/supervisor";
+import { ChangesFor } from "@neuve/supervisor";
 import { runHeadless } from "./utils/run-test";
 import { runInit } from "./commands/init";
 import { runAddGithubAction } from "./commands/add-github-action";
 import { runAddSkill } from "./commands/add-skill";
 import { runWatchCommand } from "./commands/watch";
 import { runUpdateCommand } from "./commands/update";
-import { isRunningInAgent } from "@expect/shared/launched-from";
-import { resolveAgentProvider } from "@expect/shared/infer-agent";
+import { isRunningInAgent } from "@neuve/shared/launched-from";
+import { resolveAgentProvider } from "@neuve/shared/infer-agent";
 import { isHeadless } from "./utils/is-headless";
-import { type AgentBackend, detectAvailableAgents } from "@expect/agent";
+import { type AgentBackend, detectAvailableAgents } from "@neuve/agent";
 import { useNavigationStore, Screen } from "./stores/use-navigation";
 import { usePreferencesStore } from "./stores/use-preferences";
 import { resolveChangesFor } from "./utils/resolve-changes-for";
@@ -20,7 +20,7 @@ import { prompts } from "./utils/prompts";
 import { highlighter } from "./utils/highlighter";
 import { logger } from "./utils/logger";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { hasInstalledExpectSkill } from "./utils/expect-skill";
+import { hasInstalledPerfAgentSkill } from "./utils/perf-agent-skill";
 import {
   type BrowserMode,
   isValidBrowserMode,
@@ -47,7 +47,7 @@ const lazyBrowserMode = (() => {
 })();
 
 const DEFAULT_INSTRUCTION =
-  "Test all changes from main in the browser and verify they work correctly.";
+  "Analyze the performance impact of all changes from main.";
 
 type Target = "unstaged" | "branch" | "changes";
 
@@ -74,22 +74,22 @@ interface CommanderOpts {
 
 // HACK: when adding or changing options/commands below, update the Options and Commands tables in README.md
 const program = new Command()
-  .name("expect")
-  .description("AI-powered browser testing for your changes")
+  .name("perf-agent")
+  .description("AI-powered performance analysis for your code changes")
   .version(VERSION, "-v, --version")
   .addHelpText(
     "after",
     `
 Examples:
-  $ expect tui                                          open interactive TUI
-  $ expect tui -m "test the login flow" -y              run immediately
-  $ expect tui --browser-mode headless -m "smoke test"  run headless
-  $ expect tui --cdp ws://localhost:9222 -m "test" -y   connect to existing Chrome via CDP
-  $ expect tui --target branch                          test all branch changes
-  $ expect update                                       update to the latest CLI release
-  $ expect tui --no-cookies -m "test" -y                skip system browser cookie extraction
-  $ expect tui -u http://localhost:3000 -m "test" -y    specify dev server URL directly
-  $ expect watch -m "test the login flow"               watch mode`,
+  $ perf-agent tui                                          open interactive TUI
+  $ perf-agent tui -m "analyze homepage performance" -y     run immediately
+  $ perf-agent tui --browser-mode headless -m "trace LCP"   run headless
+  $ perf-agent tui --cdp ws://localhost:9222 -m "trace" -y  connect to existing Chrome via CDP
+  $ perf-agent tui --target branch                          analyze all branch changes
+  $ perf-agent update                                       update to the latest CLI release
+  $ perf-agent tui --no-cookies -m "test" -y                skip system browser cookie extraction
+  $ perf-agent tui -u http://localhost:3000 -m "test" -y    specify dev server URL directly
+  $ perf-agent watch -m "test the login flow"               watch mode`,
   );
 
 const resolveBrowserMode = async (opts: CommanderOpts) => {
@@ -151,7 +151,7 @@ const promptSkillInstall = async () => {
   const agents = detectAvailableAgents();
   const projectRoot = await resolveProjectRoot();
   const skillInstalled = await Effect.runPromise(
-    hasInstalledExpectSkill(projectRoot, agents).pipe(Effect.provide(NodeServices.layer)),
+    hasInstalledPerfAgentSkill(projectRoot, agents).pipe(Effect.provide(NodeServices.layer)),
   );
   if (skillInstalled) return;
 
@@ -159,7 +159,7 @@ const promptSkillInstall = async () => {
   const response = await prompts({
     type: "confirm",
     name: "installSkill",
-    message: `Install the ${highlighter.info("expect")} skill for your coding agents?`,
+    message: `Install the ${highlighter.info("perf-agent")} skill for your coding agents?`,
     initial: true,
   });
 
@@ -190,7 +190,7 @@ const runInteractiveForTarget = async (target: Target, opts: CommanderOpts) => {
 program
   .command("init")
   .alias("setup")
-  .description("set up the Expect MCP server for your coding agent")
+  .description("set up the Perf Agent MCP server for your coding agent")
   .option("-y, --yes", "skip confirmation prompts")
   .option("--dry", "skip install steps, only run prompts")
   .option("--headed", "use headed browser mode (launch a browser window)")
@@ -199,10 +199,10 @@ program
     "after",
     `
 Examples:
-  $ expect init                     interactive setup
-  $ expect init -y                  non-interactive, use defaults
-  $ expect init --headed            set browser mode to headed
-  $ expect init --headless          set browser mode to headless`,
+  $ perf-agent init                     interactive setup
+  $ perf-agent init -y                  non-interactive, use defaults
+  $ perf-agent init --headed            set browser mode to headed
+  $ perf-agent init --headless          set browser mode to headless`,
   )
   .action(async (opts: { yes?: boolean; dry?: boolean; headed?: boolean; headless?: boolean }) => {
     await runInit(opts);
@@ -220,7 +220,7 @@ addCommand
 
 addCommand
   .command("skill")
-  .description("install the expect skill for your coding agent")
+  .description("install the perf-agent skill for your coding agent")
   .option("-y, --yes", "skip confirmation prompts")
   .action(async (opts: { yes?: boolean }) => {
     const agents = detectAvailableAgents();
@@ -257,7 +257,7 @@ program
 
 program
   .command("update")
-  .description("update the installed Expect MCP server config")
+  .description("update the installed Perf Agent MCP server config")
   .argument("[version]", "version or dist-tag to install")
   .action(async (version?: string) => {
     await runUpdateCommand(version);

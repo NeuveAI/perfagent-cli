@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { Git, Github, type CommitSummary } from "@expect/supervisor";
+import { Git, Github, type CommitSummary } from "@neuve/supervisor";
 import {
   TestContext,
   testContextFilterText,
@@ -9,7 +9,7 @@ import {
   type GitState,
   type RemoteBranch,
   type TestContext as TestContextType,
-} from "@expect/shared/models";
+} from "@neuve/shared/models";
 
 // HACK: Github.layer leaves `undefined` in R due to Effect v4 beta ServiceMap type inference
 const withGithub = <A, E>(effect: Effect.Effect<A, E, Github | undefined>) =>

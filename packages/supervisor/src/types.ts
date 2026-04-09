@@ -1,4 +1,4 @@
-export type { SavedFlow, SavedFlowStep } from "@expect/shared/models";
+export type { SavedFlow, SavedFlowStep } from "@neuve/shared/models";
 
 export interface SavedFlowEnvironment {
   baseUrl: string;

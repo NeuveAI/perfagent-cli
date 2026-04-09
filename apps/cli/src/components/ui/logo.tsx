@@ -12,7 +12,7 @@ export const Logo = () => {
         <Text color={COLORS.RED}>{figures.cross}</Text>
         <Text color={COLORS.GREEN}>{figures.tick}</Text>
         <Text bold color={COLORS.PRIMARY}>
-          {" Expect"}
+          {" Perf Agent"}
         </Text>
         <Text color={COLORS.DIM}>{` v${VERSION}`}</Text>
       </Text>

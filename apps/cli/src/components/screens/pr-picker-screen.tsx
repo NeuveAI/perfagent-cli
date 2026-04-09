@@ -12,14 +12,14 @@ import {
 import { useColors } from "../theme-context";
 import { RuledBox } from "../ui/ruled-box";
 import { SearchBar } from "../ui/search-bar";
-import { BRANCH_FILTERS, RemoteBranch, type BranchFilter } from "@expect/shared/models";
+import { BRANCH_FILTERS, RemoteBranch, type BranchFilter } from "@neuve/shared/models";
 import { useRemoteBranches } from "../../hooks/use-remote-branches";
 import { Spinner } from "../ui/spinner";
 import cliTruncate from "cli-truncate";
 import { visualPadEnd } from "../../utils/visual-pad-end";
 import { useScrollableList } from "../../hooks/use-scrollable-list";
 import { useNavigationStore, Screen } from "../../stores/use-navigation";
-import { checkoutBranch } from "@expect/supervisor";
+import { checkoutBranch } from "@neuve/supervisor";
 import { queryClient } from "../../query-client";
 import { ScreenHeading } from "../ui/screen-heading";
 

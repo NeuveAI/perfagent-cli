@@ -10,7 +10,7 @@ export const registerRulesResources = (server: McpServer) => {
   const promptLines = [
     "This MCP server provides built-in rules as resources. When you encounter a test failure with a `domain=` tag, or when a task involves one of the domains below, fetch the matching resource before writing code or attempting a fix.",
     "",
-    "Fetch `expect://rules` for the full table of contents.",
+    "Fetch `perf-agent://rules` for the full table of contents.",
     "",
     "Available rule resources:",
     "",
@@ -18,9 +18,9 @@ export const registerRulesResources = (server: McpServer) => {
   for (const rule of rules) {
     const subRuleHint =
       rule.subRules.length > 0
-        ? ` — fetch \`expect://rules/${rule.slug}/{sub-rule}\` for ${rule.subRules.length} detailed sub-rules`
+        ? ` — fetch \`perf-agent://rules/${rule.slug}/{sub-rule}\` for ${rule.subRules.length} detailed sub-rules`
         : "";
-    promptLines.push(`- \`expect://rules/${rule.slug}\` — ${rule.description}${subRuleHint}`);
+    promptLines.push(`- \`perf-agent://rules/${rule.slug}\` — ${rule.description}${subRuleHint}`);
   }
 
   server.registerPrompt(
@@ -44,7 +44,7 @@ export const registerRulesResources = (server: McpServer) => {
 
   server.registerResource(
     "rules-toc",
-    "expect://rules",
+    "perf-agent://rules",
     {
       title: "Rules",
       description: "Table of contents for all built-in rules and guidelines",
@@ -60,7 +60,7 @@ export const registerRulesResources = (server: McpServer) => {
 
     server.registerResource(
       `rule-${rule.slug}`,
-      `expect://rules/${rule.slug}`,
+      `perf-agent://rules/${rule.slug}`,
       {
         title: rule.slug,
         description: `${rule.description}${subRuleList}`,
@@ -78,7 +78,7 @@ export const registerRulesResources = (server: McpServer) => {
     if (rule.subRuleDir) {
       server.registerResource(
         `rule-${rule.slug}-sub`,
-        new ResourceTemplate(`expect://rules/${rule.slug}/{subRule}`, { list: undefined }),
+        new ResourceTemplate(`perf-agent://rules/${rule.slug}/{subRule}`, { list: undefined }),
         {
           title: `${rule.slug} sub-rule`,
           description: `Detailed sub-rule for ${rule.slug}`,

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { detectAvailableAgents, type SupportedAgent } from "@expect/agent";
-import type { AgentBackend } from "@expect/agent";
-import { AGENT_PROVIDER_DISPLAY_NAMES } from "@expect/shared/models";
+import { detectAvailableAgents, type SupportedAgent } from "@neuve/agent";
+import type { AgentBackend } from "@neuve/agent";
+import { AGENT_PROVIDER_DISPLAY_NAMES } from "@neuve/shared/models";
 
 export interface AvailableAgent {
   backend: AgentBackend;

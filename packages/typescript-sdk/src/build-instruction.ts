@@ -2,9 +2,9 @@ import { ExpectConfigError } from "./errors";
 
 export const resolveUrl = (url: unknown, baseUrl: string | undefined): string => {
   if (typeof url !== "string") {
-    throw new ExpectConfigError(
+    throw new PerfAgentConfigError(
       `Expected a URL string, got ${typeof url}.`,
-      `Expect.test({ url: "http://localhost:3000/login", tests: [...] })`,
+      `PerfAgent.test({ url: "http://localhost:3000/login", tests: [...] })`,
     );
   }
 
@@ -15,9 +15,9 @@ export const resolveUrl = (url: unknown, baseUrl: string | undefined): string =>
   }
 
   if (!baseUrl) {
-    throw new ExpectConfigError(
+    throw new PerfAgentConfigError(
       `No baseUrl configured and URL "${url}" is relative.`,
-      `configure({ baseUrl: "http://localhost:3000" })\nOr use a full URL: Expect.test({ url: "http://localhost:3000${url}", tests: [...] })`,
+      `configure({ baseUrl: "http://localhost:3000" })\nOr use a full URL: PerfAgent.test({ url: "http://localhost:3000${url}", tests: [...] })`,
     );
   }
 

@@ -2,8 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect } from "effect";
-import { detectAvailableAgents, type SupportedAgent } from "@expect/agent";
-import { detectProject } from "@expect/supervisor/detect-project";
+import { detectAvailableAgents, type SupportedAgent } from "@neuve/agent";
+import { detectProject } from "@neuve/supervisor/detect-project";
 import { highlighter } from "../utils/highlighter";
 import { logger } from "../utils/logger";
 import { prompts } from "../utils/prompts";
@@ -55,16 +55,16 @@ const generateWorkflow = (packageManager: PackageManager, devCommand: string, de
 
   const setupSteps = buildSetupSteps(packageManager, install);
 
-  return `# Runs Expect browser tests in CI on every pull request.
-# Expect reads the PR diff, generates a test plan, and validates changes in a real browser.
-name: Expect CI
+  return `# Runs Perf Agent performance analysis in CI on every pull request.
+# Perf Agent reads the PR diff, generates an analysis plan, and profiles changes in a real browser.
+name: Perf Agent CI
 
 on:
   pull_request:
     branches: [main]
 
 jobs:
-  expect:
+  perf-analysis:
     # Prevents forks and external contributors from consuming CI credits or accessing secrets.
     if: github.event.sender.permissions.write == true
     runs-on: ubuntu-latest
@@ -74,39 +74,36 @@ jobs:
       pull-requests: write
     env:
       ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}
-      # Expect uses this local app URL as the browser test target in CI.
-      # Override by setting the EXPECT_BASE_URL repository variable.
-      EXPECT_BASE_URL: \${{ vars.EXPECT_BASE_URL || '${devUrl}' }}
+      # Perf Agent uses this local app URL as the browser target in CI.
+      # Override by setting the PERF_AGENT_BASE_URL repository variable.
+      PERF_AGENT_BASE_URL: \${{ vars.PERF_AGENT_BASE_URL || '${devUrl}' }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 ${setupSteps}
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium webkit firefox
-
-      # Expect runs against your dev server by default, not a production build or deployed preview.
-      # To test a preview URL instead, set the EXPECT_BASE_URL repository variable to skip
+      # Perf Agent runs against your dev server by default, not a production build or deployed preview.
+      # To profile a preview URL instead, set the PERF_AGENT_BASE_URL repository variable to skip
       # local dev server startup entirely.
       - name: Start dev server
-        if: \${{ !vars.EXPECT_BASE_URL }}
+        if: \${{ !vars.PERF_AGENT_BASE_URL }}
         run: ${devCommand} &
 
       - name: Wait for dev server
-        run: npx wait-on $EXPECT_BASE_URL --timeout 60000
+        run: npx wait-on $PERF_AGENT_BASE_URL --timeout 60000
 
-      - name: Run expect
+      - name: Run perf-agent
         env:
           GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-        run: ${dlx} expect-cli@latest --ci
+        run: ${dlx} @neuve/perf-agent-cli@latest --ci
 
-      - name: Upload test artifacts
+      - name: Upload analysis artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: expect-test-results
-          path: .expect/sessions/
+          name: perf-agent-results
+          path: .perf-agent/sessions/
           if-no-files-found: ignore
 `;
 };
@@ -201,14 +198,14 @@ export const runAddGithubAction = async (options: AddGithubActionOptions = {}) =
   }
 
   const workflowDir = path.join(process.cwd(), ".github", "workflows");
-  const workflowPath = path.join(workflowDir, "expect.yml");
+  const workflowPath = path.join(workflowDir, "perf-agent.yml");
 
   if (fs.existsSync(workflowPath)) {
     if (!nonInteractive) {
       const response = await prompts({
         type: "confirm",
         name: "overwrite",
-        message: `${highlighter.warn(".github/workflows/expect.yml")} already exists. Overwrite?`,
+        message: `${highlighter.warn(".github/workflows/perf-agent.yml")} already exists. Overwrite?`,
         initial: false,
       });
       if (!response.overwrite) {
@@ -216,7 +213,7 @@ export const runAddGithubAction = async (options: AddGithubActionOptions = {}) =
         return;
       }
     } else {
-      logger.dim("  .github/workflows/expect.yml already exists, skipping.");
+      logger.dim("  .github/workflows/perf-agent.yml already exists, skipping.");
       return;
     }
   }
@@ -226,8 +223,8 @@ export const runAddGithubAction = async (options: AddGithubActionOptions = {}) =
   fs.writeFileSync(workflowPath, workflow);
 
   logger.break();
-  logger.success("Created .github/workflows/expect.yml");
-  logger.dim("  Expect will automatically test every pull request in CI.");
+  logger.success("Created .github/workflows/perf-agent.yml");
+  logger.dim("  Perf Agent will automatically test every pull request in CI.");
   logger.break();
 
   const ghAvailable = await Effect.runPromise(hasGhCli);

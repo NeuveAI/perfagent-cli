@@ -1,6 +1,6 @@
 import { Layer } from "effect";
-import { Executor, Git } from "@expect/supervisor";
-import { Agent, type AgentBackend } from "@expect/agent";
+import { Executor, Git } from "@neuve/supervisor";
+import { Agent, type AgentBackend } from "@neuve/agent";
 
 export const layerSdk = (agentBackend: AgentBackend, rootDir: string) => {
   const gitLayer = Git.withRepoRoot(rootDir);

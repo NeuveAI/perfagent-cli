@@ -1,5 +1,5 @@
 import { Effect, Layer, Option, ServiceMap } from "effect";
-import { type ExecutedTestPlan, TestReport } from "@expect/shared/models";
+import { type ExecutedTestPlan, TestReport } from "@neuve/shared/models";
 
 export class Reporter extends ServiceMap.Service<Reporter>()("@supervisor/Reporter", {
   make: Effect.gen(function* () {

@@ -3,7 +3,7 @@ import { chromium } from "playwright";
 import type { Browser, BrowserContext, Page } from "playwright";
 import * as http from "node:http";
 import type { AddressInfo } from "node:net";
-import { Cookie } from "@expect/cookies";
+import { Cookie } from "@neuve/cookies";
 import { injectCookies } from "./helpers/inject-cookies";
 import { createPage } from "./helpers/create-page";
 

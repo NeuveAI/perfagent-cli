@@ -42,12 +42,12 @@ const distToSource = (distPath: string): string =>
     .replace(/\.mjs$/, ".ts")
     .replace(/\.d\.mts$/, ".ts");
 
-const buildExpectSubpathMap = (): Record<string, string> => {
+const buildNeuveSubpathMap = (): Record<string, string> => {
   const map: Record<string, string> = {};
   const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
 
   for (const packageName of Object.keys(allDeps)) {
-    if (!packageName.startsWith("@expect/")) continue;
+    if (!packageName.startsWith("@neuve/")) continue;
 
     const packageDir = findPackageDir(packageName);
     if (!packageDir) continue;
@@ -72,10 +72,10 @@ const buildExpectSubpathMap = (): Record<string, string> => {
   return map;
 };
 
-const expectSubpathPlugin = (): Plugin => {
-  const subpathMap = buildExpectSubpathMap();
+const neuveSubpathPlugin = (): Plugin => {
+  const subpathMap = buildNeuveSubpathMap();
   return {
-    name: "expect-subpath-resolve",
+    name: "neuve-subpath-resolve",
     resolveId(source) {
       if (subpathMap[source]) return subpathMap[source];
     },
@@ -97,7 +97,7 @@ export default defineConfig({
       __RULES_CONTENT__: buildRulesContent(),
     },
     deps: {
-      alwaysBundle: [/^@expect\//],
+      alwaysBundle: [/^@neuve\//],
       neverBundle: [
         "playwright",
         "@agentclientprotocol/claude-agent-acp",
@@ -106,6 +106,6 @@ export default defineConfig({
       ],
     },
     minify: true,
-    plugins: [expectSubpathPlugin(), reactCompilerPlugin()],
+    plugins: [neuveSubpathPlugin(), reactCompilerPlugin()],
   },
 });

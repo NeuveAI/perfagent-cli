@@ -1,9 +1,9 @@
 import { Effect, Option, Predicate, Stream } from "effect";
 import * as Atom from "effect/unstable/reactivity/Atom";
-import { ExecutedTestPlan, Executor, Git, Reporter, type ExecuteOptions } from "@expect/supervisor";
-import { Analytics } from "@expect/shared/observability";
-import type { AgentBackend } from "@expect/agent";
-import type { AcpConfigOption, TestReport, PlanId } from "@expect/shared/models";
+import { ExecutedTestPlan, Executor, Git, Reporter, type ExecuteOptions } from "@neuve/supervisor";
+import { Analytics } from "@neuve/shared/observability";
+import type { AgentBackend } from "@neuve/agent";
+import type { AcpConfigOption, TestReport, PlanId } from "@neuve/shared/models";
 import { cliAtomRuntime } from "./runtime";
 import { stripUndefinedRequirement } from "../utils/strip-undefined-requirement";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -118,7 +118,7 @@ const executeCore = (input: ExecuteInput) =>
       report,
       videoUrl: artifacts.videoUrl,
     } satisfies ExecutionResult;
-  }).pipe(Effect.withSpan("expect.session"));
+  }).pipe(Effect.withSpan("perf-agent.session"));
 
 export const executeFn = cliAtomRuntime.fn<ExecuteInput>()((input) =>
   stripUndefinedRequirement(executeCore(input).pipe(Effect.annotateLogs({ fn: "executeFn" }))).pipe(

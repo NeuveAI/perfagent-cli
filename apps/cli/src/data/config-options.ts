@@ -1,6 +1,6 @@
 import * as Atom from "effect/unstable/reactivity/Atom";
-import type { AgentBackend } from "@expect/agent";
-import type { AcpConfigOption } from "@expect/shared/models";
+import type { AgentBackend } from "@neuve/agent";
+import type { AcpConfigOption } from "@neuve/shared/models";
 
 export const agentConfigOptionsAtom = Atom.make<Record<AgentBackend, AcpConfigOption[]>>({
   claude: [],

@@ -30,7 +30,7 @@ export interface AnalyticsProviderShape {
 export class AnalyticsProvider extends ServiceMap.Service<
   AnalyticsProvider,
   AnalyticsProviderShape
->()("@expect/AnalyticsProvider") {
+>()("@neuve/AnalyticsProvider") {
   static layerPostHog = Layer.succeed(this)({
     capture: (event) =>
       Effect.tryPromise(() =>
@@ -76,7 +76,7 @@ export class AnalyticsProvider extends ServiceMap.Service<
   });
 }
 
-export class Analytics extends ServiceMap.Service<Analytics>()("@expect/Analytics", {
+export class Analytics extends ServiceMap.Service<Analytics>()("@neuve/Analytics", {
   make: Effect.gen(function* () {
     const provider = yield* AnalyticsProvider;
     const noTelemetryValue = yield* Config.option(Config.string("NO_TELEMETRY"));

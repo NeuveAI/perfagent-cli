@@ -1,7 +1,7 @@
-import type { WatchEvent } from "@expect/supervisor";
+import type { WatchEvent } from "@neuve/supervisor";
 import { playSoundAndNotify } from "./play-sound";
 
-const NOTIFICATION_TITLE = "expect";
+const NOTIFICATION_TITLE = "perf-agent";
 
 export const sendWatchNotification = (event: WatchEvent): Promise<void> | undefined => {
   if (event._tag === "RunCompleted") {

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Effect, Option } from "effect";
-import { Browsers, layerLive, browserKeyOf, browserDisplayName } from "@expect/cookies";
-import type { BrowserKey } from "@expect/cookies";
+import { Browsers, layerLive, browserKeyOf, browserDisplayName } from "@neuve/cookies";
+import type { BrowserKey } from "@neuve/cookies";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 
 export interface DetectedBrowser {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { DateTime, Option } from "effect";
-import { TestPlanStep, StepId } from "@expect/shared/models";
+import { TestPlanStep, StepId } from "@neuve/shared/models";
 import { getStepElapsedMs, getTotalElapsedMs } from "../src/utils/step-elapsed";
 
 const makeDateTime = (epochMs: number) => DateTime.makeUnsafe(new Date(epochMs));

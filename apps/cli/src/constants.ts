@@ -45,10 +45,10 @@ export const PROJECT_SCAN_MAX_DEPTH = 3;
 export const CI_EXECUTION_TIMEOUT_MS = 30 * 60 * 1000;
 export const CI_HEARTBEAT_INTERVAL_MS = 60_000;
 
-export const NPM_PACKAGE_NAME = "expect-cli";
-export const EXPECT_MCP_SERVER_NAME = "expect";
+export const NPM_PACKAGE_NAME = "@neuve/perf-agent-cli";
+export const PERF_AGENT_MCP_SERVER_NAME = "perf-agent";
 export const CODEX_MCP_STARTUP_TIMEOUT_SEC = 20;
-export const VERSION_API_URL = "https://expect.dev/api/version";
+export const VERSION_API_URL = "https://perf-agent.dev/api/version";
 export const UPDATE_CHECK_STALE_MS = 3_600_000;
 export const UPDATE_CHECK_TIMEOUT_MS = 5_000;
 export const SKILL_FETCH_TIMEOUT_MS = 5_000;

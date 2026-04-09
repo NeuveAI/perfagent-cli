@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import figures from "figures";
-import type { ChangesFor, SavedFlow } from "@expect/shared/models";
+import type { ChangesFor, SavedFlow } from "@neuve/shared/models";
 import { trackEvent } from "../../utils/session-analytics";
 import { useColors } from "../theme-context";
 import { Logo } from "../ui/logo";

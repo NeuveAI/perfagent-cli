@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { ChangesFor, Git } from "@expect/supervisor";
+import { ChangesFor, Git } from "@neuve/supervisor";
 
 type Target = "unstaged" | "branch" | "changes";
 

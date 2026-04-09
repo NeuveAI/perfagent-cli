@@ -14,7 +14,7 @@ import {
   StepSkipped,
   RunFinished,
   ToolResult,
-} from "@expect/shared/models";
+} from "@neuve/shared/models";
 import {
   buildStepResult,
   buildTestResult,
@@ -63,7 +63,7 @@ const makePlan = (steps: TestPlanStep[] = []): TestPlan =>
 
 const makeExecuted = (
   steps: TestPlanStep[] = [],
-  events: readonly (typeof import("@expect/shared/models").ExecutionEvent.Type)[] = [],
+  events: readonly (typeof import("@neuve/shared/models").ExecutionEvent.Type)[] = [],
 ): ExecutedTestPlan => {
   const plan = makePlan(steps);
   return new ExecutedTestPlan({ ...plan, steps, events });

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { ExecutedTestPlan } from "@expect/supervisor";
+import { ExecutedTestPlan } from "@neuve/supervisor";
 
 interface PlanExecutionStore {
   executedPlan: ExecutedTestPlan | undefined;

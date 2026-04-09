@@ -39,7 +39,7 @@ export const ErrorMessage = ({ error, type }: ErrorMessageProps) => {
       {isDefect && (
         <Text color={COLORS.DIM}>
           This is a bug. Report it at{" "}
-          <Text color={COLORS.YELLOW}>https://github.com/millionco/expect/issues</Text>
+          <Text color={COLORS.YELLOW}>https://github.com/neuve/perf-agent-cli/issues</Text>
         </Text>
       )}
       <Text color={COLORS.DIM}>

@@ -1,4 +1,4 @@
-import type { GitState, TestContext } from "@expect/shared/models";
+import type { GitState, TestContext } from "@neuve/shared/models";
 
 const DEFAULT_SUGGESTIONS: readonly string[] = [
   "Test the main user flow end to end",

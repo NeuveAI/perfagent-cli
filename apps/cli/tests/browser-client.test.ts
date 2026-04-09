@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { printToolResult, stripUndefined, type ToolResult } from "../src/utils/browser-client";
-import { TMP_ARTIFACT_OUTPUT_DIRECTORY } from "@expect/browser/mcp";
+import { TMP_ARTIFACT_OUTPUT_DIRECTORY } from "@neuve/devtools/mcp";
 
 const mockMkdirSync = vi.fn();
 const mockWriteFileSync = vi.fn();

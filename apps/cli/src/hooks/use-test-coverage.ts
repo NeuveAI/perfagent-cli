@@ -1,8 +1,8 @@
 import { Effect, Exit } from "effect";
 import { useQuery } from "@tanstack/react-query";
-import { ChangesFor, Git, TestCoverage } from "@expect/supervisor";
-import type { ChangedFile, TestCoverageReport } from "@expect/shared/models";
-import type { GitState } from "@expect/shared/models";
+import { ChangesFor, Git, TestCoverage } from "@neuve/supervisor";
+import type { ChangedFile, TestCoverageReport } from "@neuve/shared/models";
+import type { GitState } from "@neuve/shared/models";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { TEST_COVERAGE_TIMEOUT_MS } from "../constants";
 
