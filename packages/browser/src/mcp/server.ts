@@ -1,671 +1,477 @@
-import * as crypto from "node:crypto";
-import * as path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod/v4";
-import { Effect, Option, type ManagedRuntime } from "effect";
-import { FileSystem } from "effect/FileSystem";
-import { evaluateRuntime } from "../utils/evaluate-runtime";
-import { runAccessibilityAudit } from "../accessibility";
-import { formatPerformanceTrace } from "../performance-trace";
+import { Effect, type ManagedRuntime } from "effect";
+import { DevToolsClient } from "../devtools-client";
 import { McpSession } from "./mcp-session";
-import { OverlayController } from "./overlay-controller";
-import {
-  DUPLICATE_REQUEST_WINDOW_MS,
-  MAX_STRINGIFY_LENGTH,
-  PLAYWRIGHT_RESULTS_DIR,
-  TMP_ARTIFACT_OUTPUT_DIRECTORY,
-} from "./constants";
 
 const textResult = (text: string) => ({
   content: [{ type: "text" as const, text }],
 });
 
-const NON_SERIALIZABLE_CONSTRUCTORS = new Set([
-  "Locator",
-  "ElementHandle",
-  "JSHandle",
-  "Frame",
-  "Page",
-  "BrowserContext",
-  "Browser",
-  "CDPSession",
-]);
-
-const safeToString = (value: unknown): string => {
-  try {
-    return String(value);
-  } catch {
-    return "[unserializable]";
+const extractTextContent = (result: {
+  readonly content: ReadonlyArray<{
+    readonly type: string;
+    readonly text?: string;
+    readonly data?: string;
+    readonly mimeType?: string;
+  }>;
+}) => {
+  const parts: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [];
+  for (const item of result.content) {
+    if (item.type === "text" && item.text) {
+      parts.push({ type: "text" as const, text: item.text });
+    }
+    if (item.type === "image" && item.data && item.mimeType) {
+      parts.push({ type: "image" as const, data: item.data, mimeType: item.mimeType });
+    }
   }
+  return { content: parts.length > 0 ? parts : [{ type: "text" as const, text: "OK" }] };
 };
 
-const safeJsonStringify = (data: unknown): string => {
-  const seen = new WeakSet();
-  return JSON.stringify(
-    data,
-    (_key, value) => {
-      if (value === undefined) return undefined;
-      if (value === null) return null;
-
-      switch (typeof value) {
-        case "bigint":
-          return `${value}n`;
-        case "function":
-          return `[Function: ${value.name || "anonymous"}]`;
-        case "symbol":
-          return safeToString(value);
-        case "object":
-          break;
-        case "string":
-          if (value.length > MAX_STRINGIFY_LENGTH) {
-            return `${value.slice(0, MAX_STRINGIFY_LENGTH)}… [truncated ${value.length - MAX_STRINGIFY_LENGTH} chars]`;
-          }
-          return value;
-        default:
-          return value;
-      }
-
-      if (seen.has(value)) return "[Circular]";
-      seen.add(value);
-
-      if (Buffer.isBuffer(value)) return `[Buffer: ${value.length} bytes]`;
-      if (value instanceof RegExp) return safeToString(value);
-      if (value instanceof Error) return { error: value.name, message: value.message };
-      if (value instanceof Map) return Array.from(value.entries());
-      if (value instanceof Set) return [...value];
-
-      const constructorName = value.constructor?.name;
-      if (
-        typeof constructorName === "string" &&
-        NON_SERIALIZABLE_CONSTRUCTORS.has(constructorName)
-      ) {
-        return `[${constructorName}: ${safeToString(value)}]`;
-      }
-
-      return value;
-    },
-    2,
-  );
-};
-
-const jsonResult = (data: unknown) => textResult(safeJsonStringify(data));
-
-const imageResult = (base64: string) => ({
-  content: [{ type: "image" as const, data: base64, mimeType: "image/png" }],
-});
-
-// HACK: get AsyncFunction constructor for dynamic code evaluation in playwright tool
-const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
-
-const writeResultFile = (fileSystem: FileSystem, content: string) =>
-  Effect.gen(function* () {
-    const id = crypto.randomBytes(4).toString("hex");
-    const filePath = path.join(PLAYWRIGHT_RESULTS_DIR, `result-${id}.json`);
-    yield* fileSystem.makeDirectory(PLAYWRIGHT_RESULTS_DIR, { recursive: true });
-    yield* fileSystem.writeFileString(filePath, content);
-    return filePath;
-  }).pipe(
-    Effect.catchTag("PlatformError", (error) =>
-      Effect.logDebug("Failed to write playwright result file", {
-        error: error.message,
-      }).pipe(Effect.as(undefined)),
-    ),
-  );
-
-const buildExpectGuide = (): string =>
+const buildPerfAgentGuide = (): string =>
   [
-    "You validate code changes that were just generated or modified by testing them in a real browser. Your job is to find bugs, verify correctness, audit accessibility, and measure performance before the changes are considered complete.",
+    "You are a performance analysis agent. You analyze web application performance using Chrome DevTools tools.",
     "",
-    "You are the quality gate — the agent made code changes, and now you verify they actually work.",
+    "You validate code changes by measuring their performance impact in a real browser. Your job is to find performance regressions, measure Core Web Vitals, audit accessibility, and profile runtime behavior.",
     "",
     "<execution_strategy>",
-    "Use the perf-agent MCP tools (open, playwright, screenshot, console_logs, network_requests, performance_metrics, accessibility_audit, close) for browser interactions. Do NOT use other browser automation tools (Playwright MCP, chrome tools, etc.).",
+    "Use the perf-agent MCP tools for all browser interactions. Do NOT use other browser automation tools.",
     "",
     "Workflow:",
-    "1. `open` → interact with `playwright` and `screenshot` → observe with `console_logs` and `network_requests` → audit with `accessibility_audit` and `performance_metrics` → `close`.",
-    "2. One browser session at a time. For cross-browser testing (WebKit, Firefox), close first, then open with a different engine.",
+    "1. `navigate_page` to the target URL",
+    "2. Use `take_snapshot` to understand page structure",
+    "3. Use `performance_start_trace` and `performance_stop_trace` for performance profiling",
+    "4. Use `performance_analyze_insight` to dig into specific performance insights",
+    "5. Use `lighthouse_audit` for accessibility, SEO, and best practices",
+    "6. Use `emulate` to test under constrained conditions (slow CPU, network throttling)",
+    "7. Use `take_memory_snapshot` to analyze memory usage",
+    "8. Use `list_network_requests` and `list_console_messages` to check for errors",
+    "9. Use `close` when done",
     "</execution_strategy>",
     "",
-    "<expect_mcp_tools>",
-    "Use these tools for browser interactions. They are provided by the perf-agent MCP server.",
-    "",
-    "1. open: launch a browser and navigate to a URL. Pass headed=true to show the browser window. Pass cookies=true to reuse local browser cookies. Pass browser='webkit' or browser='firefox' for cross-browser testing. Pass cdp='ws://...' to connect to an existing Chrome instance.",
-    "2. playwright: execute Playwright code in Node.js context. Globals: page (Page), context (BrowserContext), browser (Browser), ref (function: snapshot ref ID → Locator). Use `return` to collect data from the page — the response is JSON: { result: <your value>, resultFile: '<path>' }. The result is also written to a tmp file you can read or grep later. Batch multiple actions AND data collection into a single playwright call. Set snapshotAfter=true to auto-snapshot after DOM-changing actions (response adds snapshot alongside result).",
-    "3. screenshot: capture page state. Modes: 'snapshot' (ARIA accessibility tree with element refs — preferred for interaction), 'screenshot' (PNG image), 'annotated' (PNG with numbered labels on interactive elements). Pass fullPage=true for full scrollable content.",
-    "4. console_logs: get browser console messages. Filter by type ('error', 'warning', 'log'). Pass clear=true to reset after reading.",
-    "5. network_requests: get captured HTTP requests with automatic issue detection (4xx/5xx failures, duplicate requests, mixed content). Filter by method, URL, or resource type.",
-    "6. performance_metrics: collect Core Web Vitals (FCP, LCP, CLS, INP), navigation timing (TTFB), Long Animation Frames (LoAF) with script attribution, and resource breakdown.",
-    "7. accessibility_audit: run a WCAG accessibility audit using axe-core + IBM Equal Access. Returns violations sorted by severity with CSS selectors, HTML context, and fix guidance.",
-    "8. close: close the browser and end the session. Always call this when done — it flushes the session video and screenshots to disk.",
-    "</expect_mcp_tools>",
-    "",
-    "<snapshot_workflow>",
-    "Prefer screenshot mode 'snapshot' for observing page state. Use 'screenshot' or 'annotated' only for purely visual checks.",
-    "",
-    "1. Call screenshot with mode='snapshot' to get the ARIA tree with refs like [ref=e4].",
-    "2. Use ref() in playwright to act on elements AND collect data in a single call:",
-    "   await ref('e3').fill('test@example.com'); await ref('e4').fill('password'); await ref('e5').click();",
-    "   return { title: await page.title(), url: page.url(), errorCount: (await page.$$('.error')).length };",
-    "3. Take a new snapshot only when the page structure changes (navigation, modal open/close, new content loaded).",
-    "4. Always snapshot first, then use ref() to act. Never guess CSS selectors when refs are available.",
-    "",
-    "Return value format:",
-    "- No return → 'OK'",
-    "- With return → JSON: { result: <your value>, resultFile: '/tmp/perf-agent-artifacts/playwright-results/result-<id>.json' }",
-    "- With return + snapshotAfter → JSON: { result: <value>, resultFile: '<path>', snapshot: { tree, refs, stats } }",
-    "- snapshotAfter only (no return) → JSON: { snapshot: { tree, refs, stats } }",
-    "The resultFile persists until the session closes. Use it to read or grep collected data across multiple steps.",
-    "",
-    "Batch all actions that share the same page state into a single playwright call — fills, clicks, AND data collection. Do NOT batch across DOM-changing boundaries (dropdown open, modal, dialog, navigation). After a DOM-changing action, use snapshotAfter=true or take a new snapshot for fresh refs.",
-    "",
-    "Layered interactions (dropdowns, menus, popovers): click trigger, wait briefly, take a NEW snapshot, then click the revealed option. For native <select> elements, use ref('eN').selectOption('value') directly.",
-    "",
-    "Scroll-aware snapshots: snapshots only show visible elements. Hidden items appear as '- note \"N items hidden above/below\"'. To reveal hidden content, scroll using playwright: await page.evaluate(() => document.querySelector('[aria-label=\"List\"]').scrollTop += 500). Then take a new snapshot. Use fullPage=true to include all elements.",
-    "</snapshot_workflow>",
-    "",
-    "<stability_and_recovery>",
-    "- After navigation or major UI changes, wait for the page to settle: await page.waitForLoadState('networkidle').",
-    "- Use event-driven waits (waitForSelector, waitForURL, waitForFunction) instead of timed delays. Take a new snapshot after each wait resolves.",
-    "- When a ref stops working: take a new snapshot for fresh refs, scroll the target into view, or retry once.",
-    "- Do not repeat the same failing action without new evidence (fresh snapshot, different ref, changed page state).",
-    "- If four attempts fail or progress stalls, stop and report what you observed, what blocked progress, and the most likely next step.",
-    "- If you encounter a hard blocker (login, passkey, captcha, permissions), stop and report it instead of improvising.",
-    "</stability_and_recovery>",
+    "<performance_tools>",
+    "1. navigate_page: Navigate to a URL, or go back/forward/reload",
+    "2. take_snapshot: Get accessibility tree with element UIDs (preferred for understanding page structure)",
+    "3. take_screenshot: Capture page as PNG/JPEG/WebP image",
+    "4. performance_start_trace: Start a performance trace (Core Web Vitals, LoAF, resource timing)",
+    "5. performance_stop_trace: Stop the active trace and get results with insights",
+    "6. performance_analyze_insight: Get detailed info on a specific performance insight from a trace",
+    "7. emulate: Apply CPU/network throttling, viewport, geolocation, user agent emulation",
+    "8. lighthouse_audit: Run Lighthouse for accessibility, SEO, best practices (not performance — use traces for that)",
+    "9. take_memory_snapshot: Capture heap snapshot for memory analysis",
+    "10. list_network_requests: List all network requests since last navigation",
+    "11. list_console_messages: List console messages (errors, warnings, logs)",
+    "12. evaluate_script: Execute JavaScript in the page context",
+    "13. close: Close the DevTools session and browser",
+    "</performance_tools>",
     "",
     "<best_practices>",
-    "- After each interaction step, call console_logs with type='error' to catch unexpected errors.",
-    "- Use accessibility_audit before concluding a test session to catch WCAG violations.",
-    "- Use performance_metrics to check for Core Web Vitals issues.",
-    "- When testing forms, use adversarial input: Unicode (umlauts, CJK, RTL), boundary values (0, -1, 999999999), long strings (200+ chars), and XSS payloads.",
-    "- For responsive testing, use page.setViewportSize() at multiple breakpoints: 375x812 (mobile), 768x1024 (tablet), 1280x800 (laptop), 1440x900 (desktop).",
-    "- Assertion-first: navigate, act, then validate before moving on. Check at least two independent signals per step (e.g. URL changed AND new content appeared).",
+    "- Always start with `navigate_page` to ensure you are on the correct URL before tracing",
+    "- Use `performance_start_trace` with reload=true for cold-load profiling",
+    "- Use `performance_start_trace` with reload=false for interaction profiling",
+    "- After a trace, use `performance_analyze_insight` to investigate specific insights",
+    "- Use `emulate` with cpuThrottlingRate=4 to simulate mid-tier mobile devices",
+    "- Use `emulate` with networkConditions='Slow 3G' to test under poor network conditions",
+    "- Check `list_console_messages` for JavaScript errors that may indicate bugs",
+    "- Use `take_memory_snapshot` before and after interactions to detect memory leaks",
     "</best_practices>",
   ].join("\n");
 
 // HACK: tool annotations (readOnlyHint, destructiveHint) are required for parallel execution in the Claude Agent SDK
 export const createBrowserMcpServer = <E>(
-  runtime: ManagedRuntime.ManagedRuntime<McpSession | OverlayController | FileSystem, E>,
+  runtime: ManagedRuntime.ManagedRuntime<McpSession | DevToolsClient, E>,
 ) => {
-  const runMcp = <A>(
-    effect: Effect.Effect<A, unknown, McpSession | OverlayController | FileSystem>,
-  ) => runtime.runPromise(effect);
+  const runMcp = <A>(effect: Effect.Effect<A, unknown, McpSession | DevToolsClient>) =>
+    runtime.runPromise(effect);
 
   const server = new McpServer({
     name: "perf-agent",
     version: "0.0.1",
   });
 
-  const openTool = server.registerTool(
-    "open",
+  const navigatePageTool = server.registerTool(
+    "navigate_page",
     {
-      title: "Open URL",
+      title: "Navigate Page",
       description:
-        "Navigate to a URL, launching a browser if needed. Set 'cdp' to a WebSocket URL (e.g. 'ws://localhost:9222/devtools/browser/...') to connect to an already-running Chrome via CDP instead of launching a new browser.",
+        "Navigate to a URL, or go back, forward, or reload the page.",
       inputSchema: {
-        url: z.string().describe("URL to navigate to"),
-        headed: z.boolean().optional().describe("Show browser window"),
-        cookies: z
+        url: z.string().optional().describe("Target URL (required for type=url)"),
+        type: z
+          .enum(["url", "back", "forward", "reload"])
+          .optional()
+          .describe("Navigation type (default: url)"),
+        ignoreCache: z
           .boolean()
           .optional()
-          .describe("Reuse local browser cookies for the target URL when available"),
-        waitUntil: z
-          .enum(["load", "domcontentloaded", "networkidle", "commit"])
-          .optional()
-          .describe("Wait strategy"),
-        cdp: z
-          .string()
-          .optional()
-          .describe(
-            "CDP WebSocket endpoint URL to connect to an existing Chrome instance (e.g. 'ws://localhost:9222/devtools/browser/...').",
-          ),
-        browser: z
-          .enum(["chromium", "webkit", "firefox"])
-          .optional()
-          .describe(
-            "Browser engine to launch (default: chromium). Use 'webkit' for Safari-like testing or 'firefox' for Firefox testing. CDP connections are only supported with chromium.",
-          ),
+          .describe("Whether to ignore cache on reload"),
       },
     },
-    ({ url, headed, cookies, waitUntil, cdp, browser: browserType }) =>
+    ({ url, type, ignoreCache }) =>
       runMcp(
         Effect.gen(function* () {
+          const devtools = yield* DevToolsClient;
           const session = yield* McpSession;
-          const overlay = yield* OverlayController;
-
-          if (session.hasSession()) {
-            const page = yield* session.requirePage();
-            yield* overlay.updateLabel(page, `Navigating to ${url}`);
-            yield* session.navigate(url, { waitUntil });
-            return textResult(`Navigated to ${url}`);
-          }
-
-          const result = yield* session.open(url, {
-            headed,
-            cookies,
-            waitUntil,
-            cdpUrl: Option.fromNullishOr(cdp),
-            browserType,
-          });
-          const engineSuffix = browserType && browserType !== "chromium" ? ` [${browserType}]` : "";
-          const cdpSuffix = cdp ? ` (connected via CDP: ${cdp})` : "";
-          const chromeSuffix = result.isExternalBrowser ? " (live Chrome)" : "";
-          return textResult(
-            `Opened ${url}${engineSuffix}${cdpSuffix}${chromeSuffix}` +
-              (result.injectedCookieCount > 0
-                ? ` (${result.injectedCookieCount} cookies synced from local browser)`
-                : ""),
-          );
-        }).pipe(Effect.withSpan(`mcp.tool.open`)),
+          const resolvedUrl = url ? session.resolveUrl(url) : undefined;
+          const args: Record<string, unknown> = {};
+          if (resolvedUrl) args.url = resolvedUrl;
+          if (type) args.type = type;
+          if (ignoreCache !== undefined) args.ignoreCache = ignoreCache;
+          const result = yield* devtools.callTool("navigate_page", args);
+          yield* Effect.logInfo("Page navigated", { url: resolvedUrl, type });
+          return extractTextContent(result);
+        }).pipe(Effect.withSpan("mcp.tool.navigate_page")),
       ),
   );
 
-  const playwrightTool = server.registerTool(
-    "playwright",
+  const takeSnapshotTool = server.registerTool(
+    "take_snapshot",
     {
-      title: "Execute Playwright",
+      title: "Take Snapshot",
       description:
-        "Execute Playwright code in the Node.js context. Available globals: page (Page), context (BrowserContext), browser (Browser), ref (function: ref ID from snapshot → Playwright Locator). Supports await. Use `return` to collect data — response is JSON: { result: <your value>, resultFile: '<tmp path>' }. The result file persists until close so you can read or grep it later. With snapshotAfter=true, the response also includes a snapshot field with fresh refs. Without a return value, responds 'OK' (or just the snapshot if snapshotAfter=true).",
+        "Take a text snapshot of the page based on the accessibility tree. Lists page elements with unique identifiers (UIDs). Prefer snapshot over screenshot for understanding page structure.",
+      annotations: { readOnlyHint: true },
       inputSchema: {
-        code: z.string().describe("Playwright code to execute"),
-        description: z
-          .string()
-          .optional()
-          .describe(
-            "Short human-readable description of what this action does (e.g. 'Click the login button'). Shown in the overlay tooltip.",
-          ),
-        snapshotAfter: z
+        verbose: z
           .boolean()
           .optional()
-          .describe(
-            "Take a fresh ARIA snapshot after execution and return it alongside the result. Use after actions that change the DOM (dropdowns, dialogs, navigation).",
-          ),
+          .describe("Include all available a11y tree information (default: false)"),
+        filePath: z
+          .string()
+          .optional()
+          .describe("Save snapshot to file instead of returning in response"),
       },
     },
-    ({ code, description, snapshotAfter }) =>
+    ({ verbose, filePath }) =>
       runMcp(
         Effect.gen(function* () {
-          const session = yield* McpSession;
-          const overlay = yield* OverlayController;
-          const sessionData = yield* session.requireSession();
-          const cursorLabel = description ?? "Working…";
-
-          yield* overlay.positionCursorForCode(
-            sessionData.page,
-            code,
-            cursorLabel,
-            sessionData.lastSnapshot,
-          );
-
-          const ref = (refId: string) => {
-            if (!sessionData.lastSnapshot)
-              throw new Error("No snapshot taken yet. Call screenshot with mode 'snapshot' first.");
-            return Effect.runSync(sessionData.lastSnapshot.locator(refId));
-          };
-
-          const codeResult = yield* Effect.promise(async () => {
-            try {
-              const userFunction = new AsyncFunction("page", "context", "browser", "ref", code);
-              const result = await userFunction(
-                sessionData.page,
-                sessionData.context,
-                sessionData.browser,
-                ref,
-              );
-              return { success: true as const, value: result };
-            } catch (error) {
-              return {
-                success: false as const,
-                error: error instanceof Error ? error.message : String(error),
-              };
-            }
-          });
-
-          yield* overlay.logAction(sessionData.page, cursorLabel, code);
-
-          if (!codeResult.success) {
-            return textResult(`Error: ${codeResult.error}`);
-          }
-
-          const hasReturnValue = codeResult.value !== undefined;
-          const fileSystem = yield* FileSystem;
-          const resultFile = hasReturnValue
-            ? yield* writeResultFile(fileSystem, safeJsonStringify(codeResult.value))
-            : undefined;
-
-          if (snapshotAfter) {
-            const snapshotResult = yield* session.snapshot(sessionData.page);
-            yield* session.updateLastSnapshot(snapshotResult);
-            const snapshotData = {
-              tree: snapshotResult.tree,
-              refs: snapshotResult.refs,
-              stats: snapshotResult.stats,
-            };
-            if (!hasReturnValue) {
-              return jsonResult({ snapshot: snapshotData });
-            }
-            return jsonResult({
-              result: codeResult.value,
-              resultFile,
-              snapshot: snapshotData,
-            });
-          }
-
-          if (!hasReturnValue) return textResult("OK");
-          return jsonResult({ result: codeResult.value, resultFile });
-        }).pipe(Effect.withSpan(`mcp.tool.playwright`)),
+          const devtools = yield* DevToolsClient;
+          const args: Record<string, unknown> = {};
+          if (verbose !== undefined) args.verbose = verbose;
+          if (filePath) args.filePath = filePath;
+          const result = yield* devtools.callTool("take_snapshot", args);
+          return extractTextContent(result);
+        }).pipe(Effect.withSpan("mcp.tool.take_snapshot")),
       ),
   );
 
-  const screenshotTool = server.registerTool(
-    "screenshot",
+  const takeScreenshotTool = server.registerTool(
+    "take_screenshot",
     {
-      title: "Screenshot",
+      title: "Take Screenshot",
+      description: "Take a screenshot of the page or element.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        format: z
+          .enum(["png", "jpeg", "webp"])
+          .optional()
+          .describe("Image format (default: png)"),
+        quality: z
+          .number()
+          .optional()
+          .describe("Image quality 0-100 (for jpeg/webp)"),
+        filePath: z
+          .string()
+          .optional()
+          .describe("Save screenshot to file"),
+      },
+    },
+    ({ format, quality, filePath }) =>
+      runMcp(
+        Effect.gen(function* () {
+          const devtools = yield* DevToolsClient;
+          const args: Record<string, unknown> = {};
+          if (format) args.format = format;
+          if (quality !== undefined) args.quality = quality;
+          if (filePath) args.filePath = filePath;
+          const result = yield* devtools.callTool("take_screenshot", args);
+          return extractTextContent(result);
+        }).pipe(Effect.withSpan("mcp.tool.take_screenshot")),
+      ),
+  );
+
+  const startTraceTool = server.registerTool(
+    "performance_start_trace",
+    {
+      title: "Start Performance Trace",
       description:
-        "Capture the current page state. Modes: 'screenshot' (default, PNG image), 'snapshot' (ARIA accessibility tree with element refs), 'annotated' (screenshot with numbered labels on interactive elements).",
+        "Start a performance trace on the selected page. Use to find frontend performance issues, Core Web Vitals (LCP, INP, CLS), and improve page load speed. Navigate to the correct URL BEFORE starting the trace if reload or autoStop is true.",
+      inputSchema: {
+        reload: z
+          .boolean()
+          .optional()
+          .describe("Reload the page after starting trace (default: true)"),
+        autoStop: z
+          .boolean()
+          .optional()
+          .describe("Automatically stop the trace after recording (default: true)"),
+        filePath: z
+          .string()
+          .optional()
+          .describe("Save raw trace data to file (e.g. trace.json.gz)"),
+      },
+    },
+    ({ reload, autoStop, filePath }) =>
+      runMcp(
+        Effect.gen(function* () {
+          const devtools = yield* DevToolsClient;
+          const args: Record<string, unknown> = {};
+          if (reload !== undefined) args.reload = reload;
+          if (autoStop !== undefined) args.autoStop = autoStop;
+          if (filePath) args.filePath = filePath;
+          const result = yield* devtools.callTool("performance_start_trace", args);
+          yield* Effect.logInfo("Performance trace started", { reload, autoStop });
+          return extractTextContent(result);
+        }).pipe(Effect.withSpan("mcp.tool.performance_start_trace")),
+      ),
+  );
+
+  const stopTraceTool = server.registerTool(
+    "performance_stop_trace",
+    {
+      title: "Stop Performance Trace",
+      description: "Stop the active performance trace recording.",
+      inputSchema: {
+        filePath: z
+          .string()
+          .optional()
+          .describe("Save raw trace data to file (e.g. trace.json.gz)"),
+      },
+    },
+    ({ filePath }) =>
+      runMcp(
+        Effect.gen(function* () {
+          const devtools = yield* DevToolsClient;
+          const args: Record<string, unknown> = {};
+          if (filePath) args.filePath = filePath;
+          const result = yield* devtools.callTool("performance_stop_trace", args);
+          yield* Effect.logInfo("Performance trace stopped");
+          return extractTextContent(result);
+        }).pipe(Effect.withSpan("mcp.tool.performance_stop_trace")),
+      ),
+  );
+
+  const analyzeInsightTool = server.registerTool(
+    "performance_analyze_insight",
+    {
+      title: "Analyze Performance Insight",
+      description:
+        "Get detailed information on a specific Performance Insight from a trace recording. Use the insight set IDs and insight names from trace results.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        insightSetId: z
+          .string()
+          .describe("The ID for the insight set from the trace results"),
+        insightName: z
+          .string()
+          .describe('The name of the insight (e.g. "DocumentLatency", "LCPBreakdown")'),
+      },
+    },
+    ({ insightSetId, insightName }) =>
+      runMcp(
+        Effect.gen(function* () {
+          const devtools = yield* DevToolsClient;
+          const result = yield* devtools.callTool("performance_analyze_insight", {
+            insightSetId,
+            insightName,
+          });
+          return extractTextContent(result);
+        }).pipe(Effect.withSpan("mcp.tool.performance_analyze_insight")),
+      ),
+  );
+
+  const emulateTool = server.registerTool(
+    "emulate",
+    {
+      title: "Emulate",
+      description:
+        "Emulate various conditions: CPU throttling, network throttling, viewport size, geolocation, user agent, and more.",
+      inputSchema: {
+        networkConditions: z
+          .string()
+          .optional()
+          .describe("Network throttling preset (e.g. 'Slow 3G', 'Fast 3G', 'Offline')"),
+        cpuThrottlingRate: z
+          .number()
+          .optional()
+          .describe("CPU slowdown factor (1-20). 1 = no throttling"),
+        viewport: z
+          .string()
+          .optional()
+          .describe("Viewport dimensions as 'WIDTHxHEIGHT' (e.g. '375x812')"),
+        userAgent: z
+          .string()
+          .optional()
+          .describe("User agent string to emulate"),
+        geolocation: z
+          .string()
+          .optional()
+          .describe("Geolocation as 'LAT,LNG' (e.g. '37.7749,-122.4194')"),
+      },
+    },
+    ({ networkConditions, cpuThrottlingRate, viewport, userAgent, geolocation }) =>
+      runMcp(
+        Effect.gen(function* () {
+          const devtools = yield* DevToolsClient;
+          const args: Record<string, unknown> = {};
+          if (networkConditions) args.networkConditions = networkConditions;
+          if (cpuThrottlingRate !== undefined) args.cpuThrottlingRate = cpuThrottlingRate;
+          if (viewport) args.viewport = viewport;
+          if (userAgent) args.userAgent = userAgent;
+          if (geolocation) args.geolocation = geolocation;
+          const result = yield* devtools.callTool("emulate", args);
+          yield* Effect.logInfo("Emulation applied", args);
+          return extractTextContent(result);
+        }).pipe(Effect.withSpan("mcp.tool.emulate")),
+      ),
+  );
+
+  const lighthouseAuditTool = server.registerTool(
+    "lighthouse_audit",
+    {
+      title: "Lighthouse Audit",
+      description:
+        "Run Lighthouse audit for accessibility, SEO, and best practices. For performance analysis, use performance_start_trace instead.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         mode: z
-          .enum(["screenshot", "snapshot", "annotated"])
+          .enum(["navigation", "snapshot"])
           .optional()
-          .describe("Capture mode (default: screenshot)"),
-        fullPage: z
-          .boolean()
+          .describe("'navigation' reloads & audits, 'snapshot' analyzes current state (default: navigation)"),
+        device: z
+          .enum(["desktop", "mobile"])
           .optional()
-          .describe(
-            "Capture the full page. For screenshot/annotated: captures full scrollable page. For snapshot: includes all elements in scroll containers instead of only visible ones.",
-          ),
+          .describe("Device to emulate (default: desktop)"),
+        outputDirPath: z
+          .string()
+          .optional()
+          .describe("Directory for report output"),
       },
     },
-    ({ mode, fullPage }) =>
+    ({ mode, device, outputDirPath }) =>
       runMcp(
         Effect.gen(function* () {
-          const session = yield* McpSession;
-          const overlay = yield* OverlayController;
-          const page = yield* session.requirePage();
-          const resolvedMode = mode ?? "screenshot";
-          yield* overlay.updateLabel(page, `Taking ${resolvedMode}`);
-
-          if (resolvedMode === "snapshot") {
-            const result = yield* overlay.withHidden(
-              page,
-              session.snapshot(page, { viewportAware: !fullPage }),
-            );
-            yield* session.updateLastSnapshot(result);
-            return jsonResult({ tree: result.tree, refs: result.refs, stats: result.stats });
-          }
-
-          if (resolvedMode === "annotated") {
-            const result = yield* session.annotatedScreenshot(page, { fullPage });
-            yield* session.saveScreenshot(result.screenshot);
-            return {
-              content: [
-                {
-                  type: "image" as const,
-                  data: result.screenshot.toString("base64"),
-                  mimeType: "image/png",
-                },
-                {
-                  type: "text" as const,
-                  text: result.annotations
-                    .map(
-                      (annotation) =>
-                        `[${annotation.label}] @${annotation.ref} ${annotation.role} "${annotation.name}"`,
-                    )
-                    .join("\n"),
-                },
-              ],
-            };
-          }
-
-          const buffer = yield* overlay.withHidden(
-            page,
-            Effect.tryPromise(() => page.screenshot({ fullPage, scale: "css" })),
-          );
-          yield* session.saveScreenshot(buffer);
-          return imageResult(buffer.toString("base64"));
-        }).pipe(Effect.withSpan(`mcp.tool.screenshot`)),
+          const devtools = yield* DevToolsClient;
+          const args: Record<string, unknown> = {};
+          if (mode) args.mode = mode;
+          if (device) args.device = device;
+          if (outputDirPath) args.outputDirPath = outputDirPath;
+          const result = yield* devtools.callTool("lighthouse_audit", args);
+          yield* Effect.logInfo("Lighthouse audit completed", { mode, device });
+          return extractTextContent(result);
+        }).pipe(Effect.withSpan("mcp.tool.lighthouse_audit")),
       ),
   );
 
-  const consoleLogsTool = server.registerTool(
-    "console_logs",
+  const takeMemorySnapshotTool = server.registerTool(
+    "take_memory_snapshot",
     {
-      title: "Console Logs",
+      title: "Take Memory Snapshot",
       description:
-        "Get browser console log messages. Optionally filter by log type (log, warning, error, info, debug).",
+        "Capture a heap snapshot of the page. Use to analyze memory distribution and debug memory leaks.",
+      inputSchema: {
+        filePath: z
+          .string()
+          .describe("Path to save the .heapsnapshot file"),
+      },
+    },
+    ({ filePath }) =>
+      runMcp(
+        Effect.gen(function* () {
+          const devtools = yield* DevToolsClient;
+          const result = yield* devtools.callTool("take_memory_snapshot", { filePath });
+          yield* Effect.logInfo("Memory snapshot captured", { filePath });
+          return extractTextContent(result);
+        }).pipe(Effect.withSpan("mcp.tool.take_memory_snapshot")),
+      ),
+  );
+
+  const listNetworkRequestsTool = server.registerTool(
+    "list_network_requests",
+    {
+      title: "List Network Requests",
+      description: "List all network requests for the current page since the last navigation.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        resourceType: z
+          .string()
+          .optional()
+          .describe("Filter by resource type (e.g. 'fetch', 'xhr', 'script', 'document')"),
+      },
+    },
+    ({ resourceType }) =>
+      runMcp(
+        Effect.gen(function* () {
+          const devtools = yield* DevToolsClient;
+          const args: Record<string, unknown> = {};
+          if (resourceType) args.resourceType = resourceType;
+          const result = yield* devtools.callTool("list_network_requests", args);
+          return extractTextContent(result);
+        }).pipe(Effect.withSpan("mcp.tool.list_network_requests")),
+      ),
+  );
+
+  const listConsoleMessagesTool = server.registerTool(
+    "list_console_messages",
+    {
+      title: "List Console Messages",
+      description: "List console messages (errors, warnings, logs) from the page.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: z
           .string()
           .optional()
-          .describe("Filter by console message type (e.g. 'error', 'warning', 'log')"),
-        clear: z.boolean().optional().describe("Clear the collected messages after reading"),
+          .describe("Filter by message type (e.g. 'error', 'warn', 'log')"),
       },
     },
-    ({ type, clear }) =>
+    ({ type }) =>
       runMcp(
         Effect.gen(function* () {
-          const session = yield* McpSession;
-          const overlay = yield* OverlayController;
-          const sessionData = yield* session.requireSession();
-          yield* overlay.updateLabel(sessionData.page, "Reading console logs");
-          const entries = type
-            ? sessionData.consoleMessages.filter((entry) => entry.type === type)
-            : sessionData.consoleMessages;
-          if (clear) sessionData.consoleMessages.length = 0;
-          if (entries.length === 0) return textResult("No console messages captured.");
-
-          const errorCount = entries.filter((entry) => entry.type === "error").length;
-          const warningCount = entries.filter((entry) => entry.type === "warning").length;
-          const summary =
-            errorCount > 0 || warningCount > 0
-              ? `${errorCount} error(s), ${warningCount} warning(s) out of ${entries.length} total messages\n\n`
-              : "";
-
-          return jsonResult({ summary: summary || undefined, messages: entries });
-        }).pipe(Effect.withSpan(`mcp.tool.console_logs`)),
+          const devtools = yield* DevToolsClient;
+          const args: Record<string, unknown> = {};
+          if (type) args.type = type;
+          const result = yield* devtools.callTool("list_console_messages", args);
+          return extractTextContent(result);
+        }).pipe(Effect.withSpan("mcp.tool.list_console_messages")),
       ),
   );
 
-  const networkRequestsTool = server.registerTool(
-    "network_requests",
+  const evaluateScriptTool = server.registerTool(
+    "evaluate_script",
     {
-      title: "Network Requests",
+      title: "Evaluate Script",
       description:
-        "Get captured network requests with automatic issue detection. Flags failed requests (4xx/5xx), duplicate requests (same URL+method within 500ms), and mixed content (HTTP on HTTPS pages). Optionally filter by HTTP method, URL substring, or resource type.",
-      annotations: { readOnlyHint: true },
+        "Evaluate a JavaScript function in the page context. Returns the result as JSON. The function must be JSON-serializable.",
       inputSchema: {
-        method: z.string().optional().describe("Filter by HTTP method (e.g. 'GET', 'POST')"),
-        url: z.string().optional().describe("Filter by URL substring match"),
-        resourceType: z
+        function: z
           .string()
-          .optional()
-          .describe("Filter by resource type (e.g. 'xhr', 'fetch', 'document', 'script')"),
-        clear: z.boolean().optional().describe("Clear the collected requests after reading"),
-      },
-    },
-    ({ method, url, resourceType, clear }) =>
-      runMcp(
-        Effect.gen(function* () {
-          const session = yield* McpSession;
-          const overlay = yield* OverlayController;
-          const sessionData = yield* session.requireSession();
-          yield* overlay.updateLabel(sessionData.page, "Checking network requests");
-          const normalizedMethod = method?.toUpperCase();
-          const normalizedResourceType = resourceType?.toLowerCase();
-          const entries = sessionData.networkRequests.filter(
-            (entry) =>
-              (!normalizedMethod || entry.method === normalizedMethod) &&
-              (!url || entry.url.includes(url)) &&
-              (!normalizedResourceType || entry.resourceType === normalizedResourceType),
-          );
-          if (clear) sessionData.networkRequests.length = 0;
-          if (entries.length === 0) return textResult("No network requests captured.");
-
-          const failed = entries.filter(
-            (entry) => entry.status !== undefined && entry.status >= 400,
-          );
-
-          const duplicateMap = new Map<string, { url: string; method: string; count: number }>();
-          const lastTimestamp = new Map<string, number>();
-          for (const entry of entries) {
-            const key = `${entry.method}:${entry.url}`;
-            const previous = lastTimestamp.get(key);
-            if (
-              previous !== undefined &&
-              Math.abs(entry.timestamp - previous) < DUPLICATE_REQUEST_WINDOW_MS
-            ) {
-              const existing = duplicateMap.get(key);
-              if (existing) {
-                existing.count++;
-              } else {
-                duplicateMap.set(key, { url: entry.url, method: entry.method, count: 2 });
-              }
-            }
-            lastTimestamp.set(key, entry.timestamp);
-          }
-          const duplicates = Array.from(duplicateMap.values());
-
-          const isHttps = entries.some(
-            (entry) => entry.resourceType === "document" && entry.url.startsWith("https://"),
-          );
-          const mixedContent = isHttps
-            ? entries.filter(
-                (entry) => entry.resourceType !== "document" && entry.url.startsWith("http://"),
-              )
-            : [];
-
-          const issues = {
-            failedRequests: failed.map((entry) => ({
-              url: entry.url,
-              method: entry.method,
-              status: entry.status,
-            })),
-            duplicateRequests: duplicates,
-            mixedContent: mixedContent.map((entry) => entry.url),
-          };
-
-          const hasIssues = failed.length > 0 || duplicates.length > 0 || mixedContent.length > 0;
-
-          return jsonResult({
-            issues: hasIssues ? issues : undefined,
-            requests: entries,
-          });
-        }).pipe(Effect.withSpan(`mcp.tool.network_requests`)),
-      ),
-  );
-
-  const performanceMetricsTool = server.registerTool(
-    "performance_metrics",
-    {
-      title: "Performance Metrics",
-      description:
-        "Collect a full performance trace: Core Web Vitals (FCP, LCP, CLS, INP), navigation timing (TTFB, server timing), Long Animation Frames (LoAF) with script attribution, and resource breakdown (slowest/largest). Writes the full trace to a file and returns the path plus a summary. Read the file for detailed LoAF script attribution and resource analysis.",
-      annotations: { readOnlyHint: true },
-      inputSchema: {},
-    },
-    () =>
-      runMcp(
-        Effect.gen(function* () {
-          const session = yield* McpSession;
-          const overlay = yield* OverlayController;
-          const page = yield* session.requirePage();
-          yield* overlay.updateLabel(page, "Collecting performance metrics");
-          const trace = yield* evaluateRuntime(page, "getPerformanceTrace");
-
-          const hasMetrics = trace.webVitals.fcp || trace.webVitals.lcp || trace.webVitals.inp;
-          if (!hasMetrics && trace.longAnimationFrames.length === 0) {
-            return textResult("No performance metrics available yet.");
-          }
-
-          const traceDocument = formatPerformanceTrace(trace);
-          const tracePath = path.join(
-            TMP_ARTIFACT_OUTPUT_DIRECTORY,
-            `performance-trace-${Date.now()}.md`,
-          );
-          const fileSystem = yield* FileSystem;
-          yield* fileSystem
-            .makeDirectory(TMP_ARTIFACT_OUTPUT_DIRECTORY, { recursive: true })
-            .pipe(
-              Effect.catchCause((cause) =>
-                Effect.logDebug("Failed to create artifact directory", { cause }),
-              ),
-            );
-          yield* fileSystem.writeFileString(tracePath, traceDocument);
-
-          const summary = [`Performance trace written to: ${tracePath}`, "", "Web Vitals:"];
-          const { webVitals } = trace;
-          if (webVitals.fcp)
-            summary.push(`  FCP: ${webVitals.fcp.value}ms (${webVitals.fcp.rating})`);
-          if (webVitals.lcp)
-            summary.push(`  LCP: ${webVitals.lcp.value}ms (${webVitals.lcp.rating})`);
-          if (webVitals.cls)
-            summary.push(`  CLS: ${webVitals.cls.value} (${webVitals.cls.rating})`);
-          if (webVitals.inp)
-            summary.push(`  INP: ${webVitals.inp.value}ms (${webVitals.inp.rating})`);
-          if (trace.navigation) {
-            summary.push(`  TTFB: ${trace.navigation.ttfb}ms`);
-          }
-          if (trace.longAnimationFrames.length > 0) {
-            summary.push(`\nLong Animation Frames: ${trace.longAnimationFrames.length} detected`);
-            const worstBlocking = Math.max(
-              ...trace.longAnimationFrames.map((frame) => frame.blockingDuration),
-            );
-            summary.push(`  Worst blocking duration: ${Math.round(worstBlocking)}ms`);
-          }
-          summary.push(
-            `\nResources: ${trace.resources.totalCount} loaded (${Math.round(trace.resources.totalTransferSizeBytes / 1024)}KB total)`,
-          );
-
-          summary.push(`\nFull trace: ${tracePath}`);
-
-          return textResult(summary.join("\n"));
-        }).pipe(Effect.withSpan(`mcp.tool.performance_metrics`)),
-      ),
-  );
-
-  const accessibilityAuditTool = server.registerTool(
-    "accessibility_audit",
-    {
-      title: "Accessibility Audit",
-      description:
-        "Run a WCAG accessibility audit on the current page using two engines (axe-core + IBM Equal Access). Returns violations sorted by severity with CSS selectors, HTML context, WCAG tags, and fix guidance.",
-      annotations: { readOnlyHint: true },
-      inputSchema: {
-        selector: z
-          .string()
-          .optional()
-          .describe("CSS selector to scope the audit to a specific region of the page"),
-        tags: z
+          .describe(
+            'JavaScript function to execute (e.g. \'() => document.title\' or \'(el) => el.innerText\')',
+          ),
+        args: z
           .array(z.string())
           .optional()
-          .describe(
-            "WCAG tags to filter by (default: wcag2a, wcag2aa, wcag21a, wcag21aa). Only applies to the axe-core engine.",
-          ),
+          .describe("CSS selectors for element arguments to pass to the function"),
       },
     },
-    ({ selector, tags }) =>
+    ({ function: functionBody, args }) =>
       runMcp(
         Effect.gen(function* () {
-          const session = yield* McpSession;
-          const overlay = yield* OverlayController;
-          const page = yield* session.requirePage();
-          yield* overlay.updateLabel(page, "Running accessibility audit");
-          const result = yield* runAccessibilityAudit(page, { selector, tags });
-          if (result.violations.length === 0) {
-            return textResult("No accessibility violations found.");
-          }
-          return jsonResult(result);
-        }).pipe(Effect.withSpan(`mcp.tool.accessibility_audit`)),
+          const devtools = yield* DevToolsClient;
+          const toolArgs: Record<string, unknown> = { function: functionBody };
+          if (args) toolArgs.args = args;
+          const result = yield* devtools.callTool("evaluate_script", toolArgs);
+          return extractTextContent(result);
+        }).pipe(Effect.withSpan("mcp.tool.evaluate_script")),
       ),
   );
 
   const closeTool = server.registerTool(
     "close",
     {
-      title: "Close Browser",
-      description: "Close the browser and end the session.",
+      title: "Close",
+      description: "Close the DevTools session and browser.",
       annotations: { destructiveHint: true },
       inputSchema: {},
     },
@@ -673,32 +479,10 @@ export const createBrowserMcpServer = <E>(
       runMcp(
         Effect.gen(function* () {
           const session = yield* McpSession;
-          const overlay = yield* OverlayController;
-          if (session.hasSession()) {
-            const page = yield* session.requirePage();
-            yield* overlay.updateLabel(page, "Closing browser");
-          }
-          const result = yield* session.close();
-          if (!result) return textResult("No browser open.");
-          const fileSystem = yield* FileSystem;
-          yield* fileSystem.remove(PLAYWRIGHT_RESULTS_DIR, { recursive: true }).pipe(
-            Effect.catchTag("PlatformError", (error) =>
-              Effect.logDebug("Failed to clean up playwright results", {
-                error: error.message,
-              }),
-            ),
-          );
-          const lines = ["Browser closed."];
-          if (result.tmpVideoPath) {
-            lines.push(`Playwright video: ${result.tmpVideoPath}`);
-          } else if (result.videoPath) {
-            lines.push(`Playwright video: ${result.videoPath}`);
-          }
-          for (const screenshotPath of result.screenshotPaths) {
-            lines.push(`Screenshot: ${screenshotPath}`);
-          }
-          return textResult(lines.join("\n"));
-        }).pipe(Effect.withSpan(`mcp.tool.close`)),
+          yield* session.close();
+          yield* Effect.logInfo("DevTools session closed");
+          return textResult("DevTools session closed.");
+        }).pipe(Effect.withSpan("mcp.tool.close")),
       ),
   );
 
@@ -706,7 +490,7 @@ export const createBrowserMcpServer = <E>(
     "run",
     {
       description:
-        "Validate code changes in a real browser. Use after generating or modifying code to verify correctness, find bugs, audit accessibility, and measure performance.",
+        "Analyze web performance in a real browser. Use after generating or modifying code to profile performance, audit accessibility, and find regressions.",
     },
     () => ({
       messages: [
@@ -714,7 +498,7 @@ export const createBrowserMcpServer = <E>(
           role: "user" as const,
           content: {
             type: "text" as const,
-            text: buildExpectGuide(),
+            text: buildPerfAgentGuide(),
           },
         },
       ],
@@ -722,13 +506,18 @@ export const createBrowserMcpServer = <E>(
   );
 
   const tools = {
-    open: openTool,
-    playwright: playwrightTool,
-    screenshot: screenshotTool,
-    console_logs: consoleLogsTool,
-    network_requests: networkRequestsTool,
-    performance_metrics: performanceMetricsTool,
-    accessibility_audit: accessibilityAuditTool,
+    navigate_page: navigatePageTool,
+    take_snapshot: takeSnapshotTool,
+    take_screenshot: takeScreenshotTool,
+    performance_start_trace: startTraceTool,
+    performance_stop_trace: stopTraceTool,
+    performance_analyze_insight: analyzeInsightTool,
+    emulate: emulateTool,
+    lighthouse_audit: lighthouseAuditTool,
+    take_memory_snapshot: takeMemorySnapshotTool,
+    list_network_requests: listNetworkRequestsTool,
+    list_console_messages: listConsoleMessagesTool,
+    evaluate_script: evaluateScriptTool,
     close: closeTool,
   };
 
@@ -738,7 +527,7 @@ export const createBrowserMcpServer = <E>(
 export type BrowserToolMap = ReturnType<typeof createBrowserMcpServer>["tools"];
 
 export const startBrowserMcpServer = async <E>(
-  runtime: ManagedRuntime.ManagedRuntime<McpSession | OverlayController | FileSystem, E>,
+  runtime: ManagedRuntime.ManagedRuntime<McpSession | DevToolsClient, E>,
 ) => {
   const { server } = createBrowserMcpServer(runtime);
   const transport = new StdioServerTransport();
