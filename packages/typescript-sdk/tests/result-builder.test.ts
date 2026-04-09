@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vite-plus/test";
 import { Option } from "effect";
 import {
-  ExecutedTestPlan,
-  TestPlan,
-  TestPlanStep,
+  ExecutedPerfPlan,
+  PerfPlan,
+  AnalysisStep,
   StepId,
   PlanId,
   ChangesFor,
@@ -31,8 +31,8 @@ const makeStep = (
     status: "pending" | "active" | "passed" | "failed" | "skipped";
     summary: string;
   }> = {},
-): TestPlanStep =>
-  new TestPlanStep({
+): AnalysisStep =>
+  new AnalysisStep({
     id: StepId.makeUnsafe(overrides.id ?? "step-1"),
     title: overrides.title ?? "test step",
     instruction: "test instruction",
@@ -44,8 +44,8 @@ const makeStep = (
     endedAt: Option.none(),
   });
 
-const makePlan = (steps: TestPlanStep[] = []): TestPlan =>
-  new TestPlan({
+const makePlan = (steps: AnalysisStep[] = []): PerfPlan =>
+  new PerfPlan({
     id: PlanId.makeUnsafe("plan-1"),
     changesFor: ChangesFor.makeUnsafe({ _tag: "WorkingTree" }),
     currentBranch: "main",
@@ -55,18 +55,19 @@ const makePlan = (steps: TestPlanStep[] = []): TestPlan =>
     baseUrl: Option.none(),
     isHeadless: true,
     cookieBrowserKeys: [],
-    testCoverage: Option.none(),
+    targetUrls: [],
+    perfBudget: Option.none(),
     title: "Test Plan",
     rationale: "testing",
     steps,
   });
 
 const makeExecuted = (
-  steps: TestPlanStep[] = [],
+  steps: AnalysisStep[] = [],
   events: readonly (typeof import("@neuve/shared/models").ExecutionEvent.Type)[] = [],
-): ExecutedTestPlan => {
+): ExecutedPerfPlan => {
   const plan = makePlan(steps);
-  return new ExecutedTestPlan({ ...plan, steps, events });
+  return new ExecutedPerfPlan({ ...plan, steps, events });
 };
 
 describe("buildStepResult", () => {
@@ -212,7 +213,7 @@ describe("diffEvents", () => {
 
   it("emits run:started for RunStarted event", () => {
     const events = [new RunStarted({ plan })];
-    const executed = makeExecuted(plan.steps as TestPlanStep[], events);
+    const executed = makeExecuted(plan.steps as AnalysisStep[], events);
     const result = diffEvents([], events, executed, "http://localhost:3000", startedAt);
     expect(result).toHaveLength(1);
     expect(result[0].type).toBe("run:started");
@@ -220,7 +221,7 @@ describe("diffEvents", () => {
 
   it("emits step:started for StepStarted event", () => {
     const events = [new StepStarted({ stepId: StepId.makeUnsafe("s1"), title: "test step" })];
-    const executed = makeExecuted(plan.steps as TestPlanStep[], events);
+    const executed = makeExecuted(plan.steps as AnalysisStep[], events);
     const result = diffEvents([], events, executed, "http://localhost:3000", startedAt);
     expect(result).toHaveLength(1);
     expect(result[0].type).toBe("step:started");

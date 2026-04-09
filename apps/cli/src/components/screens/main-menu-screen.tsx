@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import figures from "figures";
 import { ChangesFor, checkoutBranch } from "@neuve/supervisor";
-import type { GitState, TestContext } from "@neuve/shared/models";
+import type { GitState, AnalysisContext } from "@neuve/shared/models";
 import { usePreferencesStore } from "../../stores/use-preferences";
 import { useProjectPreferencesStore } from "../../stores/use-project-preferences";
 import {
@@ -18,7 +18,6 @@ import { Spinner } from "../ui/spinner";
 import { Logo } from "../ui/logo";
 import { ContextPicker } from "../ui/context-picker";
 import { useContextPicker } from "../../hooks/use-context-picker";
-import { useTestCoverage } from "../../hooks/use-test-coverage";
 import { trackEvent } from "../../utils/session-analytics";
 import { useStdoutDimensions } from "../../hooks/use-stdout-dimensions";
 import { getFlowSuggestions } from "../../utils/get-flow-suggestions";
@@ -31,39 +30,13 @@ interface MainMenuProps {
 }
 
 const MIN_COLUMNS_FOR_CYCLE_HINT = 80;
-const COVERAGE_THRESHOLD_HIGH = 70;
-const COVERAGE_THRESHOLD_MEDIUM = 40;
-const COVERAGE_BAR_WIDTH = 10;
-
-const coverageColor = (percent: number): string => {
-  if (percent >= COVERAGE_THRESHOLD_HIGH) return COLORS.GREEN;
-  if (percent >= COVERAGE_THRESHOLD_MEDIUM) return COLORS.YELLOW;
-  return COLORS.RED;
-};
-
-const coverageBannerBg = (percent: number): string => {
-  if (percent >= COVERAGE_THRESHOLD_HIGH) return "#0a2b0a";
-  if (percent >= COVERAGE_THRESHOLD_MEDIUM) return "#332b00";
-  return "#331510";
-};
-
-const coverageRecommendation = (_percent: number): string => "Use Perf Agent to analyze performance.";
-
-const coverageBar = (percent: number): { filled: string; empty: string } => {
-  const filledCount = Math.round((percent / 100) * COVERAGE_BAR_WIDTH);
-  const emptyCount = COVERAGE_BAR_WIDTH - filledCount;
-  return {
-    filled: "\u2588".repeat(filledCount),
-    empty: "\u2591".repeat(emptyCount),
-  };
-};
 
 export const MainMenu = ({ gitState }: MainMenuProps) => {
   const COLORS = useColors();
   const [columns] = useStdoutDimensions();
   const instructionHistory = usePreferencesStore((state) => state.instructionHistory);
   const setScreen = useNavigationStore((state) => state.setScreen);
-  const [selectedContext, setSelectedContext] = useState<TestContext | undefined>(undefined);
+  const [selectedContext, setSelectedContext] = useState<AnalysisContext | undefined>(undefined);
   const [value, setValue] = useState("");
   const [inputKey, setInputKey] = useState(0);
   const [suggestionIndex, setSuggestionIndex] = useState(0);
@@ -75,8 +48,6 @@ export const MainMenu = ({ gitState }: MainMenuProps) => {
   const clearCookieBrowserKeys = useProjectPreferencesStore(
     (state) => state.clearCookieBrowserKeys,
   );
-  const { data: testCoverage } = useTestCoverage(gitState);
-
   const cliBaseUrlsRef = useRef(usePreferencesStore.getState().cliBaseUrls);
   useEffect(() => {
     usePreferencesStore.setState({ cliBaseUrls: undefined });
@@ -271,39 +242,17 @@ export const MainMenu = ({ gitState }: MainMenuProps) => {
         <Logo />
       </Box>
 
-      {(gitState?.hasUntestedChanges || (testCoverage && testCoverage.totalCount > 0)) &&
-        !(testCoverage && testCoverage.totalCount > 0 && testCoverage.percent >= 90) && (
+      {gitState?.hasUntestedChanges && (
           <Box
             paddingX={1}
             paddingY={1}
             marginBottom={1}
-            backgroundColor={
-              testCoverage && testCoverage.totalCount > 0
-                ? coverageBannerBg(testCoverage.percent)
-                : COLORS.BANNER_BG
-            }
+            backgroundColor={COLORS.BANNER_BG}
             width="100%"
             flexDirection="column"
             gap={0}
           >
             {(() => {
-              const hasCoverage = testCoverage && testCoverage.totalCount > 0;
-
-              if (hasCoverage) {
-                return (
-                  <Box>
-                    <Text color={coverageColor(testCoverage.percent)} bold>
-                      {coverageBar(testCoverage.percent).filled}
-                    </Text>
-                    <Text color={COLORS.DIM}>{coverageBar(testCoverage.percent).empty}</Text>
-                    <Text color={coverageColor(testCoverage.percent)}>
-                      {" "}
-                      {testCoverage.percent}% test coverage
-                    </Text>
-                  </Box>
-                );
-              }
-
               if (!gitState) return null;
               const stats = gitState.workingTreeFileStats;
               const totalAdded = stats.reduce((sum, stat) => sum + stat.added, 0);
@@ -328,9 +277,7 @@ export const MainMenu = ({ gitState }: MainMenuProps) => {
               );
             })()}
             <Text color={COLORS.DIM}>
-              {testCoverage && testCoverage.totalCount > 0
-                ? coverageRecommendation(testCoverage.percent)
-                : "Describe what to test and hit enter to verify your changes."}
+              Describe what to analyze and hit enter to check performance.
             </Text>
           </Box>
         )}

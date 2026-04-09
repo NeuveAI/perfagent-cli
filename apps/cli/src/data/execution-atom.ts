@@ -1,9 +1,9 @@
 import { Effect, Option, Predicate, Stream } from "effect";
 import * as Atom from "effect/unstable/reactivity/Atom";
-import { ExecutedTestPlan, Executor, Git, Reporter, type ExecuteOptions } from "@neuve/supervisor";
+import { ExecutedPerfPlan, Executor, Git, Reporter, type ExecuteOptions } from "@neuve/supervisor";
 import { Analytics } from "@neuve/shared/observability";
 import type { AgentBackend } from "@neuve/agent";
-import type { AcpConfigOption, TestReport, PlanId } from "@neuve/shared/models";
+import type { AcpConfigOption, PerfReport, PlanId } from "@neuve/shared/models";
 import { cliAtomRuntime } from "./runtime";
 import { stripUndefinedRequirement } from "../utils/strip-undefined-requirement";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -12,13 +12,13 @@ import { extractCloseArtifacts } from "../utils/extract-close-artifacts";
 interface ExecuteInput {
   readonly options: ExecuteOptions;
   readonly agentBackend: AgentBackend;
-  readonly onUpdate: (executed: ExecutedTestPlan) => void;
+  readonly onUpdate: (executed: ExecutedPerfPlan) => void;
   readonly onConfigOptions?: (configOptions: readonly AcpConfigOption[]) => void;
 }
 
 export interface ExecutionResult {
-  readonly executedPlan: ExecutedTestPlan;
-  readonly report: TestReport;
+  readonly executedPlan: ExecutedPerfPlan;
+  readonly report: PerfReport;
   readonly videoUrl?: string;
 }
 
@@ -45,7 +45,7 @@ const executeCore = (input: ExecuteInput) =>
       onConfigOptions: input.onConfigOptions,
     };
 
-    yield* analytics.capture("run:started");
+    yield* analytics.capture("analysis:started");
 
     const finalExecuted = yield* executor.execute(executeOptions).pipe(
       Stream.tap((executed) =>
@@ -57,7 +57,7 @@ const executeCore = (input: ExecuteInput) =>
       Effect.map((option) =>
         (option._tag === "Some"
           ? option.value
-          : new ExecutedTestPlan({
+          : new ExecutedPerfPlan({
               ...input.options,
               id: "" as PlanId,
               changesFor: input.options.changesFor,
@@ -68,7 +68,8 @@ const executeCore = (input: ExecuteInput) =>
               baseUrl: Option.none(),
               isHeadless: input.options.isHeadless,
               cookieBrowserKeys: input.options.cookieBrowserKeys,
-              testCoverage: Option.none(),
+              targetUrls: [],
+              perfBudget: Option.none(),
               title: input.options.instruction,
               rationale: "Direct execution",
               steps: [],
@@ -101,7 +102,7 @@ const executeCore = (input: ExecuteInput) =>
       durationMs,
     });
 
-    yield* analytics.capture("run:completed", {
+    yield* analytics.capture("analysis:completed", {
       passed: passedCount,
       failed: failedCount,
       step_count: finalExecuted.steps.length,
@@ -131,7 +132,7 @@ export const executeFn = cliAtomRuntime.fn<ExecuteInput>()((input) =>
             : Predicate.isError(error)
               ? error.constructor.name
               : "UnknownError";
-        yield* analytics.capture("run:failed", {
+        yield* analytics.capture("analysis:failed", {
           error_tag: errorTag,
         });
       }).pipe(

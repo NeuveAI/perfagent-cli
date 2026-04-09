@@ -1,25 +1,25 @@
 import { Effect } from "effect";
 import { Git, Github, type CommitSummary } from "@neuve/supervisor";
 import {
-  TestContext,
-  testContextFilterText,
-  testContextLabel,
-  testContextDescription,
-  testContextDisplayLabel,
+  AnalysisContext,
+  analysisContextFilterText,
+  analysisContextLabel,
+  analysisContextDescription,
+  analysisContextDisplayLabel,
   type GitState,
   type RemoteBranch,
-  type TestContext as TestContextType,
+  type AnalysisContext as AnalysisContextType,
 } from "@neuve/shared/models";
 
 // HACK: Github.layer leaves `undefined` in R due to Effect v4 beta ServiceMap type inference
 const withGithub = <A, E>(effect: Effect.Effect<A, E, Github | undefined>) =>
   effect.pipe(Effect.provide(Github.layer)) as Effect.Effect<A, E>;
 
-export const buildLocalContextOptions = async (gitState: GitState): Promise<TestContextType[]> => {
-  const options: TestContextType[] = [];
+export const buildLocalContextOptions = async (gitState: GitState): Promise<AnalysisContextType[]> => {
+  const options: AnalysisContextType[] = [];
 
   if (gitState.hasUntestedChanges) {
-    options.push(TestContext.makeUnsafe({ _tag: "WorkingTree" }));
+    options.push(AnalysisContext.makeUnsafe({ _tag: "WorkingTree" }));
   }
 
   if (gitState.mainBranch) {
@@ -32,7 +32,7 @@ export const buildLocalContextOptions = async (gitState: GitState): Promise<Test
     );
     for (const commit of commits) {
       options.push(
-        TestContext.makeUnsafe({
+        AnalysisContext.makeUnsafe({
           _tag: "Commit",
           hash: commit.hash,
           shortHash: commit.shortHash,
@@ -48,33 +48,33 @@ export const buildLocalContextOptions = async (gitState: GitState): Promise<Test
 export const fetchRemoteBranches = (cwd: string): Promise<RemoteBranch[]> =>
   Effect.runPromise(withGithub(Github.use((github) => github.listPullRequests(cwd))));
 
-export const fetchRemoteContextOptions = async (gitState: GitState): Promise<TestContextType[]> => {
+export const fetchRemoteContextOptions = async (gitState: GitState): Promise<AnalysisContextType[]> => {
   const cwd = process.cwd();
   const remoteBranches = await fetchRemoteBranches(cwd);
 
   const openPrs = remoteBranches
     .filter((branch) => branch.prNumber !== null && branch.prStatus === "open")
-    .map((branch) => TestContext.makeUnsafe({ _tag: "PullRequest", branch }));
+    .map((branch) => AnalysisContext.makeUnsafe({ _tag: "PullRequest", branch }));
   const mergedPrs = remoteBranches
     .filter((branch) => branch.prNumber !== null && branch.prStatus === "merged")
     .slice(0, 5)
-    .map((branch) => TestContext.makeUnsafe({ _tag: "PullRequest", branch }));
+    .map((branch) => AnalysisContext.makeUnsafe({ _tag: "PullRequest", branch }));
   const branchContexts = remoteBranches
     .filter((branch) => branch.name !== gitState.currentBranch && branch.prNumber === null)
-    .map((branch) => TestContext.makeUnsafe({ _tag: "Branch", branch }));
+    .map((branch) => AnalysisContext.makeUnsafe({ _tag: "Branch", branch }));
 
   return [...openPrs, ...mergedPrs, ...branchContexts];
 };
 
-export const getContextLabel = (context: TestContextType, gitState?: GitState | null): string => {
+export const getContextLabel = (context: AnalysisContextType, gitState?: GitState | null): string => {
   if (context._tag === "WorkingTree" && gitState && !gitState.isOnMain) {
     return gitState.currentBranch;
   }
-  return testContextLabel(context);
+  return analysisContextLabel(context);
 };
 
 export const getContextDescription = (
-  context: TestContextType,
+  context: AnalysisContextType,
   gitState?: GitState | null,
 ): string => {
   if (context._tag === "WorkingTree" && gitState) {
@@ -99,29 +99,29 @@ export const getContextDescription = (
     }
     if (parts.length > 0) return parts.join(", ");
   }
-  return testContextDescription(context);
+  return analysisContextDescription(context);
 };
 
 export const getContextDisplayLabel = (
-  context: TestContextType,
+  context: AnalysisContextType,
   gitState?: GitState | null,
 ): string => {
   if (context._tag === "WorkingTree") return getContextLabel(context, gitState);
-  return testContextDisplayLabel(context);
+  return analysisContextDisplayLabel(context);
 };
 
 export const filterContextOptions = (
-  options: readonly TestContextType[],
+  options: readonly AnalysisContextType[],
   query: string,
   gitState?: GitState | null,
-): TestContextType[] => {
+): AnalysisContextType[] => {
   if (!query) return [...options];
   const lowercaseQuery = query.toLowerCase();
   return options.filter((option) => {
     const text =
       option._tag === "WorkingTree"
         ? `local changes ${gitState?.currentBranch ?? ""}`
-        : testContextFilterText(option);
+        : analysisContextFilterText(option);
     return text.toLowerCase().includes(lowercaseQuery);
   });
 };

@@ -1,7 +1,7 @@
 import { Effect, FileSystem, Layer, Option, ServiceMap } from "effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as path from "node:path";
-import { type TestPlan, changesForDisplayName } from "@neuve/shared/models";
+import { type PerfPlan, changesForDisplayName } from "@neuve/shared/models";
 import { formatSavedFlowFile, parseSavedFlowFile } from "./saved-flow-file";
 import type { SavedFlowFileData } from "./types";
 import {
@@ -20,7 +20,7 @@ const slugify = (text: string): string =>
     .slice(0, 60)
     .replace(/-$/, "");
 
-const testPlanToSavedFlowFileData = (plan: TestPlan): SavedFlowFileData => ({
+const testPlanToSavedFlowFileData = (plan: PerfPlan): SavedFlowFileData => ({
   formatVersion: SAVED_FLOW_FORMAT_VERSION,
   title: plan.title,
   description: plan.instruction.slice(0, FLOW_DESCRIPTION_CHAR_LIMIT),
@@ -56,7 +56,7 @@ export class FlowStorage extends ServiceMap.Service<FlowStorage>()("@supervisor/
       return path.join(stateDir, FLOW_DIRECTORY_NAME);
     });
 
-    const save = Effect.fn("FlowStorage.save")(function* (plan: TestPlan) {
+    const save = Effect.fn("FlowStorage.save")(function* (plan: PerfPlan) {
       const flowData = testPlanToSavedFlowFileData(plan);
       const flowsDir = yield* getFlowsDirectory;
       const filePath = path.join(flowsDir, `${flowData.slug}.md`);

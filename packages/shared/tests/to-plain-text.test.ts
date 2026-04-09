@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 import { Option } from "effect";
 import {
-  ExecutedTestPlan,
-  TestPlan,
-  TestPlanStep,
-  TestReport,
+  ExecutedPerfPlan,
+  PerfPlan,
+  AnalysisStep,
+  PerfReport,
   StepId,
   PlanId,
   ChangesFor,
@@ -19,9 +19,9 @@ import {
 const makeStep = (
   id: string,
   title: string,
-  overrides: Partial<Pick<TestPlanStep, "status">> = {},
-): TestPlanStep =>
-  new TestPlanStep({
+  overrides: Partial<Pick<AnalysisStep, "status">> = {},
+): AnalysisStep =>
+  new AnalysisStep({
     id: StepId.makeUnsafe(id),
     title,
     instruction: title,
@@ -33,8 +33,8 @@ const makeStep = (
     endedAt: Option.none(),
   });
 
-const makePlan = (steps: TestPlanStep[]): TestPlan =>
-  new TestPlan({
+const makePlan = (steps: AnalysisStep[]): PerfPlan =>
+  new PerfPlan({
     id: PlanId.makeUnsafe("plan-01"),
     title: "Test plan",
     rationale: "Test",
@@ -47,11 +47,12 @@ const makePlan = (steps: TestPlanStep[]): TestPlan =>
     baseUrl: Option.none(),
     isHeadless: false,
     cookieBrowserKeys: [],
-    testCoverage: Option.none(),
+    targetUrls: [],
+    perfBudget: Option.none(),
   });
 
 const makeReport = (
-  plan: TestPlan,
+  plan: PerfPlan,
   events: readonly (
     | RunStarted
     | StepStarted
@@ -61,16 +62,17 @@ const makeReport = (
     | RunFinished
   )[],
   summary: string,
-): TestReport =>
-  new TestReport({
-    ...new ExecutedTestPlan({ ...plan, events }),
+): PerfReport =>
+  new PerfReport({
+    ...new ExecutedPerfPlan({ ...plan, events }),
     summary,
     screenshotPaths: [],
     pullRequest: Option.none(),
-    testCoverageReport: Option.none(),
+    metrics: [],
+    regressions: [],
   });
 
-describe("TestReport.toPlainText", () => {
+describe("PerfReport.toPlainText", () => {
   it("does not duplicate summary text", () => {
     const steps = [makeStep("s1", "Login step"), makeStep("s2", "Submit step")];
     const plan = makePlan(steps);

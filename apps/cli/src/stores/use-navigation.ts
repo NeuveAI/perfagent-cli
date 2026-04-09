@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import * as Data from "effect/Data";
-import type { ChangesFor, SavedFlow, TestReport } from "@neuve/shared/models";
+import type { ChangesFor, SavedFlow, PerfReport } from "@neuve/shared/models";
 import type { DevServerHint } from "@neuve/shared/prompts";
 import { containsUrl } from "../utils/detect-url";
 
@@ -24,7 +24,7 @@ export type Screen = Data.TaggedEnum<{
     baseUrls?: readonly string[];
     devServerHints?: readonly DevServerHint[];
   };
-  Results: { report: TestReport; videoUrl?: string };
+  Results: { report: PerfReport; videoUrl?: string };
   SavedFlowPicker: {};
   Watch: {
     changesFor: ChangesFor;

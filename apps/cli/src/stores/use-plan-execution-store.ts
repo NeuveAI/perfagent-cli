@@ -1,10 +1,10 @@
 import { create } from "zustand";
-import { ExecutedTestPlan } from "@neuve/supervisor";
+import { ExecutedPerfPlan } from "@neuve/supervisor";
 
 interface PlanExecutionStore {
-  executedPlan: ExecutedTestPlan | undefined;
+  executedPlan: ExecutedPerfPlan | undefined;
   expanded: boolean;
-  setExecutedPlan: (plan: ExecutedTestPlan | undefined) => void;
+  setExecutedPlan: (plan: ExecutedPerfPlan | undefined) => void;
   setExpanded: (expanded: boolean) => void;
   toggleExpanded: () => void;
 }

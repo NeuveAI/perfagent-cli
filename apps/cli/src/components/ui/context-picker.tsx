@@ -1,12 +1,12 @@
 import { Box, Text } from "ink";
 import { useColors } from "../theme-context";
-import { testContextId, type GitState, type TestContext } from "@neuve/shared/models";
+import { analysisContextId, type GitState, type AnalysisContext } from "@neuve/shared/models";
 import { getContextLabel, getContextDescription } from "../../utils/context-options";
 import { CONTEXT_PICKER_VISIBLE_COUNT } from "../../constants";
 import figures from "figures";
 
 interface ContextPickerProps {
-  readonly options: TestContext[];
+  readonly options: AnalysisContext[];
   readonly selectedIndex: number;
   readonly isLoading: boolean;
   readonly gitState: GitState | null;
@@ -58,7 +58,7 @@ export const ContextPicker = ({
           option._tag === "PullRequest" || option._tag === "Branch" ? option.branch.prStatus : null;
 
         return (
-          <Text key={testContextId(option)} wrap="truncate">
+          <Text key={analysisContextId(option)} wrap="truncate">
             <Text color={isSelected ? COLORS.PRIMARY : COLORS.DIM}>
               {isSelected ? `${figures.pointer} ` : "  "}
             </Text>

@@ -12,12 +12,11 @@ import {
   type ChangesFor,
   type ChangedFile,
   type CommitSummary,
-  ExecutedTestPlan,
+  ExecutedPerfPlan,
   PlanId,
   RunStarted,
   type SavedFlow,
-  type TestCoverageReport,
-  TestPlan,
+  PerfPlan,
 } from "@neuve/shared/models";
 import {
   buildExecutionPrompt,
@@ -50,7 +49,7 @@ export class ExecutionError extends Schema.ErrorClass<ExecutionError>("@supervis
     ]),
   },
 ) {
-  displayName = this.reason.displayName ?? `Browser testing failed`;
+  displayName = this.reason.displayName ?? `Performance analysis failed`;
   message = this.reason.message;
 }
 
@@ -64,18 +63,17 @@ export interface ExecuteOptions {
   readonly profileName?: string;
   readonly savedFlow?: SavedFlow;
   readonly learnings?: string;
-  readonly testCoverage?: TestCoverageReport;
   readonly onConfigOptions?: (configOptions: readonly AcpConfigOption[]) => void;
   readonly modelPreference?: { configId: string; value: string };
   readonly devServerHints?: readonly DevServerHint[];
 }
 
 interface ExecutorAccumState {
-  readonly plan: ExecutedTestPlan;
+  readonly plan: ExecutedPerfPlan;
   readonly allTerminalSince: number | undefined;
 }
 
-const resolveTerminalTimestamp = (executed: ExecutedTestPlan, previous: number | undefined) => {
+const resolveTerminalTimestamp = (executed: ExecutedPerfPlan, previous: number | undefined) => {
   if (!executed.allStepsTerminal) return undefined;
   return previous ?? Date.now();
 };
@@ -148,13 +146,12 @@ export class Executor extends ServiceMap.Service<Executor>()("@supervisor/Execut
         cookieBrowserKeys: options.cookieBrowserKeys,
         savedFlow: options.savedFlow,
         learnings: options.learnings,
-        testCoverage: options.testCoverage,
         devServerHints: options.devServerHints,
       });
 
       const planId = PlanId.makeUnsafe(crypto.randomUUID());
 
-      const syntheticPlan = new TestPlan({
+      const syntheticPlan = new PerfPlan({
         id: planId,
         changesFor: options.changesFor,
         currentBranch: context.currentBranch,
@@ -164,13 +161,14 @@ export class Executor extends ServiceMap.Service<Executor>()("@supervisor/Execut
         baseUrl: options.baseUrl ? Option.some(options.baseUrl) : Option.none(),
         isHeadless: options.isHeadless,
         cookieBrowserKeys: options.cookieBrowserKeys,
-        testCoverage: options.testCoverage ? Option.some(options.testCoverage) : Option.none(),
+        targetUrls: [],
+        perfBudget: Option.none(),
         title: options.instruction,
         rationale: "Direct execution",
         steps: [],
       });
 
-      const initial = new ExecutedTestPlan({
+      const initial = new ExecutedPerfPlan({
         ...syntheticPlan,
         events: [new RunStarted({ plan: syntheticPlan })],
       });

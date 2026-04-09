@@ -1,11 +1,11 @@
 import { DateTime, Option } from "effect";
-import type { ExecutedTestPlan, TestPlanStep, ExecutionEvent } from "@neuve/shared/models";
+import type { ExecutedPerfPlan, AnalysisStep, ExecutionEvent } from "@neuve/shared/models";
 import type { Status, StepResult, TestResult, TestEvent } from "./types";
 
 const REPLAY_SESSION_PREFIX = "rrweb replay:";
 const SCREENSHOT_PREFIX = "Screenshot:";
 
-const stepDurationMs = (step: TestPlanStep): number => {
+const stepDurationMs = (step: AnalysisStep): number => {
   if (Option.isNone(step.startedAt)) return 0;
   if (Option.isNone(step.endedAt))
     return Date.now() - Number(DateTime.toEpochMillis(step.startedAt.value));
@@ -59,7 +59,7 @@ export const extractArtifacts = (events: readonly ExecutionEvent[]): ExecutionAr
 };
 
 export const buildStepResult = (
-  step: TestPlanStep,
+  step: AnalysisStep,
   screenshotPaths: readonly string[],
   stepIndex: number,
 ): StepResult => ({
@@ -71,7 +71,7 @@ export const buildStepResult = (
 });
 
 export const buildTestResult = (
-  executed: ExecutedTestPlan,
+  executed: ExecutedPerfPlan,
   url: string,
   startedAt: number,
   artifacts: ExecutionArtifacts,
@@ -98,10 +98,10 @@ export const buildTestResult = (
 };
 
 interface DiffContext {
-  readonly stepMap: ReadonlyMap<string, TestPlanStep>;
+  readonly stepMap: ReadonlyMap<string, AnalysisStep>;
   readonly stepIndexMap: ReadonlyMap<string, number>;
   readonly artifacts: ExecutionArtifacts;
-  readonly executed: ExecutedTestPlan;
+  readonly executed: ExecutedPerfPlan;
   readonly url: string;
   readonly startedAt: number;
 }
@@ -164,7 +164,7 @@ const mapExecutionEvent = (event: ExecutionEvent, context: DiffContext): TestEve
 export const diffEvents = (
   previous: readonly ExecutionEvent[],
   current: readonly ExecutionEvent[],
-  executed: ExecutedTestPlan,
+  executed: ExecutedPerfPlan,
   url: string,
   startedAt: number,
 ): TestEvent[] => {

@@ -1,6 +1,6 @@
 import { Config, Effect, Option, Schema, Stream } from "effect";
 import { type ChangesFor, type PlanId, CiResultOutput, CiStepResult } from "@neuve/shared/models";
-import { Executor, ExecutedTestPlan, Reporter, Github } from "@neuve/supervisor";
+import { Executor, ExecutedPerfPlan, Reporter, Github } from "@neuve/supervisor";
 import { Analytics } from "@neuve/shared/observability";
 import { detectParentAgent } from "@neuve/shared/launched-from";
 import type { AgentBackend } from "@neuve/agent";
@@ -82,9 +82,9 @@ export const runHeadless = (options: HeadlessRunOptions) =>
             );
           }
 
-          yield* analytics.capture("run:started");
+          yield* analytics.capture("analysis:started");
           const seenEvents = new Set<string>();
-          const printNewEvents = (executed: ExecutedTestPlan) => {
+          const printNewEvents = (executed: ExecutedPerfPlan) => {
             if (isJsonOutput) return;
             for (const event of executed.events) {
               if (seenEvents.has(event.id)) continue;
@@ -135,7 +135,7 @@ export const runHeadless = (options: HeadlessRunOptions) =>
                 Option.getOrElse(
                   option,
                   () =>
-                    new ExecutedTestPlan({
+                    new ExecutedPerfPlan({
                       id: "" as PlanId,
                       changesFor: options.changesFor,
                       currentBranch: "",
@@ -145,7 +145,8 @@ export const runHeadless = (options: HeadlessRunOptions) =>
                       baseUrl: Option.none(),
                       isHeadless: !options.headed,
                       cookieBrowserKeys: [],
-                      testCoverage: Option.none(),
+                      targetUrls: [],
+                      perfBudget: Option.none(),
                       title: options.instruction,
                       rationale: "Direct execution",
                       steps: [],
@@ -217,7 +218,7 @@ export const runHeadless = (options: HeadlessRunOptions) =>
           ).length;
           const totalDurationMs = getTotalElapsedMs(report.steps);
 
-          yield* analytics.capture("run:completed", {
+          yield* analytics.capture("analysis:completed", {
             passed: passedCount,
             failed: failedCount,
             step_count: finalExecuted.steps.length,

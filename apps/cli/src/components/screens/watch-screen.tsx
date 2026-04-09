@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import figures from "figures";
 import { Effect, Fiber, Option } from "effect";
-import type { ChangesFor, ExecutedTestPlan, TestPlanStep } from "@neuve/shared/models";
+import type { ChangesFor, ExecutedPerfPlan, AnalysisStep } from "@neuve/shared/models";
 import type { WatchEvent } from "@neuve/supervisor";
 import { Watch } from "@neuve/supervisor";
 import { useMountEffect } from "../../hooks/use-mount-effect";
@@ -48,7 +48,7 @@ export const WatchScreen = ({
   const notifications = usePreferencesStore((state) => state.notifications);
 
   const [phase, setPhase] = useState<WatchPhase>("polling");
-  const [executedPlan, setExecutedPlan] = useState<ExecutedTestPlan | undefined>(undefined);
+  const [executedPlan, setExecutedPlan] = useState<ExecutedPerfPlan | undefined>(undefined);
   const [runCount, setRunCount] = useState(0);
   const [lastResult, setLastResult] = useState<"passed" | "failed" | undefined>(undefined);
   const [runStartedAt, setRunStartedAt] = useState<number | undefined>(undefined);
@@ -285,7 +285,7 @@ export const WatchScreen = ({
 
       {phase === "running" && steps.length > 0 && (
         <Box flexDirection="column" marginTop={1}>
-          {steps.map((step: TestPlanStep, stepIndex: number) => {
+          {steps.map((step: AnalysisStep, stepIndex: number) => {
             const label = Option.isSome(step.summary) ? step.summary.value : step.title;
             const num = `${stepIndex + 1}.`;
 

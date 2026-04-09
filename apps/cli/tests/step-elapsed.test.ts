@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { DateTime, Option } from "effect";
-import { TestPlanStep, StepId } from "@neuve/shared/models";
+import { AnalysisStep, StepId } from "@neuve/shared/models";
 import { getStepElapsedMs, getTotalElapsedMs } from "../src/utils/step-elapsed";
 
 const makeDateTime = (epochMs: number) => DateTime.makeUnsafe(new Date(epochMs));
@@ -10,8 +10,8 @@ const makeStep = (
     startedAt: Option.Option<DateTime.Utc>;
     endedAt: Option.Option<DateTime.Utc>;
   }> = {},
-): TestPlanStep =>
-  new TestPlanStep({
+): AnalysisStep =>
+  new AnalysisStep({
     id: StepId.makeUnsafe("step-01"),
     title: "Test step",
     instruction: "Do something",

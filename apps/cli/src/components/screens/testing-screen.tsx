@@ -9,8 +9,8 @@ import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import {
   type ChangesFor,
   type SavedFlow,
-  TestPlanStep,
-  type ExecutedTestPlan,
+  AnalysisStep,
+  type ExecutedPerfPlan,
   type ExecutionEvent,
 } from "@neuve/shared/models";
 import { TESTING_TIMER_UPDATE_INTERVAL_MS, TESTING_TOOL_TEXT_CHAR_LIMIT } from "../../constants";
@@ -187,7 +187,7 @@ const ToolCallBlock = ({
   );
 };
 
-const getStepElapsedMs = (step: TestPlanStep): number | undefined => {
+const getStepElapsedMs = (step: AnalysisStep): number | undefined => {
   if (Option.isNone(step.startedAt)) return undefined;
   const endMs = Option.isSome(step.endedAt)
     ? DateTime.toEpochMillis(step.endedAt.value)
@@ -292,7 +292,7 @@ export const TestingScreen = ({
   const isExecutionComplete = AsyncResult.isSuccess(executionResult);
   const report = isExecutionComplete ? executionResult.value.report : undefined;
 
-  const [executedPlan, setExecutedPlan] = useState<ExecutedTestPlan | undefined>(undefined);
+  const [executedPlan, setExecutedPlan] = useState<ExecutedPerfPlan | undefined>(undefined);
   const [runStartedAt, setRunStartedAt] = useState<number | undefined>(undefined);
   const [elapsedTimeMs, setElapsedTimeMs] = useState(0);
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
@@ -491,7 +491,7 @@ export const TestingScreen = ({
     if (showCancelConfirmation) {
       if (key.return || normalizedInput === "y") {
         setShowCancelConfirmation(false);
-        trackEvent("run:cancelled");
+        trackEvent("analysis:cancelled");
         goToMain();
         return;
       }
@@ -595,7 +595,7 @@ export const TestingScreen = ({
                 })()}
 
               <Box flexDirection="column" marginTop={1}>
-                {(executedPlan?.steps ?? []).map((step: TestPlanStep, stepIndex: number) => {
+                {(executedPlan?.steps ?? []).map((step: AnalysisStep, stepIndex: number) => {
                   const label = Option.isSome(step.summary) ? step.summary.value : step.title;
                   const stepElapsedMs = getStepElapsedMs(step);
                   const stepElapsedLabel =

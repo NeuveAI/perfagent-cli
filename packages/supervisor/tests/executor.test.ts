@@ -1,22 +1,22 @@
 import { describe, it, expect } from "vitest";
 import { Option, Schema } from "effect";
 import {
-  ExecutedTestPlan,
-  TestPlan,
-  TestPlanStep,
+  ExecutedPerfPlan,
+  PerfPlan,
+  AnalysisStep,
   StepId,
   PlanId,
   ChangesFor,
   AcpSessionUpdate,
 } from "@neuve/shared/models";
 
-const makeTestPlan = (): TestPlan =>
-  new TestPlan({
+const makePerfPlan = (): PerfPlan =>
+  new PerfPlan({
     id: PlanId.makeUnsafe("plan-01"),
     title: "Test plan",
     rationale: "Testing",
     steps: [
-      new TestPlanStep({
+      new AnalysisStep({
         id: StepId.makeUnsafe("step-01"),
         title: "CLI Application Startup",
         instruction: "Start the CLI",
@@ -36,7 +36,8 @@ const makeTestPlan = (): TestPlan =>
     baseUrl: Option.none(),
     isHeadless: false,
     cookieBrowserKeys: [],
-    testCoverage: Option.none(),
+    targetUrls: [],
+    perfBudget: Option.none(),
   } as any);
 
 const decode = Schema.decodeSync(AcpSessionUpdate);
@@ -71,9 +72,9 @@ const fixtureUpdates = [
 ].map((update) => decode(update));
 
 describe("reducer", () => {
-  it("reduces AcpSessionUpdates into ExecutedTestPlan", () => {
+  it("reduces AcpSessionUpdates into ExecutedPerfPlan", () => {
     const updates = fixtureUpdates;
-    let executed = new ExecutedTestPlan({ ...makeTestPlan(), events: [] });
+    let executed = new ExecutedPerfPlan({ ...makePerfPlan(), events: [] });
 
     for (const update of updates) {
       executed = executed.addEvent(update);
@@ -92,7 +93,7 @@ describe("reducer", () => {
 
   it("each addEvent returns a new instance for non-trivial updates", () => {
     const updates = fixtureUpdates;
-    const initial = new ExecutedTestPlan({ ...makeTestPlan(), events: [] });
+    const initial = new ExecutedPerfPlan({ ...makePerfPlan(), events: [] });
 
     let previous = initial;
     for (const update of updates.slice(0, 10)) {

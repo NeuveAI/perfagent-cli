@@ -1,9 +1,9 @@
 import { Effect, Layer, Option, ServiceMap } from "effect";
-import { type ExecutedTestPlan, TestReport } from "@neuve/shared/models";
+import { type ExecutedPerfPlan, PerfReport } from "@neuve/shared/models";
 
 export class Reporter extends ServiceMap.Service<Reporter>()("@supervisor/Reporter", {
   make: Effect.gen(function* () {
-    const report = Effect.fn("Reporter.report")(function* (executed: ExecutedTestPlan) {
+    const report = Effect.fn("Reporter.report")(function* (executed: ExecutedPerfPlan) {
       const failedSteps = executed.events.filter((event) => event._tag === "StepFailed");
       const completedSteps = executed.events.filter((event) => event._tag === "StepCompleted");
       const runFinished = executed.events.find((event) => event._tag === "RunFinished");
@@ -24,12 +24,13 @@ export class Reporter extends ServiceMap.Service<Reporter>()("@supervisor/Report
         .map((event) => (event._tag === "ToolResult" ? event.result : ""))
         .filter(Boolean);
 
-      const report = new TestReport({
+      const report = new PerfReport({
         ...executed,
         summary,
         screenshotPaths,
         pullRequest: Option.none(),
-        testCoverageReport: executed.testCoverage,
+        metrics: [],
+        regressions: [],
       });
 
       yield* Effect.logInfo("Report generated", {

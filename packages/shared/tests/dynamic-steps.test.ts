@@ -2,9 +2,9 @@ import { describe, expect, it } from "vite-plus/test";
 import { Option } from "effect";
 import {
   AcpAgentMessageChunk,
-  ExecutedTestPlan,
-  TestPlan,
-  TestPlanStep,
+  ExecutedPerfPlan,
+  PerfPlan,
+  AnalysisStep,
   StepId,
   PlanId,
   ChangesFor,
@@ -17,8 +17,8 @@ import {
   RunFinished,
 } from "../src/models";
 
-const makeEmptyPlan = (): TestPlan =>
-  new TestPlan({
+const makeEmptyPlan = (): PerfPlan =>
+  new PerfPlan({
     id: PlanId.makeUnsafe("plan-01"),
     title: "Direct execution",
     rationale: "Direct execution",
@@ -31,11 +31,12 @@ const makeEmptyPlan = (): TestPlan =>
     baseUrl: Option.none(),
     isHeadless: false,
     cookieBrowserKeys: [],
-    testCoverage: Option.none(),
+    targetUrls: [],
+    perfBudget: Option.none(),
   });
 
-const makeEmptyExecuted = (): ExecutedTestPlan =>
-  new ExecutedTestPlan({
+const makeEmptyExecuted = (): ExecutedPerfPlan =>
+  new ExecutedPerfPlan({
     ...makeEmptyPlan(),
     events: [new RunStarted({ plan: makeEmptyPlan() })],
   });
@@ -90,10 +91,10 @@ describe("dynamic step discovery", () => {
   });
 
   it("updates an existing step when StepStarted arrives for a known step ID", () => {
-    const planWithStep = new TestPlan({
+    const planWithStep = new PerfPlan({
       ...makeEmptyPlan(),
       steps: [
-        new TestPlanStep({
+        new AnalysisStep({
           id: StepId.makeUnsafe("step-01"),
           title: "Predefined step",
           instruction: "Do something",
@@ -107,7 +108,7 @@ describe("dynamic step discovery", () => {
       ],
     });
 
-    let executed = new ExecutedTestPlan({
+    let executed = new ExecutedPerfPlan({
       ...planWithStep,
       events: [new RunStarted({ plan: planWithStep })],
     });
@@ -164,7 +165,7 @@ describe("dynamic step discovery", () => {
       new StepStarted({ stepId: StepId.makeUnsafe("step-01"), title: "Navigate" }),
     );
 
-    const withText = new ExecutedTestPlan({
+    const withText = new ExecutedPerfPlan({
       ...executed,
       events: [
         ...executed.events,
@@ -200,7 +201,7 @@ describe("dynamic step discovery", () => {
     const richSummary =
       "Verified login flow and dashboard rendering. Found a bug: submit button clipped at 375px viewport (likely-scope=src/components/LoginForm.tsx). Auth requires redirect to /callback after OAuth; future runs should seed 3+ users before testing list views. No unresolved risks.";
 
-    const withText = new ExecutedTestPlan({
+    const withText = new ExecutedPerfPlan({
       ...executed,
       events: [
         ...executed.events,
@@ -226,7 +227,7 @@ describe("dynamic step discovery", () => {
       new StepStarted({ stepId: StepId.makeUnsafe("step-01"), title: "Login" }),
     );
 
-    const withText = new ExecutedTestPlan({
+    const withText = new ExecutedPerfPlan({
       ...executed,
       events: [
         ...executed.events,
@@ -294,7 +295,7 @@ describe("run completion detection", () => {
   });
 
   it("hasRunFinished returns true when RunFinished event exists", () => {
-    const executed = new ExecutedTestPlan({
+    const executed = new ExecutedPerfPlan({
       ...makeEmptyPlan(),
       events: [
         new RunStarted({ plan: makeEmptyPlan() }),
@@ -423,7 +424,7 @@ describe("run completion detection", () => {
       new StepCompleted({ stepId: StepId.makeUnsafe("step-01"), summary: "OK" }),
     );
 
-    const withFinish = new ExecutedTestPlan({
+    const withFinish = new ExecutedPerfPlan({
       ...executed,
       events: [...executed.events, new RunFinished({ status: "passed", summary: "Agent summary" })],
     });

@@ -399,7 +399,7 @@ export class FileDiff extends Schema.Class<FileDiff>("@supervisor/FileDiff")({
 export const StepStatus = Schema.Literals(["pending", "active", "passed", "failed", "skipped"]);
 export type StepStatus = typeof StepStatus.Type;
 
-export class TestPlanStep extends Schema.Class<TestPlanStep>("@supervisor/TestPlanStep")({
+export class AnalysisStep extends Schema.Class<AnalysisStep>("@supervisor/AnalysisStep")({
   id: StepId,
   title: Schema.String,
   instruction: Schema.String,
@@ -413,36 +413,51 @@ export class TestPlanStep extends Schema.Class<TestPlanStep>("@supervisor/TestPl
   update(
     fields: Partial<
       Pick<
-        TestPlanStep,
+        AnalysisStep,
         "title" | "instruction" | "expectedOutcome" | "status" | "summary" | "startedAt" | "endedAt"
       >
     >,
-  ): TestPlanStep {
-    return new TestPlanStep({ ...this, ...fields });
+  ): AnalysisStep {
+    return new AnalysisStep({ ...this, ...fields });
   }
 }
-
-export class TestCoverageEntry extends Schema.Class<TestCoverageEntry>(
-  "@supervisor/TestCoverageEntry",
-)({
-  path: Schema.String,
-  testFiles: Schema.Array(Schema.String),
-  covered: Schema.Boolean,
-}) {}
-
-export class TestCoverageReport extends Schema.Class<TestCoverageReport>(
-  "@supervisor/TestCoverageReport",
-)({
-  entries: Schema.Array(TestCoverageEntry),
-  coveredCount: Schema.Number,
-  totalCount: Schema.Number,
-  percent: Schema.Number,
-}) {}
 
 export const DraftId = Schema.String.pipe(Schema.brand("DraftId"));
 export type DraftId = typeof DraftId.Type;
 
-export class TestPlanDraft extends Schema.Class<TestPlanDraft>("@supervisor/TestPlanDraft")({
+export class PerfBudget extends Schema.Class<PerfBudget>("@shared/PerfBudget")({
+  lcpMs: Schema.OptionFromUndefinedOr(Schema.Number),
+  fcpMs: Schema.OptionFromUndefinedOr(Schema.Number),
+  clsScore: Schema.OptionFromUndefinedOr(Schema.Number),
+  inpMs: Schema.OptionFromUndefinedOr(Schema.Number),
+  ttfbMs: Schema.OptionFromUndefinedOr(Schema.Number),
+  totalTransferSizeKb: Schema.OptionFromUndefinedOr(Schema.Number),
+}) {}
+
+export class PerfMetricSnapshot extends Schema.Class<PerfMetricSnapshot>(
+  "@shared/PerfMetricSnapshot",
+)({
+  url: Schema.String,
+  lcpMs: Schema.OptionFromUndefinedOr(Schema.Number),
+  fcpMs: Schema.OptionFromUndefinedOr(Schema.Number),
+  clsScore: Schema.OptionFromUndefinedOr(Schema.Number),
+  inpMs: Schema.OptionFromUndefinedOr(Schema.Number),
+  ttfbMs: Schema.OptionFromUndefinedOr(Schema.Number),
+  totalTransferSizeKb: Schema.OptionFromUndefinedOr(Schema.Number),
+  traceInsights: Schema.Array(Schema.String),
+  collectedAt: Schema.DateTimeUtc,
+}) {}
+
+export class PerfRegression extends Schema.Class<PerfRegression>("@shared/PerfRegression")({
+  url: Schema.String,
+  metric: Schema.String,
+  baselineValue: Schema.Number,
+  currentValue: Schema.Number,
+  percentChange: Schema.Number,
+  severity: Schema.Literals(["info", "warning", "critical"] as const),
+}) {}
+
+export class PerfPlanDraft extends Schema.Class<PerfPlanDraft>("@supervisor/PerfPlanDraft")({
   id: DraftId,
   changesFor: ChangesFor,
   currentBranch: Schema.String,
@@ -452,7 +467,8 @@ export class TestPlanDraft extends Schema.Class<TestPlanDraft>("@supervisor/Test
   baseUrl: Schema.Option(Schema.String),
   isHeadless: Schema.Boolean,
   cookieBrowserKeys: Schema.Array(Schema.String),
-  testCoverage: Schema.Option(TestCoverageReport),
+  targetUrls: Schema.Array(Schema.String),
+  perfBudget: Schema.OptionFromUndefinedOr(PerfBudget),
 }) {
   get requiresCookies(): boolean {
     return this.cookieBrowserKeys.length > 0;
@@ -460,29 +476,29 @@ export class TestPlanDraft extends Schema.Class<TestPlanDraft>("@supervisor/Test
 
   update(
     fields: Partial<
-      Pick<TestPlanDraft, "instruction" | "baseUrl" | "isHeadless" | "cookieBrowserKeys">
+      Pick<PerfPlanDraft, "instruction" | "baseUrl" | "isHeadless" | "cookieBrowserKeys">
     >,
-  ): TestPlanDraft {
-    return new TestPlanDraft({ ...this, ...fields });
+  ): PerfPlanDraft {
+    return new PerfPlanDraft({ ...this, ...fields });
   }
 }
 
-export class TestPlan extends TestPlanDraft.extend<TestPlan>("@supervisor/TestPlan")({
+export class PerfPlan extends PerfPlanDraft.extend<PerfPlan>("@supervisor/PerfPlan")({
   id: PlanId,
   title: Schema.String,
   rationale: Schema.String,
-  steps: Schema.Array(TestPlanStep),
+  steps: Schema.Array(AnalysisStep),
 }) {
   update(
     fields: Partial<
-      Pick<TestPlanDraft, "instruction" | "baseUrl" | "isHeadless" | "cookieBrowserKeys">
+      Pick<PerfPlanDraft, "instruction" | "baseUrl" | "isHeadless" | "cookieBrowserKeys">
     >,
-  ): TestPlan {
-    return new TestPlan({ ...this, ...fields });
+  ): PerfPlan {
+    return new PerfPlan({ ...this, ...fields });
   }
 
-  updateStep(stepIndex: number, updater: (step: TestPlanStep) => TestPlanStep): TestPlan {
-    return new TestPlan({
+  updateStep(stepIndex: number, updater: (step: AnalysisStep) => AnalysisStep): PerfPlan {
+    return new PerfPlan({
       ...this,
       steps: this.steps.map((step, index) => (index === stepIndex ? updater(step) : step)),
     });
@@ -492,12 +508,12 @@ export class TestPlan extends TestPlanDraft.extend<TestPlan>("@supervisor/TestPl
     return this.steps.length;
   }
 
-  get resetForRerun(): TestPlan {
-    return new TestPlan({
+  get resetForRerun(): PerfPlan {
+    return new PerfPlan({
       ...this,
       steps: this.steps.map(
         (step) =>
-          new TestPlanStep({
+          new AnalysisStep({
             ...step,
             status: "pending",
             summary: Option.none(),
@@ -510,7 +526,7 @@ export class TestPlan extends TestPlanDraft.extend<TestPlan>("@supervisor/TestPl
 }
 
 export class RunStarted extends Schema.TaggedClass<RunStarted>()("RunStarted", {
-  plan: TestPlan,
+  plan: PerfPlan,
 }) {
   get id(): string {
     return `run-started-${this.plan.id}`;
@@ -683,7 +699,7 @@ export const ExecutionEvent = Schema.Union([
 export type ExecutionEvent = typeof ExecutionEvent.Type;
 
 export class RunCompleted extends Schema.TaggedClass<RunCompleted>()("RunCompleted", {
-  report: Schema.suspend((): Schema.Schema<TestReport> => TestReport),
+  report: Schema.suspend((): Schema.Schema<PerfReport> => PerfReport),
 }) {}
 
 export const UpdateContent = Schema.Union([
@@ -712,7 +728,7 @@ export class PullRequest extends Schema.Class<PullRequest>("@supervisor/PullRequ
   headRefName: Schema.String,
 }) {}
 
-export const TestContext = Schema.TaggedUnion({
+export const AnalysisContext = Schema.TaggedUnion({
   WorkingTree: {},
   Branch: { branch: RemoteBranch },
   PullRequest: { branch: RemoteBranch },
@@ -722,9 +738,9 @@ export const TestContext = Schema.TaggedUnion({
     subject: Schema.String,
   },
 });
-export type TestContext = typeof TestContext.Type;
+export type AnalysisContext = typeof AnalysisContext.Type;
 
-export const testContextId = (context: TestContext): string =>
+export const analysisContextId = (context: AnalysisContext): string =>
   Match.value(context).pipe(
     Match.tagsExhaustive({
       WorkingTree: () => "working-tree",
@@ -734,7 +750,7 @@ export const testContextId = (context: TestContext): string =>
     }),
   );
 
-export const testContextFilterText = (context: TestContext): string =>
+export const analysisContextFilterText = (context: AnalysisContext): string =>
   Match.value(context).pipe(
     Match.tagsExhaustive({
       WorkingTree: () => "local changes",
@@ -744,7 +760,7 @@ export const testContextFilterText = (context: TestContext): string =>
     }),
   );
 
-export const testContextLabel = (context: TestContext): string =>
+export const analysisContextLabel = (context: AnalysisContext): string =>
   Match.value(context).pipe(
     Match.tagsExhaustive({
       WorkingTree: () => "Local changes",
@@ -754,7 +770,7 @@ export const testContextLabel = (context: TestContext): string =>
     }),
   );
 
-export const testContextDescription = (context: TestContext): string =>
+export const analysisContextDescription = (context: AnalysisContext): string =>
   Match.value(context).pipe(
     Match.tagsExhaustive({
       WorkingTree: () => "working tree",
@@ -764,7 +780,7 @@ export const testContextDescription = (context: TestContext): string =>
     }),
   );
 
-export const testContextDisplayLabel = (context: TestContext): string =>
+export const analysisContextDisplayLabel = (context: AnalysisContext): string =>
   Match.value(context).pipe(
     Match.tagsExhaustive({
       WorkingTree: () => "Local changes",
@@ -779,17 +795,17 @@ export const FindPullRequestPayload = Schema.TaggedUnion({
 });
 export type FindPullRequestPayload = typeof FindPullRequestPayload.Type;
 
-export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
-  "@supervisor/ExecutedTestPlan",
+export class ExecutedPerfPlan extends PerfPlan.extend<ExecutedPerfPlan>(
+  "@supervisor/ExecutedPerfPlan",
 )({
   events: Schema.Array(ExecutionEvent),
 }) {
-  addEvent(update: AcpSessionUpdate): ExecutedTestPlan {
+  addEvent(update: AcpSessionUpdate): ExecutedPerfPlan {
     if (update.sessionUpdate === "agent_thought_chunk") {
       if (update.content.type !== "text" || update.content.text === undefined) return this;
       const lastEvent = this.events.at(-1);
       if (lastEvent?._tag === "AgentThinking") {
-        return new ExecutedTestPlan({
+        return new ExecutedPerfPlan({
           ...this,
           events: [
             ...this.events.slice(0, -1),
@@ -798,7 +814,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
         });
       }
       const base = this.finalizeTextBlock();
-      return new ExecutedTestPlan({
+      return new ExecutedPerfPlan({
         ...base,
         events: [...base.events, new AgentThinking({ text: update.content.text })],
       });
@@ -808,7 +824,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
       if (update.content.type !== "text" || update.content.text === undefined) return this;
       const lastEvent = this.events.at(-1);
       if (lastEvent?._tag === "AgentText") {
-        return new ExecutedTestPlan({
+        return new ExecutedPerfPlan({
           ...this,
           events: [
             ...this.events.slice(0, -1),
@@ -817,7 +833,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
         });
       }
       const base = this.finalizeTextBlock();
-      return new ExecutedTestPlan({
+      return new ExecutedPerfPlan({
         ...base,
         events: [...base.events, new AgentText({ text: update.content.text })],
       });
@@ -825,7 +841,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
 
     if (update.sessionUpdate === "tool_call") {
       let result = this.finalizeTextBlock();
-      return new ExecutedTestPlan({
+      return new ExecutedPerfPlan({
         ...result,
         events: [
           ...result.events,
@@ -838,7 +854,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
     }
 
     if (update.sessionUpdate === "tool_call_update") {
-      let base: ExecutedTestPlan | undefined;
+      let base: ExecutedPerfPlan | undefined;
 
       if (update.rawInput !== undefined) {
         const updatedEvents = [...this.events];
@@ -852,13 +868,13 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
             break;
           }
         }
-        base = new ExecutedTestPlan({ ...this, events: updatedEvents });
+        base = new ExecutedPerfPlan({ ...this, events: updatedEvents });
       }
 
       const current = base ?? this;
 
       if (update.status === "completed" || update.status === "failed") {
-        return new ExecutedTestPlan({
+        return new ExecutedPerfPlan({
           ...current,
           events: [
             ...current.events,
@@ -872,7 +888,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
       }
       if (update.rawOutput !== undefined) {
         const outputSize = serializeToolResult(update.rawOutput).length;
-        return new ExecutedTestPlan({
+        return new ExecutedPerfPlan({
           ...current,
           events: [
             ...current.events.filter(
@@ -892,7 +908,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
     return this;
   }
 
-  finalizeTextBlock(): ExecutedTestPlan {
+  finalizeTextBlock(): ExecutedPerfPlan {
     const lastEvent = this.events.at(-1);
     if (lastEvent?._tag !== "AgentText" && lastEvent?._tag !== "AgentThinking") return this;
     const foundMarkers = lastEvent.text
@@ -900,7 +916,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
       .map(parseMarker)
       .filter(Predicate.isNotUndefined);
     if (foundMarkers.length === 0) return this;
-    let result: ExecutedTestPlan = new ExecutedTestPlan({
+    let result: ExecutedPerfPlan = new ExecutedPerfPlan({
       ...this,
       events: [...this.events, ...foundMarkers],
     });
@@ -910,11 +926,11 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
     return result;
   }
 
-  applyMarker(marker: ExecutionEvent): ExecutedTestPlan {
+  applyMarker(marker: ExecutionEvent): ExecutedPerfPlan {
     if (marker._tag === "StepStarted") {
       const stepExists = this.steps.some((step) => step.id === marker.stepId);
       if (stepExists) {
-        return new ExecutedTestPlan({
+        return new ExecutedPerfPlan({
           ...this,
           steps: this.steps.map((step) =>
             step.id === marker.stepId
@@ -927,11 +943,11 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
           ),
         });
       }
-      return new ExecutedTestPlan({
+      return new ExecutedPerfPlan({
         ...this,
         steps: [
           ...this.steps,
-          new TestPlanStep({
+          new AnalysisStep({
             id: marker.stepId,
             title: marker.title,
             instruction: marker.title,
@@ -946,7 +962,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
       });
     }
     if (marker._tag === "StepCompleted") {
-      return new ExecutedTestPlan({
+      return new ExecutedPerfPlan({
         ...this,
         steps: this.steps.map((step) =>
           step.id === marker.stepId
@@ -961,7 +977,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
       });
     }
     if (marker._tag === "StepFailed") {
-      return new ExecutedTestPlan({
+      return new ExecutedPerfPlan({
         ...this,
         steps: this.steps.map((step) =>
           step.id === marker.stepId
@@ -976,7 +992,7 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
       });
     }
     if (marker._tag === "StepSkipped") {
-      return new ExecutedTestPlan({
+      return new ExecutedPerfPlan({
         ...this,
         steps: this.steps.map((step) =>
           step.id === marker.stepId
@@ -1005,10 +1021,10 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
     );
   }
 
-  synthesizeRunFinished(): ExecutedTestPlan {
+  synthesizeRunFinished(): ExecutedPerfPlan {
     if (this.hasRunFinished) return this;
     if (this.steps.length === 0) {
-      return new ExecutedTestPlan({
+      return new ExecutedPerfPlan({
         ...this,
         events: [
           ...this.events,
@@ -1027,13 +1043,13 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
     const parts = [`${passedCount} passed`, `${failedCount} failed`];
     if (skippedCount > 0) parts.push(`${skippedCount} skipped`);
     const summary = `Run auto-completed: ${parts.join(", ")}`;
-    return new ExecutedTestPlan({
+    return new ExecutedPerfPlan({
       ...this,
       events: [...this.events, new RunFinished({ status, summary })],
     });
   }
 
-  get activeStep(): TestPlanStep | undefined {
+  get activeStep(): AnalysisStep | undefined {
     return this.steps.find((step) => step.status === "active");
   }
 
@@ -1050,11 +1066,12 @@ export class ExecutedTestPlan extends TestPlan.extend<ExecutedTestPlan>(
   }
 }
 
-export class TestReport extends ExecutedTestPlan.extend<TestReport>("@supervisor/TestReport")({
+export class PerfReport extends ExecutedPerfPlan.extend<PerfReport>("@supervisor/PerfReport")({
   summary: Schema.String,
   screenshotPaths: Schema.Array(Schema.String),
   pullRequest: Schema.Option(Schema.suspend(() => PullRequest)),
-  testCoverageReport: Schema.Option(TestCoverageReport),
+  metrics: Schema.Array(PerfMetricSnapshot),
+  regressions: Schema.Array(PerfRegression),
 }) {
   /** @todo(rasmus): UNUSED */
   get stepStatuses(): ReadonlyMap<
@@ -1117,7 +1134,7 @@ export class TestReport extends ExecutedTestPlan.extend<TestReport>("@supervisor
       `${icon} ${this.title} \u2014 ${this.status.toUpperCase()}`,
       "",
       this.steps.length === 0
-        ? "agent did not execute any test steps"
+        ? "agent did not execute any analysis steps"
         : `${countSummary} out of ${this.steps.length} ${stepWord}`,
       "",
     ];
@@ -1143,21 +1160,6 @@ export class TestReport extends ExecutedTestPlan.extend<TestReport>("@supervisor
       lines.push("");
       lines.push("Summary");
       lines.push(summaryText);
-    }
-
-    if (Option.isSome(this.testCoverageReport)) {
-      const coverage = this.testCoverageReport.value;
-      lines.push("");
-      lines.push(
-        `Test coverage: ${coverage.percent}% (${coverage.coveredCount}/${coverage.totalCount} changed files have tests)`,
-      );
-      const uncovered = coverage.entries.filter((entry) => !entry.covered);
-      if (uncovered.length > 0) {
-        lines.push("  Untested files:");
-        for (const entry of uncovered) {
-          lines.push(`    - ${entry.path}`);
-        }
-      }
     }
 
     return lines.join("\n");

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { GitState, TestContext } from "@neuve/shared/models";
+import type { GitState, AnalysisContext } from "@neuve/shared/models";
 import {
   buildLocalContextOptions,
   fetchRemoteContextOptions,
@@ -9,7 +9,7 @@ import {
 
 interface UseContextPickerOptions {
   gitState: GitState | null;
-  onSelect: (option: TestContext) => void;
+  onSelect: (option: AnalysisContext) => void;
 }
 
 export const useContextPicker = ({ gitState, onSelect }: UseContextPickerOptions) => {
@@ -55,7 +55,7 @@ export const useContextPicker = ({ gitState, onSelect }: UseContextPickerOptions
   }, []);
 
   const handleContextSelect = useCallback(
-    (option: TestContext) => {
+    (option: AnalysisContext) => {
       onSelect(option);
       closePicker();
     },

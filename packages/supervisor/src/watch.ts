@@ -4,7 +4,7 @@ import {
   AcpAgentMessageChunk,
   type ChangedFile,
   type ChangesFor,
-  type ExecutedTestPlan,
+  type ExecutedPerfPlan,
 } from "@neuve/shared/models";
 import { buildWatchAssessmentPrompt } from "@neuve/shared/prompts";
 import { Git, GitRepoRoot } from "./git/git";
@@ -63,8 +63,8 @@ export type WatchEvent = Data.TaggedEnum<{
   Settling: {};
   Assessing: {};
   RunStarting: { readonly fingerprint: string };
-  RunUpdate: { readonly executedPlan: ExecutedTestPlan };
-  RunCompleted: { readonly executedPlan: ExecutedTestPlan; readonly fingerprint: string };
+  RunUpdate: { readonly executedPlan: ExecutedPerfPlan };
+  RunCompleted: { readonly executedPlan: ExecutedPerfPlan; readonly fingerprint: string };
   Skipped: { readonly fingerprint: string };
   Error: { readonly error: unknown };
   Stopped: {};
@@ -165,7 +165,7 @@ export class Watch extends ServiceMap.Service<Watch>()("@supervisor/Watch", {
         lastAssessedFingerprint: undefined,
       });
 
-      const completionRef = yield* Ref.make<Option.Option<ExecutedTestPlan>>(Option.none());
+      const completionRef = yield* Ref.make<Option.Option<ExecutedPerfPlan>>(Option.none());
 
       const pollOnce = Effect.gen(function* () {
         const fingerprint = yield* git.computeFingerprint();

@@ -1,4 +1,4 @@
-import type { GitState, TestContext } from "@neuve/shared/models";
+import type { GitState, AnalysisContext } from "@neuve/shared/models";
 
 const DEFAULT_SUGGESTIONS: readonly string[] = [
   "Test the main user flow end to end",
@@ -31,7 +31,7 @@ const COMMIT_SUGGESTIONS: readonly string[] = [
 ];
 
 export const getFlowSuggestions = (
-  context: TestContext | null,
+  context: AnalysisContext | null,
   _gitState: GitState | null,
 ): readonly string[] => {
   if (!context) return DEFAULT_SUGGESTIONS;

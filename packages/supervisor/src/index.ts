@@ -3,11 +3,18 @@ export { Executor, ExecutionError, type ExecuteOptions } from "./executor";
 export { Reporter } from "./reporter";
 export {
   AgentProvider,
+  AnalysisContext,
+  analysisContextDescription,
+  analysisContextDisplayLabel,
+  analysisContextFilterText,
+  analysisContextId,
+  analysisContextLabel,
+  AnalysisStep,
   type ChangedFile,
   ChangesFor,
   DraftId,
   type CommitSummary,
-  ExecutedTestPlan,
+  ExecutedPerfPlan,
   type ExecutionEvent,
   FileStat,
   FindRepoRootError,
@@ -18,10 +25,9 @@ export {
   GitState,
   type SavedFlow,
   type SavedFlowStep,
-  TestPlan,
-  TestPlanDraft,
-  TestPlanStep,
-  TestReport,
+  PerfPlan,
+  PerfPlanDraft,
+  PerfReport,
   type UpdateContent,
 } from "./git/index";
 export { FlowStorage } from "./flow-storage";
@@ -36,7 +42,6 @@ export {
   type ChangedFileSummary,
   type FileCategory,
 } from "./utils/categorize-changed-files";
-export { TestCoverage } from "./test-coverage";
 export {
   Watch,
   WatchAssessmentError,

@@ -4,8 +4,8 @@ import figures from "figures";
 import { Option } from "effect";
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 import { useAtom } from "@effect/atom-react";
-import type { TestReport } from "@neuve/supervisor";
-import type { TestPlanStep } from "@neuve/shared/models";
+import type { PerfReport } from "@neuve/supervisor";
+import type { AnalysisStep } from "@neuve/shared/models";
 import { copyToClipboard } from "../../utils/copy-to-clipboard";
 import { trackEvent } from "../../utils/session-analytics";
 import { useColors } from "../theme-context";
@@ -20,7 +20,7 @@ import { getStepElapsedMs, getTotalElapsedMs } from "../../utils/step-elapsed";
 import { RuledBox } from "../ui/ruled-box";
 
 interface ResultsScreenProps {
-  report: TestReport;
+  report: PerfReport;
   videoUrl?: string;
 }
 
@@ -162,7 +162,7 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
       </RuledBox>
 
       <Box flexDirection="column" marginTop={1}>
-        {report.steps.map((step: TestPlanStep, stepIndex: number) => {
+        {report.steps.map((step: AnalysisStep, stepIndex: number) => {
           const stepElapsedMs = getStepElapsedMs(step);
           const stepElapsedLabel =
             stepElapsedMs !== undefined ? formatElapsedTime(stepElapsedMs) : undefined;
