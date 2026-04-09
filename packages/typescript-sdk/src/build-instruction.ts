@@ -1,4 +1,4 @@
-import { ExpectConfigError } from "./errors";
+import { PerfAgentConfigError } from "./errors";
 
 export const resolveUrl = (url: unknown, baseUrl: string | undefined): string => {
   if (typeof url !== "string") {

@@ -11,7 +11,7 @@ import { spinner } from "../utils/spinner";
 import {
   AGENTS_SKILLS_DIR,
   formatSkillVersion,
-  getExpectSkillStatus,
+  getPerfAgentSkillStatus,
   SKILL_NAME,
   SKILL_SOURCE_DIR,
   SKILL_TARBALL_URL,
@@ -36,10 +36,10 @@ interface AddSkillOptions {
   agents: readonly SupportedAgent[];
 }
 
-class ExpectSkillDownloadError extends Schema.ErrorClass<ExpectSkillDownloadError>(
-  "ExpectSkillDownloadError",
+class PerfAgentSkillDownloadError extends Schema.ErrorClass<PerfAgentSkillDownloadError>(
+  "PerfAgentSkillDownloadError",
 )({
-  _tag: Schema.tag("ExpectSkillDownloadError"),
+  _tag: Schema.tag("PerfAgentSkillDownloadError"),
   reason: Schema.String,
 }) {
   message = `Failed to download perf-agent skill: ${this.reason}`;
@@ -86,23 +86,23 @@ const downloadSkill = Effect.fn("Skill.downloadSkill")(function* (skillDir: stri
 
   const response: Response = yield* Effect.tryPromise({
     try: () => fetch(SKILL_TARBALL_URL),
-    catch: (cause) => new ExpectSkillDownloadError({ reason: String(cause) }),
+    catch: (cause) => new PerfAgentSkillDownloadError({ reason: String(cause) }),
   }).pipe(
     Effect.timeoutOrElse({
       duration: SKILL_FETCH_TIMEOUT_MS,
-      onTimeout: () => new ExpectSkillDownloadError({ reason: "request timed out" }).asEffect(),
+      onTimeout: () => new PerfAgentSkillDownloadError({ reason: "request timed out" }).asEffect(),
     }),
   );
 
   if (!response.ok) {
-    return yield* new ExpectSkillDownloadError({
+    return yield* new PerfAgentSkillDownloadError({
       reason: `GitHub returned ${response.status}`,
     });
   }
 
   const compressed: ArrayBuffer = yield* Effect.tryPromise({
     try: () => response.arrayBuffer(),
-    catch: (cause) => new ExpectSkillDownloadError({ reason: String(cause) }),
+    catch: (cause) => new PerfAgentSkillDownloadError({ reason: String(cause) }),
   });
 
   yield* Effect.try({
@@ -111,7 +111,7 @@ const downloadSkill = Effect.fn("Skill.downloadSkill")(function* (skillDir: stri
       fs.mkdirSync(skillDir, { recursive: true });
       extractTarEntries(tar, SKILL_ARCHIVE_PREFIX, skillDir);
     },
-    catch: (cause) => new ExpectSkillDownloadError({ reason: String(cause) }),
+    catch: (cause) => new PerfAgentSkillDownloadError({ reason: String(cause) }),
   });
 });
 
@@ -211,7 +211,7 @@ export const ensureAgentSkillCopy = (
         if (isRecoverableSkillDirectory(installedSkillDir)) {
           fs.rmSync(installedSkillDir, { recursive: true, force: true });
         } else {
-          return `${installedSkillDir} exists and is not an perf-agent skill directory`;
+          return `${installedSkillDir} exists and is not a perf-agent skill directory`;
         }
       } else if (haveMatchingContents(skillSourceDir, installedSkillDir)) {
         return "already-copied";
@@ -245,7 +245,7 @@ export const runAddSkill = async (options: AddSkillOptions) => {
   const skillSpinner = spinner("Downloading skill from GitHub...").start();
   const skillDir = path.join(projectRoot, AGENTS_SKILLS_DIR, SKILL_NAME);
   const skillStatus = await Effect.runPromise(
-    getExpectSkillStatus(projectRoot).pipe(Effect.provide(NodeServices.layer)),
+    getPerfAgentSkillStatus(projectRoot).pipe(Effect.provide(NodeServices.layer)),
   );
   let skillOperation: "installed" | "updated" | "current" | "unverified" = "installed";
 
@@ -264,7 +264,7 @@ export const runAddSkill = async (options: AddSkillOptions) => {
     const downloaded = await Effect.runPromise(
       downloadSkill(skillDir).pipe(
         Effect.as(true),
-        Effect.catchTag("ExpectSkillDownloadError", () => Effect.succeed(false)),
+        Effect.catchTag("PerfAgentSkillDownloadError", () => Effect.succeed(false)),
       ),
     );
 

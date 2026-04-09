@@ -12,6 +12,6 @@ export class PerfAgentTimeoutError extends Schema.ErrorClass<PerfAgentTimeoutErr
 export class PerfAgentConfigError extends Error {
   constructor(message: string, fix: string) {
     super(`${message}\n\nFix: ${fix}`);
-    this.name = "ExpectConfigError";
+    this.name = "PerfAgentConfigError";
   }
 }

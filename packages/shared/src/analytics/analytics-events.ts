@@ -5,16 +5,16 @@ export interface CommonProperties {
 
 export interface EventMap {
   // Execution
-  "run:started": undefined;
-  "run:completed": {
+  "analysis:started": undefined;
+  "analysis:completed": {
     readonly passed: number;
     readonly failed: number;
     readonly step_count: number;
     readonly file_count: number;
     readonly duration_ms: number;
   };
-  "run:failed": { readonly error_tag: string };
-  "run:cancelled": undefined;
+  "analysis:failed": { readonly error_tag: string };
+  "analysis:cancelled": undefined;
 
   // Steps
   "step:started": { readonly step_id: string };

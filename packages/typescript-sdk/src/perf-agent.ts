@@ -1,13 +1,13 @@
 import { Effect, Option, Stream } from "effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Executor, type ExecuteOptions } from "@neuve/supervisor";
-import { type ExecutedTestPlan, type ExecutionEvent, ChangesFor } from "@neuve/shared/models";
+import { type ExecutedPerfPlan, type ExecutionEvent, ChangesFor } from "@neuve/shared/models";
 import {
   Cookies as CookiesService,
   Browsers,
   layerLive as cookiesLayerLive,
 } from "@neuve/cookies";
-import { ExpectConfigError, PerfAgentTimeoutError } from "./errors";
+import { PerfAgentConfigError, PerfAgentTimeoutError } from "./errors";
 import { resolveUrl, buildInstruction } from "./build-instruction";
 import { getGlobalConfig } from "./config";
 import { layerSdk } from "./layers";
@@ -22,7 +22,7 @@ import type {
   TestEvent,
   SessionConfig,
   SessionTestInput,
-  ExpectSession,
+  PerfAgentSession,
   Cookie,
   BrowserName,
   Test,
@@ -162,7 +162,7 @@ const executeTests = Effect.fn("Sdk.executeTests")(function* (
   let previousEvents: readonly ExecutionEvent[] = [];
 
   const finalExecuted = yield* executor.execute(executeOptions).pipe(
-    Stream.tap((executed: ExecutedTestPlan) =>
+    Stream.tap((executed: ExecutedPerfPlan) =>
       Effect.sync(() => {
         const newEvents = diffEvents(
           previousEvents,
@@ -371,7 +371,7 @@ const test = (input: TestInput): TestRun => {
   return createTestRun({ promise, subscribe });
 };
 
-const session = (config: SessionConfig): ExpectSession => {
+const session = (config: SessionConfig): PerfAgentSession => {
   validateSessionConfig(config);
 
   const sessionTest = (input: SessionTestInput): TestRun => {
@@ -429,4 +429,4 @@ const cookies = (browser: true | BrowserName | BrowserName[]): Promise<Cookie[]>
   );
 };
 
-export const Expect = { test, session, cookies } as const;
+export const PerfAgent = { test, session, cookies } as const;

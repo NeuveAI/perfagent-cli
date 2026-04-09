@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vite-plus/test";
 import { configure, resetGlobalConfig } from "../src/config";
 import { resolveUrl, buildInstruction } from "../src/build-instruction";
-import { Expect } from "../src/expect";
+import { PerfAgent } from "../src/perf-agent";
 
 describe("example patterns — validation only", () => {
   beforeEach(() => {
@@ -22,7 +22,7 @@ describe("example patterns — validation only", () => {
   });
 
   it("session: creates session with test and close methods", () => {
-    const session = Expect.session({ url: "http://localhost:3000" });
+    const session = PerfAgent.session({ url: "http://localhost:3000" });
     expect(typeof session.test).toBe("function");
     expect(typeof session.close).toBe("function");
     expect(typeof session[Symbol.asyncDispose]).toBe("function");
@@ -38,7 +38,7 @@ describe("example patterns — validation only", () => {
     expect(instruction).toContain("http://localhost:3000/login");
   });
 
-  it("cookies: Expect.cookies is callable", () => {
-    expect(typeof Expect.cookies).toBe("function");
+  it("cookies: PerfAgent.cookies is callable", () => {
+    expect(typeof PerfAgent.cookies).toBe("function");
   });
 });

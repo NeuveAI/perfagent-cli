@@ -1,33 +1,33 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
-  buildExpectMcpServerConfig,
-  formatExpectMcpVersion,
-  getExpectMcpPackageSpecifier,
+  buildPerfAgentMcpServerConfig,
+  formatPerfAgentMcpVersion,
+  getPerfAgentMcpPackageSpecifier,
   inferDistTag,
-} from "../src/mcp/install-expect-mcp";
+} from "../src/mcp/install-perf-agent-mcp";
 
 describe("update", () => {
-  describe("getExpectMcpPackageSpecifier", () => {
+  describe("getPerfAgentMcpPackageSpecifier", () => {
     it("uses the latest release by default", () => {
-      expect(getExpectMcpPackageSpecifier()).toBe("expect-cli@latest");
+      expect(getPerfAgentMcpPackageSpecifier()).toBe("@neuve/perf-agent-cli@latest");
     });
 
     it("uses a specific version when provided", () => {
-      expect(getExpectMcpPackageSpecifier("0.0.30")).toBe("expect-cli@0.0.30");
+      expect(getPerfAgentMcpPackageSpecifier("0.0.30")).toBe("@neuve/perf-agent-cli@0.0.30");
     });
 
     it("strips a leading v from semver versions", () => {
-      expect(getExpectMcpPackageSpecifier("v0.0.30")).toBe("expect-cli@0.0.30");
+      expect(getPerfAgentMcpPackageSpecifier("v0.0.30")).toBe("@neuve/perf-agent-cli@0.0.30");
     });
   });
 
-  describe("formatExpectMcpVersion", () => {
+  describe("formatPerfAgentMcpVersion", () => {
     it("formats semver versions with a v prefix", () => {
-      expect(formatExpectMcpVersion("0.0.30")).toBe("v0.0.30");
+      expect(formatPerfAgentMcpVersion("0.0.30")).toBe("v0.0.30");
     });
 
     it("preserves dist-tags", () => {
-      expect(formatExpectMcpVersion("canary")).toBe("canary");
+      expect(formatPerfAgentMcpVersion("canary")).toBe("canary");
     });
   });
 
@@ -53,18 +53,18 @@ describe("update", () => {
     });
   });
 
-  describe("buildExpectMcpServerConfig", () => {
+  describe("buildPerfAgentMcpServerConfig", () => {
     it("builds the default npx command", () => {
-      expect(buildExpectMcpServerConfig()).toEqual({
+      expect(buildPerfAgentMcpServerConfig()).toEqual({
         command: "npx",
-        args: ["-y", "expect-cli@latest", "mcp"],
+        args: ["-y", "@neuve/perf-agent-cli@latest", "mcp"],
       });
     });
 
     it("pins the requested version", () => {
-      expect(buildExpectMcpServerConfig("0.0.30")).toEqual({
+      expect(buildPerfAgentMcpServerConfig("0.0.30")).toEqual({
         command: "npx",
-        args: ["-y", "expect-cli@0.0.30", "mcp"],
+        args: ["-y", "@neuve/perf-agent-cli@0.0.30", "mcp"],
       });
     });
   });

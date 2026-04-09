@@ -12,27 +12,27 @@ export const SKILL_SOURCE_DIR = "packages/perf-agent-skill";
 export const SKILL_TARBALL_URL = `https://codeload.github.com/${SKILL_REPO}/tar.gz/${SKILL_BRANCH}`;
 export const SKILL_RAW_URL = `https://raw.githubusercontent.com/${SKILL_REPO}/${SKILL_BRANCH}/${SKILL_SOURCE_DIR}/SKILL.md`;
 
-export interface ExpectSkillStatus {
+export interface PerfAgentSkillStatus {
   installed: boolean;
   isLatest: boolean | undefined;
   installedVersion: string | undefined;
   latestVersion: string | undefined;
 }
 
-export class ExpectSkillReadError extends Schema.ErrorClass<ExpectSkillReadError>(
-  "ExpectSkillReadError",
+export class PerfAgentSkillReadError extends Schema.ErrorClass<PerfAgentSkillReadError>(
+  "PerfAgentSkillReadError",
 )({
-  _tag: Schema.tag("ExpectSkillReadError"),
+  _tag: Schema.tag("PerfAgentSkillReadError"),
   installedSkillPath: Schema.String,
   reason: Schema.String,
 }) {
   message = `Failed to read installed perf-agent skill at ${this.installedSkillPath}: ${this.reason}`;
 }
 
-export class ExpectSkillFetchError extends Schema.ErrorClass<ExpectSkillFetchError>(
-  "ExpectSkillFetchError",
+export class PerfAgentSkillFetchError extends Schema.ErrorClass<PerfAgentSkillFetchError>(
+  "PerfAgentSkillFetchError",
 )({
-  _tag: Schema.tag("ExpectSkillFetchError"),
+  _tag: Schema.tag("PerfAgentSkillFetchError"),
   url: Schema.String,
   reason: Schema.String,
 }) {
@@ -62,7 +62,7 @@ export const readInstalledSkill = Effect.fn("Skill.readInstalledSkill")(function
     Effect.map((content): string | undefined => content),
     Effect.catchReason("PlatformError", "NotFound", () => Effect.succeed(undefined)),
     Effect.catchTag("PlatformError", (cause) =>
-      new ExpectSkillReadError({
+      new PerfAgentSkillReadError({
         installedSkillPath,
         reason: cause.message,
       }).asEffect(),
@@ -74,7 +74,7 @@ export const fetchLatestSkill = Effect.fn("Skill.fetchLatestSkill")(function* ()
   const response: Response = yield* Effect.tryPromise({
     try: () => fetch(SKILL_RAW_URL, { cache: "no-store" }),
     catch: (cause) =>
-      new ExpectSkillFetchError({
+      new PerfAgentSkillFetchError({
         url: SKILL_RAW_URL,
         reason: String(cause),
       }),
@@ -82,7 +82,7 @@ export const fetchLatestSkill = Effect.fn("Skill.fetchLatestSkill")(function* ()
     Effect.timeoutOrElse({
       duration: SKILL_FETCH_TIMEOUT_MS,
       onTimeout: () =>
-        new ExpectSkillFetchError({
+        new PerfAgentSkillFetchError({
           url: SKILL_RAW_URL,
           reason: "request timed out",
         }).asEffect(),
@@ -90,7 +90,7 @@ export const fetchLatestSkill = Effect.fn("Skill.fetchLatestSkill")(function* ()
   );
 
   if (!response.ok) {
-    return yield* new ExpectSkillFetchError({
+    return yield* new PerfAgentSkillFetchError({
       url: SKILL_RAW_URL,
       reason: `GitHub returned ${response.status}`,
     });
@@ -99,24 +99,24 @@ export const fetchLatestSkill = Effect.fn("Skill.fetchLatestSkill")(function* ()
   return yield* Effect.tryPromise({
     try: () => response.text(),
     catch: (cause) =>
-      new ExpectSkillFetchError({
+      new PerfAgentSkillFetchError({
         url: SKILL_RAW_URL,
         reason: String(cause),
       }),
   });
 });
 
-export const getExpectSkillStatus = Effect.fn("Skill.getExpectSkillStatus")(function* (
+export const getPerfAgentSkillStatus = Effect.fn("Skill.getPerfAgentSkillStatus")(function* (
   projectRoot: string,
 ) {
   yield* Effect.annotateCurrentSpan({ projectRoot });
 
   const installedSkill = yield* readInstalledSkill(projectRoot).pipe(
-    Effect.catchTag("ExpectSkillReadError", () => Effect.succeed(undefined)),
+    Effect.catchTag("PerfAgentSkillReadError", () => Effect.succeed(undefined)),
   );
 
   const latestSkill = yield* fetchLatestSkill().pipe(
-    Effect.catchTag("ExpectSkillFetchError", () => Effect.succeed(undefined)),
+    Effect.catchTag("PerfAgentSkillFetchError", () => Effect.succeed(undefined)),
   );
 
   return {

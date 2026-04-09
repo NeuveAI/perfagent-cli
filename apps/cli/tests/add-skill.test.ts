@@ -115,108 +115,108 @@ describe("skill copy installation", () => {
   let projectRoot: string;
 
   beforeEach(() => {
-    projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "expect-skill-link-"));
+    projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "perf-agent-skill-link-"));
   });
 
   afterEach(() => {
     fs.rmSync(projectRoot, { recursive: true, force: true });
   });
 
-  it("refreshes an existing expect skill directory with a copied version", () => {
-    const sharedSkillDir = path.join(projectRoot, ".agents", "skills", "expect");
+  it("refreshes an existing perf-agent skill directory with a copied version", () => {
+    const sharedSkillDir = path.join(projectRoot, ".agents", "skills", "perf-agent");
     const codexSkillsDir = path.join(projectRoot, ".codex", "skills");
-    const legacySkillDir = path.join(codexSkillsDir, "expect");
+    const legacySkillDir = path.join(codexSkillsDir, "perf-agent");
 
     fs.mkdirSync(sharedSkillDir, { recursive: true });
     fs.mkdirSync(legacySkillDir, { recursive: true });
-    fs.writeFileSync(path.join(sharedSkillDir, "SKILL.md"), "---\nname: expect\n---\n");
-    fs.writeFileSync(path.join(legacySkillDir, "SKILL.md"), "---\nname: expect\nold\n---\n");
+    fs.writeFileSync(path.join(sharedSkillDir, "SKILL.md"), "---\nname: perf-agent\n---\n");
+    fs.writeFileSync(path.join(legacySkillDir, "SKILL.md"), "---\nname: perf-agent\nold\n---\n");
 
     expect(ensureAgentSkillCopy(projectRoot, "codex")).toBe("copied");
 
     const stats = fs.lstatSync(legacySkillDir);
     expect(stats.isDirectory()).toBe(true);
     expect(fs.readFileSync(path.join(legacySkillDir, "SKILL.md"), "utf8")).toBe(
-      "---\nname: expect\n---\n",
+      "---\nname: perf-agent\n---\n",
     );
   });
 
-  it("refuses to replace non-skill directories at the expect skill path", () => {
-    const sharedSkillDir = path.join(projectRoot, ".agents", "skills", "expect");
+  it("refuses to replace non-skill directories at the perf-agent skill path", () => {
+    const sharedSkillDir = path.join(projectRoot, ".agents", "skills", "perf-agent");
     const cursorSkillsDir = path.join(projectRoot, ".cursor", "skills");
-    const unrelatedSkillDir = path.join(cursorSkillsDir, "expect");
+    const unrelatedSkillDir = path.join(cursorSkillsDir, "perf-agent");
 
     fs.mkdirSync(sharedSkillDir, { recursive: true });
     fs.mkdirSync(unrelatedSkillDir, { recursive: true });
-    fs.writeFileSync(path.join(sharedSkillDir, "SKILL.md"), "---\nname: expect\n---\n");
+    fs.writeFileSync(path.join(sharedSkillDir, "SKILL.md"), "---\nname: perf-agent\n---\n");
     fs.writeFileSync(path.join(unrelatedSkillDir, "README.md"), "custom");
 
     const result = ensureAgentSkillCopy(projectRoot, "cursor");
-    expect(result).toContain("is not an expect skill directory");
+    expect(result).toContain("is not a perf-agent skill directory");
     expect(fs.lstatSync(unrelatedSkillDir).isDirectory()).toBe(true);
   });
 
   it("replaces stale skill directories that contain SKILL.md", () => {
-    const sharedSkillDir = path.join(projectRoot, ".agents", "skills", "expect");
+    const sharedSkillDir = path.join(projectRoot, ".agents", "skills", "perf-agent");
     const cursorSkillsDir = path.join(projectRoot, ".cursor", "skills");
-    const staleSkillDir = path.join(cursorSkillsDir, "expect");
+    const staleSkillDir = path.join(cursorSkillsDir, "perf-agent");
 
     fs.mkdirSync(sharedSkillDir, { recursive: true });
     fs.mkdirSync(staleSkillDir, { recursive: true });
-    fs.writeFileSync(path.join(sharedSkillDir, "SKILL.md"), "---\nname: expect\n---\n");
+    fs.writeFileSync(path.join(sharedSkillDir, "SKILL.md"), "---\nname: perf-agent\n---\n");
     fs.writeFileSync(path.join(staleSkillDir, "SKILL.md"), "old content");
 
     expect(ensureAgentSkillCopy(projectRoot, "cursor")).toBe("copied");
     expect(fs.lstatSync(staleSkillDir).isDirectory()).toBe(true);
     expect(fs.readFileSync(path.join(staleSkillDir, "SKILL.md"), "utf8")).toBe(
-      "---\nname: expect\n---\n",
+      "---\nname: perf-agent\n---\n",
     );
   });
 
   it("replaces empty skill directories left behind by a partial install", () => {
-    const sharedSkillDir = path.join(projectRoot, ".agents", "skills", "expect");
+    const sharedSkillDir = path.join(projectRoot, ".agents", "skills", "perf-agent");
     const cursorSkillsDir = path.join(projectRoot, ".cursor", "skills");
-    const emptySkillDir = path.join(cursorSkillsDir, "expect");
+    const emptySkillDir = path.join(cursorSkillsDir, "perf-agent");
 
     fs.mkdirSync(sharedSkillDir, { recursive: true });
     fs.mkdirSync(emptySkillDir, { recursive: true });
-    fs.writeFileSync(path.join(sharedSkillDir, "SKILL.md"), "---\nname: expect\n---\n");
+    fs.writeFileSync(path.join(sharedSkillDir, "SKILL.md"), "---\nname: perf-agent\n---\n");
 
     expect(ensureAgentSkillCopy(projectRoot, "cursor")).toBe("copied");
     expect(fs.lstatSync(emptySkillDir).isDirectory()).toBe(true);
     expect(fs.readFileSync(path.join(emptySkillDir, "SKILL.md"), "utf8")).toBe(
-      "---\nname: expect\n---\n",
+      "---\nname: perf-agent\n---\n",
     );
   });
 
   it("keeps existing matching copied skill directories untouched", () => {
-    const sharedSkillDir = path.join(projectRoot, ".agents", "skills", "expect");
+    const sharedSkillDir = path.join(projectRoot, ".agents", "skills", "perf-agent");
     const opencodeSkillsDir = path.join(projectRoot, ".opencode", "skills");
-    const installedSkillDir = path.join(opencodeSkillsDir, "expect");
+    const installedSkillDir = path.join(opencodeSkillsDir, "perf-agent");
 
     fs.mkdirSync(sharedSkillDir, { recursive: true });
     fs.mkdirSync(opencodeSkillsDir, { recursive: true });
-    fs.writeFileSync(path.join(sharedSkillDir, "SKILL.md"), "---\nname: expect\n---\n");
+    fs.writeFileSync(path.join(sharedSkillDir, "SKILL.md"), "---\nname: perf-agent\n---\n");
     fs.mkdirSync(installedSkillDir, { recursive: true });
-    fs.writeFileSync(path.join(installedSkillDir, "SKILL.md"), "---\nname: expect\n---\n");
+    fs.writeFileSync(path.join(installedSkillDir, "SKILL.md"), "---\nname: perf-agent\n---\n");
 
     expect(ensureAgentSkillCopy(projectRoot, "opencode")).toBe("already-copied");
   });
 
   it("replaces symlinks with fresh copied skill directories", () => {
-    const sharedSkillDir = path.join(projectRoot, ".agents", "skills", "expect");
+    const sharedSkillDir = path.join(projectRoot, ".agents", "skills", "perf-agent");
     const cursorSkillsDir = path.join(projectRoot, ".cursor", "skills");
-    const symlinkPath = path.join(cursorSkillsDir, "expect");
+    const symlinkPath = path.join(cursorSkillsDir, "perf-agent");
 
     fs.mkdirSync(sharedSkillDir, { recursive: true });
     fs.mkdirSync(cursorSkillsDir, { recursive: true });
-    fs.writeFileSync(path.join(sharedSkillDir, "SKILL.md"), "---\nname: expect\n---\n");
-    fs.symlinkSync("../../missing/expect", symlinkPath);
+    fs.writeFileSync(path.join(sharedSkillDir, "SKILL.md"), "---\nname: perf-agent\n---\n");
+    fs.symlinkSync("../../missing/perf-agent", symlinkPath);
 
     expect(ensureAgentSkillCopy(projectRoot, "cursor")).toBe("copied");
     expect(fs.lstatSync(symlinkPath).isDirectory()).toBe(true);
     expect(fs.readFileSync(path.join(symlinkPath, "SKILL.md"), "utf8")).toBe(
-      "---\nname: expect\n---\n",
+      "---\nname: perf-agent\n---\n",
     );
   });
 });

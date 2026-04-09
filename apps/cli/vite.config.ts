@@ -4,20 +4,22 @@ import * as path from "node:path";
 import type { Plugin } from "rolldown";
 import { defineConfig } from "vite-plus";
 import { reactCompilerPlugin } from "./react-compiler-plugin";
-import { buildRulesContent } from "../../packages/browser/scripts/build-rules-content.js";
 
 const require = createRequire(import.meta.url);
 const pkg = require("./package.json");
 
-interface ExportEntry {
-  default?: string;
-  import?: string;
-}
-
 const resolveExportFile = (entry: unknown): string | undefined => {
   if (typeof entry === "string") return entry;
-  const exportEntry = entry as ExportEntry;
-  return exportEntry.default ?? exportEntry.import;
+  if (entry && typeof entry === "object") {
+    const record = entry as Record<string, unknown>;
+    if (typeof record.default === "string") return record.default;
+    if (typeof record.import === "string") return record.import;
+    if (record.import && typeof record.import === "object") {
+      const nested = record.import as Record<string, unknown>;
+      return typeof nested.default === "string" ? nested.default : undefined;
+    }
+  }
+  return undefined;
 };
 
 const findPackageDir = (packageName: string): string | undefined => {
@@ -94,12 +96,11 @@ export default defineConfig({
     banner: "#!/usr/bin/env node",
     define: {
       __VERSION__: JSON.stringify(pkg.version),
-      __RULES_CONTENT__: buildRulesContent(),
+      __RULES_CONTENT__: JSON.stringify({}),
     },
     deps: {
       alwaysBundle: [/^@neuve\//],
       neverBundle: [
-        "playwright",
         "@agentclientprotocol/claude-agent-acp",
         "@zed-industries/codex-acp",
         "oxc-resolver",

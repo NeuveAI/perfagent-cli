@@ -38,12 +38,12 @@ vi.mock("@neuve/agent", () => ({
   }),
 }));
 
-vi.mock("../src/mcp/install-expect-mcp", () => ({
-  formatExpectMcpInstallSummary: vi.fn().mockReturnValue("Expect MCP installed for Claude Code."),
-  getSupportedExpectMcpAgents: vi.fn((agents: string[]) => agents),
-  getUnsupportedExpectMcpAgents: vi.fn().mockReturnValue([]),
+vi.mock("../src/mcp/install-perf-agent-mcp", () => ({
+  formatPerfAgentMcpInstallSummary: vi.fn().mockReturnValue("Perf Agent MCP installed for Claude Code."),
+  getSupportedPerfAgentMcpAgents: vi.fn((agents: string[]) => agents),
+  getUnsupportedPerfAgentMcpAgents: vi.fn().mockReturnValue([]),
   inferDistTag: vi.fn().mockReturnValue(undefined),
-  installExpectMcpForAgents: vi.fn().mockReturnValue({
+  installPerfAgentMcpForAgents: vi.fn().mockReturnValue({
     scope: "global",
     selectedAgents: ["claude"],
     installed: ["claude"],
@@ -51,8 +51,8 @@ vi.mock("../src/mcp/install-expect-mcp", () => ({
     alreadyInstalled: [],
     failed: [],
   }),
-  selectExpectMcpInstallScope: vi.fn(async () => "global"),
-  selectExpectMcpAgents: vi.fn(async (agents: string[]) => agents),
+  selectPerfAgentMcpInstallScope: vi.fn(async () => "global"),
+  selectPerfAgentMcpAgents: vi.fn(async (agents: string[]) => agents),
 }));
 
 vi.mock("../src/commands/add-skill", () => ({
@@ -130,19 +130,19 @@ describe("init flow", () => {
     const { runAddSkill } = await import("../src/commands/add-skill");
     vi.mocked(runAddSkill).mockResolvedValue(undefined);
     const {
-      formatExpectMcpInstallSummary,
-      getSupportedExpectMcpAgents,
-      getUnsupportedExpectMcpAgents,
-      installExpectMcpForAgents,
-      selectExpectMcpAgents,
-      selectExpectMcpInstallScope,
-    } = await import("../src/mcp/install-expect-mcp");
-    vi.mocked(formatExpectMcpInstallSummary).mockReturnValue(
-      "Expect MCP installed for Claude Code.",
+      formatPerfAgentMcpInstallSummary,
+      getSupportedPerfAgentMcpAgents,
+      getUnsupportedPerfAgentMcpAgents,
+      installPerfAgentMcpForAgents,
+      selectPerfAgentMcpAgents,
+      selectPerfAgentMcpInstallScope,
+    } = await import("../src/mcp/install-perf-agent-mcp");
+    vi.mocked(formatPerfAgentMcpInstallSummary).mockReturnValue(
+      "Perf Agent MCP installed for Claude Code.",
     );
-    vi.mocked(getSupportedExpectMcpAgents).mockImplementation((agents) => agents as never);
-    vi.mocked(getUnsupportedExpectMcpAgents).mockReturnValue([]);
-    vi.mocked(installExpectMcpForAgents).mockReturnValue({
+    vi.mocked(getSupportedPerfAgentMcpAgents).mockImplementation((agents) => agents as never);
+    vi.mocked(getUnsupportedPerfAgentMcpAgents).mockReturnValue([]);
+    vi.mocked(installPerfAgentMcpForAgents).mockReturnValue({
       scope: "global",
       selectedAgents: ["claude"],
       installed: ["claude"],
@@ -150,8 +150,8 @@ describe("init flow", () => {
       alreadyInstalled: [],
       failed: [],
     });
-    vi.mocked(selectExpectMcpInstallScope).mockResolvedValue("global");
-    vi.mocked(selectExpectMcpAgents).mockImplementation(async (agents) => agents as never);
+    vi.mocked(selectPerfAgentMcpInstallScope).mockResolvedValue("global");
+    vi.mocked(selectPerfAgentMcpAgents).mockImplementation(async (agents) => agents as never);
   });
 
   afterEach(() => {
@@ -225,18 +225,18 @@ describe("init flow", () => {
       expect(runAddSkill).not.toHaveBeenCalled();
     });
 
-    it("does not call installExpectMcpForAgents", async () => {
-      const { installExpectMcpForAgents } = await import("../src/mcp/install-expect-mcp");
+    it("does not call installPerfAgentMcpForAgents", async () => {
+      const { installPerfAgentMcpForAgents } = await import("../src/mcp/install-perf-agent-mcp");
       const { runInit } = await import("../src/commands/init");
       await runInit({ dry: true, headless: true });
-      expect(installExpectMcpForAgents).not.toHaveBeenCalled();
+      expect(installPerfAgentMcpForAgents).not.toHaveBeenCalled();
     });
 
-    it("does not call selectExpectMcpInstallScope", async () => {
-      const { selectExpectMcpInstallScope } = await import("../src/mcp/install-expect-mcp");
+    it("does not call selectPerfAgentMcpInstallScope", async () => {
+      const { selectPerfAgentMcpInstallScope } = await import("../src/mcp/install-perf-agent-mcp");
       const { runInit } = await import("../src/commands/init");
       await runInit({ dry: true, headless: true });
-      expect(selectExpectMcpInstallScope).not.toHaveBeenCalled();
+      expect(selectPerfAgentMcpInstallScope).not.toHaveBeenCalled();
     });
 
     it("still shows Setup complete", async () => {
@@ -264,9 +264,9 @@ describe("init flow", () => {
       expect(readProjectPreference(projectRoot, "browserMode")).toBeUndefined();
     });
 
-    it("installExpectMcpForAgents throws — no config written", async () => {
-      const { installExpectMcpForAgents } = await import("../src/mcp/install-expect-mcp");
-      vi.mocked(installExpectMcpForAgents).mockImplementation(() => {
+    it("installPerfAgentMcpForAgents throws — no config written", async () => {
+      const { installPerfAgentMcpForAgents } = await import("../src/mcp/install-perf-agent-mcp");
+      vi.mocked(installPerfAgentMcpForAgents).mockImplementation(() => {
         throw new Error("EACCES");
       });
 
@@ -289,8 +289,8 @@ describe("init flow", () => {
       const { detectAvailableAgents } = await import("@neuve/agent");
       vi.mocked(detectAvailableAgents).mockReturnValue([]);
       const { runAddSkill } = await import("../src/commands/add-skill");
-      const { selectExpectMcpInstallScope, installExpectMcpForAgents } =
-        await import("../src/mcp/install-expect-mcp");
+      const { selectPerfAgentMcpInstallScope, installPerfAgentMcpForAgents } =
+        await import("../src/mcp/install-perf-agent-mcp");
 
       const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
         throw new Error("process.exit");
@@ -301,8 +301,8 @@ describe("init flow", () => {
 
       expect(mockExit).toHaveBeenCalledWith(1);
       expect(runAddSkill).not.toHaveBeenCalled();
-      expect(selectExpectMcpInstallScope).not.toHaveBeenCalled();
-      expect(installExpectMcpForAgents).not.toHaveBeenCalled();
+      expect(selectPerfAgentMcpInstallScope).not.toHaveBeenCalled();
+      expect(installPerfAgentMcpForAgents).not.toHaveBeenCalled();
       expect(readProjectPreference(projectRoot, "browserMode")).toBeUndefined();
       mockExit.mockRestore();
     });
@@ -317,8 +317,8 @@ describe("init flow", () => {
     });
 
     it("partial MCP install failure — still completes init", async () => {
-      const { installExpectMcpForAgents } = await import("../src/mcp/install-expect-mcp");
-      vi.mocked(installExpectMcpForAgents).mockReturnValue({
+      const { installPerfAgentMcpForAgents } = await import("../src/mcp/install-perf-agent-mcp");
+      vi.mocked(installPerfAgentMcpForAgents).mockReturnValue({
         scope: "global",
         selectedAgents: ["claude", "codex"],
         installed: ["claude"],
@@ -333,35 +333,35 @@ describe("init flow", () => {
       expect(readProjectPreference(projectRoot, "browserMode")).toBe("headless");
     });
 
-    it("read-only .expect dir — init completes but preference is not written", async () => {
-      const expectDir = path.join(projectRoot, ".expect");
-      fs.mkdirSync(expectDir, { recursive: true });
-      fs.chmodSync(expectDir, 0o444);
+    it("read-only .perf-agent dir — init completes but preference is not written", async () => {
+      const perfAgentDir = path.join(projectRoot, ".perf-agent");
+      fs.mkdirSync(perfAgentDir, { recursive: true });
+      fs.chmodSync(perfAgentDir, 0o444);
 
       const { runInit } = await import("../src/commands/init");
       try {
         await runInit({ headless: true });
         expect(readProjectPreference(projectRoot, "browserMode")).toBeUndefined();
       } finally {
-        fs.chmodSync(expectDir, 0o755);
+        fs.chmodSync(perfAgentDir, 0o755);
       }
     });
 
     it("read-only project-preferences.json — init completes but preference keeps old value", async () => {
-      const expectDir = path.join(projectRoot, ".expect");
-      fs.mkdirSync(expectDir, { recursive: true });
+      const perfAgentDir = path.join(projectRoot, ".perf-agent");
+      fs.mkdirSync(perfAgentDir, { recursive: true });
       fs.writeFileSync(
-        path.join(expectDir, "project-preferences.json"),
+        path.join(perfAgentDir, "project-preferences.json"),
         '{"state":{"browserMode":"cdp"},"version":0}',
       );
-      fs.chmodSync(path.join(expectDir, "project-preferences.json"), 0o444);
+      fs.chmodSync(path.join(perfAgentDir, "project-preferences.json"), 0o444);
 
       const { runInit } = await import("../src/commands/init");
       try {
         await runInit({ headless: true });
         expect(readProjectPreference(projectRoot, "browserMode")).toBe("cdp");
       } finally {
-        fs.chmodSync(path.join(expectDir, "project-preferences.json"), 0o644);
+        fs.chmodSync(path.join(perfAgentDir, "project-preferences.json"), 0o644);
       }
     });
   });
@@ -378,7 +378,7 @@ describe("init flow", () => {
     });
 
     it("corrupted project-preferences.json is overwritten cleanly", async () => {
-      setupFixture(projectRoot, { ".expect/project-preferences.json": "corrupted{{{" });
+      setupFixture(projectRoot, { ".perf-agent/project-preferences.json": "corrupted{{{" });
 
       const { runInit } = await import("../src/commands/init");
       await runInit({ headless: true });
@@ -392,7 +392,7 @@ describe("init flow", () => {
       await Promise.all([runInit({ headless: true }), runInit({ headed: true })]);
 
       const raw = fs.readFileSync(
-        path.join(projectRoot, ".expect", "project-preferences.json"),
+        path.join(projectRoot, ".perf-agent", "project-preferences.json"),
         "utf-8",
       );
       expect(() => JSON.parse(raw)).not.toThrow();
@@ -401,31 +401,31 @@ describe("init flow", () => {
       expect(["headed", "headless"]).toContain(browserMode);
     });
 
-    it("preserves .expect/logs.md across re-init", async () => {
+    it("preserves .perf-agent/logs.md across re-init", async () => {
       setupFixture(projectRoot, {
-        ".expect/logs.md": "important logs\n",
-        ".expect/project-preferences.json": '{"state":{"browserMode":"cdp"},"version":0}',
+        ".perf-agent/logs.md": "important logs\n",
+        ".perf-agent/project-preferences.json": '{"state":{"browserMode":"cdp"},"version":0}',
       });
 
       const { runInit } = await import("../src/commands/init");
       await runInit({ headless: true });
 
-      expect(fs.readFileSync(path.join(projectRoot, ".expect", "logs.md"), "utf-8")).toBe(
+      expect(fs.readFileSync(path.join(projectRoot, ".perf-agent", "logs.md"), "utf-8")).toBe(
         "important logs\n",
       );
     });
   });
 
   describe("realistic project fixtures", () => {
-    it("project already using expect — re-init only touches config", async () => {
+    it("project already using perf-agent — re-init only touches config", async () => {
       const files = {
         "package.json": '{"name":"my-app"}',
-        ".agents/skills/expect/SKILL.md": '---\nname: expect\nmetadata:\n  version: "2.1.0"\n---\n',
-        ".claude/skills/expect/SKILL.md": "---\nname: expect\n---\n",
-        ".expect/project-preferences.json": '{"state":{"browserMode":"cdp"},"version":0}',
-        ".expect/logs.md": "[2025-06-15] Previous test run\n",
+        ".agents/skills/perf-agent/SKILL.md": '---\nname: perf-agent\nmetadata:\n  version: "2.1.0"\n---\n',
+        ".claude/skills/perf-agent/SKILL.md": "---\nname: perf-agent\n---\n",
+        ".perf-agent/project-preferences.json": '{"state":{"browserMode":"cdp"},"version":0}',
+        ".perf-agent/logs.md": "[2025-06-15] Previous test run\n",
         "src/index.ts": "console.log('hello')",
-        ".gitignore": "node_modules\n.expect\n",
+        ".gitignore": "node_modules\n.perf-agent\n",
       };
       setupFixture(projectRoot, files);
 
@@ -434,10 +434,10 @@ describe("init flow", () => {
 
       expect(readProjectPreference(projectRoot, "browserMode")).toBe("headless");
       assertFilesUnchanged(projectRoot, {
-        ".expect/logs.md": "[2025-06-15] Previous test run\n",
-        ".agents/skills/expect/SKILL.md": '---\nname: expect\nmetadata:\n  version: "2.1.0"\n---\n',
+        ".perf-agent/logs.md": "[2025-06-15] Previous test run\n",
+        ".agents/skills/perf-agent/SKILL.md": '---\nname: perf-agent\nmetadata:\n  version: "2.1.0"\n---\n',
         "src/index.ts": "console.log('hello')",
-        ".gitignore": "node_modules\n.expect\n",
+        ".gitignore": "node_modules\n.perf-agent\n",
       });
     });
 
@@ -457,7 +457,7 @@ describe("init flow", () => {
       }
     });
 
-    it("empty project directory — creates .expect from scratch", async () => {
+    it("empty project directory — creates .perf-agent from scratch", async () => {
       const emptyRoot = fs.mkdtempSync(path.join(os.tmpdir(), "init-empty-"));
       process.cwd = () => emptyRoot;
       const { resolveProjectRoot } = await import("../src/utils/project-root");
@@ -475,12 +475,12 @@ describe("init flow", () => {
 
   describe("argument forwarding", () => {
     it("defaults MCP scope selection to global", async () => {
-      const { selectExpectMcpInstallScope } = await import("../src/mcp/install-expect-mcp");
+      const { selectPerfAgentMcpInstallScope } = await import("../src/mcp/install-perf-agent-mcp");
 
       const { runInit } = await import("../src/commands/init");
       await runInit({ headless: true });
 
-      expect(selectExpectMcpInstallScope).toHaveBeenCalledWith(undefined);
+      expect(selectPerfAgentMcpInstallScope).toHaveBeenCalledWith(undefined);
     });
 
     it("passes detected agents to runAddSkill", async () => {
@@ -497,15 +497,15 @@ describe("init flow", () => {
       });
     });
 
-    it("passes MCP-supported agents to selectExpectMcpAgents", async () => {
+    it("passes MCP-supported agents to selectPerfAgentMcpAgents", async () => {
       const { detectAvailableAgents } = await import("@neuve/agent");
       vi.mocked(detectAvailableAgents).mockReturnValue(["claude", "codex", "cursor"]);
-      const { selectExpectMcpAgents } = await import("../src/mcp/install-expect-mcp");
+      const { selectPerfAgentMcpAgents } = await import("../src/mcp/install-perf-agent-mcp");
 
       const { runInit } = await import("../src/commands/init");
       await runInit({ headless: true });
 
-      expect(selectExpectMcpAgents).toHaveBeenCalledWith(
+      expect(selectPerfAgentMcpAgents).toHaveBeenCalledWith(
         ["claude", "codex", "cursor"],
         undefined,
         "global",
@@ -525,14 +525,14 @@ describe("init flow", () => {
     });
 
     it("forwards --yes to MCP scope and agent selection", async () => {
-      const { selectExpectMcpInstallScope, selectExpectMcpAgents } =
-        await import("../src/mcp/install-expect-mcp");
+      const { selectPerfAgentMcpInstallScope, selectPerfAgentMcpAgents } =
+        await import("../src/mcp/install-perf-agent-mcp");
 
       const { runInit } = await import("../src/commands/init");
       await runInit({ yes: true, headless: true });
 
-      expect(selectExpectMcpInstallScope).toHaveBeenCalledWith(true);
-      expect(selectExpectMcpAgents).toHaveBeenCalledWith(["claude"], true, "global");
+      expect(selectPerfAgentMcpInstallScope).toHaveBeenCalledWith(true);
+      expect(selectPerfAgentMcpAgents).toHaveBeenCalledWith(["claude"], true, "global");
     });
   });
 });

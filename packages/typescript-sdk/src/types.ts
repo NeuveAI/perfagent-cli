@@ -80,13 +80,13 @@ export interface SessionTestInput {
   readonly isRecording?: boolean;
 }
 
-export interface ExpectSession {
+export interface PerfAgentSession {
   test(input: SessionTestInput): TestRun;
   close(): Promise<void>;
   [Symbol.asyncDispose](): Promise<void>;
 }
 
-export interface ExpectConfig {
+export interface PerfAgentConfig {
   readonly baseUrl?: string;
   readonly browser?: BrowserName;
   readonly mode?: "headed" | "headless";

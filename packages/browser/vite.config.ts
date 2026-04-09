@@ -37,7 +37,7 @@ const buildRulesContent = (): string => {
 
 export default defineConfig({
   pack: {
-    entry: ["src/index.ts", "src/mcp/index.ts", "src/mcp/start.ts", "src/runtime/index.ts"],
+    entry: ["src/index.ts", "src/mcp/index.ts", "src/mcp/start.ts"],
     format: ["esm"],
     dts: true,
     sourcemap: true,

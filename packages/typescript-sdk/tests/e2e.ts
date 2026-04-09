@@ -1,4 +1,4 @@
-import { Expect } from "../src/expect";
+import { PerfAgent } from "../src/perf-agent";
 import { configure, resetGlobalConfig } from "../src/config";
 import { startFixtureServer } from "./fixtures/fixture-server";
 import type { TestEvent } from "../src/types";
@@ -10,7 +10,7 @@ console.log(`Fixture server started at ${fixtureUrl}`);
 
 try {
   console.log("\n--- test: page loads correctly ---");
-  const basic = await Expect.test({
+  const basic = await PerfAgent.test({
     url: fixtureUrl,
     tests: ["the page loads and shows a heading"],
   });
@@ -21,7 +21,7 @@ try {
   if (basic.status !== "passed") throw new Error("basic test failed");
 
   console.log("\n--- test: streaming events ---");
-  const run = Expect.test({
+  const run = PerfAgent.test({
     url: fixtureUrl,
     tests: ["the main heading says Welcome"],
   });
@@ -36,7 +36,7 @@ try {
   if (events.length === 0) throw new Error("no events received");
 
   console.log("\n--- test: login page ---");
-  const loginResult = await Expect.test({
+  const loginResult = await PerfAgent.test({
     url: `${fixtureUrl}/login`,
     tests: ["the login page has an email field and a password field"],
   });
@@ -44,7 +44,7 @@ try {
 
   console.log("\n--- test: configure baseUrl ---");
   configure({ baseUrl: fixtureUrl });
-  const signupResult = await Expect.test({
+  const signupResult = await PerfAgent.test({
     url: "/signup",
     tests: ["the signup page has email, password, and confirm password fields"],
   });
@@ -52,7 +52,7 @@ try {
   resetGlobalConfig();
 
   console.log("\n--- test: session ---");
-  const session = Expect.session({ url: fixtureUrl });
+  const session = PerfAgent.session({ url: fixtureUrl });
   const homeResult = await session.test({
     url: fixtureUrl,
     tests: ["the homepage has navigation links"],

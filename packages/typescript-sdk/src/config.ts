@@ -1,14 +1,14 @@
-import type { ExpectConfig } from "./types";
+import type { PerfAgentConfig } from "./types";
 
-let globalConfig: ExpectConfig = {};
+let globalConfig: PerfAgentConfig = {};
 
-export const defineConfig = (config: ExpectConfig): ExpectConfig => config;
+export const defineConfig = (config: PerfAgentConfig): PerfAgentConfig => config;
 
-export const configure = (config: Partial<ExpectConfig>): void => {
+export const configure = (config: Partial<PerfAgentConfig>): void => {
   globalConfig = { ...globalConfig, ...config };
 };
 
-export const getGlobalConfig = (): ExpectConfig => globalConfig;
+export const getGlobalConfig = (): PerfAgentConfig => globalConfig;
 
 export const resetGlobalConfig = (): void => {
   globalConfig = {};
