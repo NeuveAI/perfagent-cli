@@ -66,6 +66,17 @@ export class DevToolsClient extends ServiceMap.Service<DevToolsClient>()(
         return typedResult;
       });
 
+      const listTools = Effect.fn("DevToolsClient.listTools")(function* () {
+        const result = yield* Effect.tryPromise({
+          try: () => client.listTools(),
+          catch: (cause) =>
+            new DevToolsConnectionError({
+              cause: cause instanceof Error ? cause.message : String(cause),
+            }),
+        });
+        return result.tools;
+      });
+
       const navigate = Effect.fn("DevToolsClient.navigate")(function* (
         url: string,
         options: { type?: string } = {},
@@ -164,6 +175,7 @@ export class DevToolsClient extends ServiceMap.Service<DevToolsClient>()(
 
       return {
         callTool,
+        listTools,
         navigate,
         startTrace,
         stopTrace,
