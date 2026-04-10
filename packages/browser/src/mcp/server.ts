@@ -64,6 +64,8 @@ export const createBrowserMcpServer = <E>(
     version: "0.1.0",
   });
 
+  server.server.registerCapabilities({ tools: { listChanged: false } });
+
   server.server.setRequestHandler(ListToolsRequestSchema, async () => {
     const tools = await runtime.runPromise(
       Effect.gen(function* () {

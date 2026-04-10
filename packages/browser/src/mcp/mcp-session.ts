@@ -1,12 +1,9 @@
-import { Config, Effect, Layer, Option, Ref, ServiceMap } from "effect";
+import { Config, Effect, Layer, Option, ServiceMap } from "effect";
 import { DevToolsClient } from "../devtools-client";
-import {
-  PERF_AGENT_BASE_URL_ENV_NAME,
-} from "./constants";
+import { PERF_AGENT_BASE_URL_ENV_NAME } from "./constants";
 
 export class McpSession extends ServiceMap.Service<McpSession>()("@devtools/McpSession", {
   make: Effect.gen(function* () {
-    const devtools = yield* DevToolsClient;
     const baseUrlConfig = yield* Config.option(Config.string(PERF_AGENT_BASE_URL_ENV_NAME));
     const configuredBaseUrl = Option.getOrUndefined(baseUrlConfig);
 
@@ -21,14 +18,8 @@ export class McpSession extends ServiceMap.Service<McpSession>()("@devtools/McpS
       return url;
     };
 
-    const close = Effect.fn("McpSession.close")(function* () {
-      yield* devtools.closePage();
-      yield* Effect.logInfo("McpSession page closed");
-    });
-
     return {
       resolveUrl,
-      close,
     } as const;
   }),
 }) {

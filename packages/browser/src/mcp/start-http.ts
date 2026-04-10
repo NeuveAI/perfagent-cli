@@ -89,23 +89,14 @@ const removeSessionFile = () => {
   }
 };
 
-const closeSession = Effect.gen(function* () {
-  const session = yield* McpSession;
-  yield* session.close();
-});
-
 const shutdown = () => {
-  void McpRuntime.runPromise(closeSession).finally(() => {
-    removeSessionFile();
-    process.exit(0);
-  });
+  removeSessionFile();
+  process.exit(0);
 };
 
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
-process.once("beforeExit", () => {
-  void McpRuntime.runPromise(closeSession).finally(removeSessionFile);
-});
+process.once("beforeExit", removeSessionFile);
 
 httpServer.listen(0, "127.0.0.1", () => {
   const address = httpServer.address();
