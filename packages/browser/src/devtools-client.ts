@@ -27,13 +27,29 @@ export class DevToolsClient extends ServiceMap.Service<DevToolsClient>()(
         version: "0.1.0",
       });
 
-      yield* Effect.tryPromise({
-        try: () => client.connect(transport),
-        catch: (cause) =>
-          new DevToolsConnectionError({
-            cause: cause instanceof Error ? cause.message : String(cause),
+      yield* Effect.acquireRelease(
+        Effect.tryPromise({
+          try: () => client.connect(transport),
+          catch: (cause) =>
+            new DevToolsConnectionError({
+              cause: cause instanceof Error ? cause.message : String(cause),
+            }),
+        }),
+        () =>
+          Effect.gen(function* () {
+            yield* Effect.tryPromise({
+              try: async () => {
+                await client.close().catch(() => {});
+                await transport.close().catch(() => {});
+              },
+              catch: (cause) =>
+                new DevToolsConnectionError({
+                  cause: cause instanceof Error ? cause.message : String(cause),
+                }),
+            }).pipe(Effect.catchTag("DevToolsConnectionError", () => Effect.void));
+            yield* Effect.logInfo("DevTools MCP client disconnected");
           }),
-      });
+      );
 
       yield* Effect.logInfo("DevTools MCP client connected");
 
@@ -160,17 +176,6 @@ export class DevToolsClient extends ServiceMap.Service<DevToolsClient>()(
         options: { pageId?: string } = {},
       ) {
         return yield* callTool("close_page", options);
-      });
-
-      const disconnect = Effect.fn("DevToolsClient.disconnect")(function* () {
-        yield* Effect.tryPromise({
-          try: () => client.close(),
-          catch: (cause) =>
-            new DevToolsConnectionError({
-              cause: cause instanceof Error ? cause.message : String(cause),
-            }),
-        });
-        yield* Effect.logInfo("DevTools MCP client disconnected");
       });
 
       return {
