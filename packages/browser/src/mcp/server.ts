@@ -1,12 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
-import { Effect, type ManagedRuntime } from "effect";
+import { type ManagedRuntime } from "effect";
 import { DevToolsClient } from "../devtools-client";
 import { McpSession } from "./mcp-session";
+import { registerInteractTool } from "./tools/interact";
+import { registerObserveTool } from "./tools/observe";
+import { registerTraceTool } from "./tools/trace";
 
 const buildPerfAgentGuide = (): string =>
   [
@@ -14,47 +13,74 @@ const buildPerfAgentGuide = (): string =>
     "",
     "You validate code changes by measuring their performance impact in a real browser. Your job is to find performance regressions, measure Core Web Vitals, audit accessibility, and profile runtime behavior.",
     "",
-    "<execution_strategy>",
-    "All chrome-devtools tools are exposed through the perf-agent MCP server. Use them directly.",
+    "You have 3 tools: `interact`, `observe`, and `trace`. Each accepts an `action` object with a `command` field that determines the operation.",
     "",
+    "<tools>",
+    "## interact — mutate page state via real CDP input",
+    "Real browser input events that trigger INP, focus, and event handlers (unlike evaluate_script).",
+    "- navigate: go to URL, back, forward, reload",
+    "- click: click element by UID (supports double-click)",
+    "- type: type text into focused element",
+    "- fill: fill input by UID with value",
+    "- press_key: press a keyboard key",
+    "- hover: hover over element by UID",
+    "- drag: drag from one element to another",
+    "- fill_form: fill multiple form fields at once",
+    "- upload_file: upload file to input by UID",
+    "- handle_dialog: accept/dismiss browser dialogs",
+    "- wait_for: wait for text to appear on page",
+    "- resize: resize the viewport",
+    "- new_tab: open URL in new tab",
+    "- switch_tab / close_tab: manage tabs by pageId",
+    "",
+    "## observe — read page state (no side effects)",
+    "- snapshot: accessibility tree with element UIDs (primary way to discover elements)",
+    "- screenshot: visual capture (png/jpeg/webp, element or full page)",
+    "- console: list or get console messages",
+    "- network: list or get network requests",
+    "- pages: list open pages",
+    "- evaluate: run JS function (prefer interact for user actions)",
+    "",
+    "## trace — performance profiling and analysis",
+    "- start: begin performance trace (reload=true for cold-load)",
+    "- stop: end trace, returns CWV summary + insight IDs",
+    "- analyze: drill into a specific insight (LCPBreakdown, RenderBlocking, etc.)",
+    "- memory: heap snapshot for leak detection",
+    "- lighthouse: a11y/SEO/best-practices audit (NOT for performance)",
+    "- emulate: CPU throttling, network conditions, viewport, color scheme",
+    "</tools>",
+    "",
+    "<execution_strategy>",
     "Interaction workflow (snapshot-first, like a real user):",
-    "1. `navigate_page` to the target URL",
-    "2. `take_snapshot` to get the accessibility tree with element UIDs",
-    "3. Use UIDs with input tools: `click`, `fill`, `type_text`, `press_key`, `hover`, `drag`",
-    "4. These input tools use real CDP input events — they trigger INP, focus, and real event handlers",
+    "1. `interact navigate` to the target URL",
+    "2. `observe snapshot` to get the accessibility tree with element UIDs",
+    "3. Use UIDs with interact commands: `interact click`, `interact fill`, `interact type`, etc.",
+    "4. These use real CDP input events — they trigger INP, focus, and real event handlers",
     "",
     "Performance workflow:",
-    "1. `navigate_page` to the target URL",
-    "2. `performance_start_trace` with `reload=true` for cold-load profiling",
-    "3. `performance_stop_trace` to get CWV metrics and insight IDs",
-    "4. `performance_analyze_insight` to drill into LCPBreakdown, RenderBlocking, DocumentLatency, etc.",
-    "5. For interaction profiling: start trace without reload, perform real interactions, stop trace",
-    "6. Use `emulate` with cpuThrottlingRate=4 and networkConditions='Slow 3G' to test constrained conditions",
-    "7. Use `take_memory_snapshot` for heap analysis",
+    "1. `interact navigate` to the target URL",
+    "2. `trace start` with reload=true for cold-load profiling",
+    "3. `trace stop` to get CWV metrics and insight IDs",
+    "4. `trace analyze` to drill into LCPBreakdown, RenderBlocking, DocumentLatency, etc.",
+    "5. For interaction profiling: `trace start` with reload=false, perform real interactions, `trace stop`",
+    "6. Use `trace emulate` with cpuThrottling=4 and network='Slow 3G' to test constrained conditions",
+    "7. Use `trace memory` for heap analysis",
     "</execution_strategy>",
     "",
     "<best_practices>",
-    "- ALWAYS prefer input tools (click, type_text, fill) over evaluate_script for interactions",
+    "- ALWAYS prefer interact tools (click, type, fill) over observe evaluate for interactions",
     "- Synthetic JS events do NOT trigger INP — only real CDP input events do",
-    "- Use `take_snapshot` first to find element UIDs, then pass them to input tools",
-    "- For INP measurement: start a manual trace, perform real clicks/typing, stop the trace",
-    "- Use `emulate` BEFORE starting traces to measure performance under realistic conditions",
-    "- Check `list_console_messages` for JavaScript errors that may indicate bugs",
-    "- Run Lighthouse for accessibility/SEO/best-practices — NOT for performance (use traces instead)",
+    "- Use `observe snapshot` first to find element UIDs, then pass them to interact commands",
+    "- For INP measurement: trace start (reload=false), perform real clicks/typing, trace stop",
+    "- Use `trace emulate` BEFORE starting traces to measure performance under realistic conditions",
+    "- Check `observe console` for JavaScript errors that may indicate bugs",
+    "- Run `trace lighthouse` for accessibility/SEO/best-practices — NOT for performance (use traces instead)",
     "</best_practices>",
     "",
     "<core_web_vitals>",
     "LCP < 2500ms (good), FCP < 1800ms, CLS < 0.1, INP < 200ms, TTFB < 800ms",
     "</core_web_vitals>",
   ].join("\n");
-
-// HACK: the MCP SDK's low-level request handlers return unknown content types that tools can pass through as-is.
-// We proxy chrome-devtools-mcp transparently — it already conforms to the MCP content format.
-interface ProxyCallResult {
-  readonly content: ReadonlyArray<unknown>;
-  readonly isError?: boolean;
-  readonly structuredContent?: unknown;
-}
 
 export const createBrowserMcpServer = <E>(
   runtime: ManagedRuntime.ManagedRuntime<McpSession | DevToolsClient, E>,
@@ -64,51 +90,9 @@ export const createBrowserMcpServer = <E>(
     version: "0.1.0",
   });
 
-  server.server.registerCapabilities({ tools: { listChanged: false } });
-
-  server.server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const tools = await runtime.runPromise(
-      Effect.gen(function* () {
-        const devtools = yield* DevToolsClient;
-        return yield* devtools.listTools();
-      }),
-    );
-    return { tools };
-  });
-
-  server.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: rawArgs } = request.params;
-    const args: Record<string, unknown> = rawArgs ?? {};
-
-    const result = await runtime.runPromise(
-      Effect.gen(function* () {
-        const devtools = yield* DevToolsClient;
-        const session = yield* McpSession;
-
-        // Intercept URL-based tools to apply base URL resolution
-        const resolvedArgs = { ...args };
-        if (
-          (name === "navigate_page" || name === "new_page") &&
-          typeof args.url === "string"
-        ) {
-          resolvedArgs.url = session.resolveUrl(args.url);
-        }
-
-        const callResult = yield* devtools.callTool(name, resolvedArgs);
-        yield* Effect.logDebug("Proxied DevTools tool call", { tool: name });
-        return callResult;
-      }).pipe(Effect.withSpan(`mcp.tool.${name}`)),
-    );
-
-    const proxyResult = result as ProxyCallResult;
-    return {
-      content: proxyResult.content as Array<{ type: "text"; text: string }>,
-      ...(proxyResult.isError !== undefined && { isError: proxyResult.isError }),
-      ...(proxyResult.structuredContent !== undefined && {
-        structuredContent: proxyResult.structuredContent as Record<string, unknown>,
-      }),
-    };
-  });
+  registerInteractTool(server, runtime);
+  registerObserveTool(server, runtime);
+  registerTraceTool(server, runtime);
 
   server.registerPrompt(
     "run",
