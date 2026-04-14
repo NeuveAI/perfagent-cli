@@ -157,14 +157,6 @@ export const App = ({ agent }: { agent: AgentBackend }) => {
 
   return (
     <Box flexDirection="column" width="100%" height={rows}>
-      <Box paddingX={1} paddingY={0}>
-        <Text color="yellow">⚠ </Text>
-        <Text dimColor>The TUI is deprecated. Use </Text>
-        <Text color="cyan">/perf-agent</Text>
-        <Text dimColor> from your coding agent instead. Run </Text>
-        <Text color="cyan">npx @neuve/perf-agent-cli@latest init</Text>
-        <Text dimColor> to set up.</Text>
-      </Box>
       <Box flexGrow={1}>{renderScreen()}</Box>
       <Modeline />
     </Box>
