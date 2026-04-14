@@ -1,5 +1,5 @@
 import { Config, Effect, Option, Schema, Stream } from "effect";
-import { type ChangesFor, type PlanId, CiResultOutput, CiStepResult } from "@neuve/shared/models";
+import { type ChangesFor, type PlanId, CiResultOutput } from "@neuve/shared/models";
 import { Executor, ExecutedPerfPlan, Reporter, Github } from "@neuve/supervisor";
 import { Analytics } from "@neuve/shared/observability";
 import { detectParentAgent } from "@neuve/shared/launched-from";
@@ -181,7 +181,13 @@ export const runHeadless = (options: HeadlessRunOptions) =>
                   status: "failed" as const,
                   title: options.instruction,
                   duration_ms: error.timeoutMs,
-                  steps: [],
+                  metrics: [],
+                  regressions: [],
+                  insightNames: [],
+                  consoleCaptureCount: 0,
+                  networkRequestCount: 0,
+                  failedRequestCount: 0,
+                  insightDetailCount: 0,
                   artifacts: {},
                   summary: `Timed out after ${formatElapsedTime(error.timeoutMs)}`,
                 });
@@ -329,28 +335,35 @@ export const runHeadless = (options: HeadlessRunOptions) =>
           }
 
           if (isJsonOutput) {
-            const stepResults = report.steps.map((step) => {
-              const entry = statuses.get(step.id);
-              const stepStatus = entry?.status ?? ("not-run" as const);
-              const elapsed = getStepElapsedMs(step);
-              return new CiStepResult({
-                title: step.title,
-                status: stepStatus,
-                ...(elapsed !== undefined ? { duration_ms: elapsed } : {}),
-                ...(stepStatus === "failed" && entry?.summary ? { error: entry.summary } : {}),
-              });
-            });
-
             const summaryParts = [`${passedCount} passed`, `${failedCount} failed`];
             if (skippedCount > 0) summaryParts.push(`${skippedCount} skipped`);
             const summaryText = `${summaryParts.join(", ")} out of ${report.steps.length} step${report.steps.length === 1 ? "" : "s"}`;
+
+            const consoleCaptureCount = report.consoleCaptures.reduce(
+              (sum, capture) => sum + capture.entries.length,
+              0,
+            );
+            const networkRequestCount = report.networkCaptures.reduce(
+              (sum, capture) => sum + capture.requests.length,
+              0,
+            );
+            const failedRequestCount = report.networkCaptures.reduce(
+              (sum, capture) => sum + capture.requests.filter((request) => request.failed).length,
+              0,
+            );
 
             const resultOutput = new CiResultOutput({
               version: VERSION,
               status: report.status,
               title: report.title,
               duration_ms: totalDurationMs,
-              steps: stepResults,
+              metrics: report.metrics,
+              regressions: report.regressions,
+              insightNames: [...report.uniqueInsightNames],
+              consoleCaptureCount,
+              networkRequestCount,
+              failedRequestCount,
+              insightDetailCount: report.insightDetails.length,
               artifacts: {
                 ...(artifacts.videoPath ? { video: artifacts.videoPath } : {}),
                 ...(artifacts.screenshotPaths.length > 0
