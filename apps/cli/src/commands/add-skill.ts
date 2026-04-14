@@ -1,9 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { gunzipSync } from "node:zlib";
 import { type SupportedAgent, toDisplayName, toSkillDir } from "@neuve/agent";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 import { highlighter } from "../utils/highlighter";
 import { logger } from "../utils/logger";
 import { prompts } from "../utils/prompts";
@@ -13,107 +12,31 @@ import {
   formatSkillVersion,
   getPerfAgentSkillStatus,
   SKILL_NAME,
-  SKILL_SOURCE_DIR,
-  SKILL_TARBALL_URL,
 } from "../utils/perf-agent-skill";
-import { SKILL_FETCH_TIMEOUT_MS } from "../constants";
 import { resolveProjectRoot } from "../utils/project-root";
 import { detectNonInteractive } from "./init-utils";
-const SKILL_BRANCH = "main";
-const SKILL_ARCHIVE_PREFIX = `perf-agent-${SKILL_BRANCH}/${SKILL_SOURCE_DIR}/`;
 
-const TAR_HEADER_SIZE = 512;
-const TAR_NAME_OFFSET = 0;
-const TAR_NAME_LENGTH = 100;
-const TAR_SIZE_OFFSET = 124;
-const TAR_SIZE_LENGTH = 12;
-const TAR_TYPE_OFFSET = 156;
-const TAR_TYPE_REGULAR_FILE = 48;
-const TAR_TYPE_REGULAR_FILE_ALT = 0;
+declare const __SKILL_CONTENT__: Record<string, string>;
+
+const BUNDLED_SKILL_FILES: Record<string, string> =
+  typeof __SKILL_CONTENT__ !== "undefined" ? __SKILL_CONTENT__ : {};
 
 interface AddSkillOptions {
   yes?: boolean;
   agents: readonly SupportedAgent[];
 }
 
-class PerfAgentSkillDownloadError extends Schema.ErrorClass<PerfAgentSkillDownloadError>(
-  "PerfAgentSkillDownloadError",
-)({
-  _tag: Schema.tag("PerfAgentSkillDownloadError"),
-  reason: Schema.String,
-}) {
-  message = `Failed to download perf-agent skill: ${this.reason}`;
-}
-
-export const readNullTerminated = (buffer: Buffer, start: number, length: number): string => {
-  const raw = buffer.subarray(start, start + length).toString("utf8");
-  const nullIndex = raw.indexOf("\x00");
-  return nullIndex === -1 ? raw : raw.slice(0, nullIndex);
-};
-
-export const extractTarEntries = (tar: Buffer, prefix: string, destDir: string) => {
-  let offset = 0;
-
-  while (offset + TAR_HEADER_SIZE <= tar.length) {
-    const header = tar.subarray(offset, offset + TAR_HEADER_SIZE);
-    if (header.every((byte) => byte === 0)) break;
-
-    const name = readNullTerminated(header, TAR_NAME_OFFSET, TAR_NAME_LENGTH);
-    const sizeOctal = readNullTerminated(header, TAR_SIZE_OFFSET, TAR_SIZE_LENGTH).trim();
-    const size = parseInt(sizeOctal, 8) || 0;
-    const typeFlag = header[TAR_TYPE_OFFSET];
-
-    offset += TAR_HEADER_SIZE;
-
-    const isRegularFile =
-      typeFlag === TAR_TYPE_REGULAR_FILE || typeFlag === TAR_TYPE_REGULAR_FILE_ALT;
-
-    if (name.startsWith(prefix) && isRegularFile) {
-      const relativePath = name.slice(prefix.length);
-      if (relativePath) {
-        const destPath = path.join(destDir, relativePath);
-        fs.mkdirSync(path.dirname(destPath), { recursive: true });
-        fs.writeFileSync(destPath, tar.subarray(offset, offset + size));
-      }
-    }
-
-    offset += Math.ceil(size / TAR_HEADER_SIZE) * TAR_HEADER_SIZE;
+const writeBundledSkill = (skillDir: string): boolean => {
+  const files = Object.entries(BUNDLED_SKILL_FILES);
+  if (files.length === 0) return false;
+  fs.mkdirSync(skillDir, { recursive: true });
+  for (const [relativePath, content] of files) {
+    const destPath = path.join(skillDir, relativePath);
+    fs.mkdirSync(path.dirname(destPath), { recursive: true });
+    fs.writeFileSync(destPath, content);
   }
+  return true;
 };
-
-const downloadSkill = Effect.fn("Skill.downloadSkill")(function* (skillDir: string) {
-  yield* Effect.annotateCurrentSpan({ skillDir });
-
-  const response: Response = yield* Effect.tryPromise({
-    try: () => fetch(SKILL_TARBALL_URL),
-    catch: (cause) => new PerfAgentSkillDownloadError({ reason: String(cause) }),
-  }).pipe(
-    Effect.timeoutOrElse({
-      duration: SKILL_FETCH_TIMEOUT_MS,
-      onTimeout: () => new PerfAgentSkillDownloadError({ reason: "request timed out" }).asEffect(),
-    }),
-  );
-
-  if (!response.ok) {
-    return yield* new PerfAgentSkillDownloadError({
-      reason: `GitHub returned ${response.status}`,
-    });
-  }
-
-  const compressed: ArrayBuffer = yield* Effect.tryPromise({
-    try: () => response.arrayBuffer(),
-    catch: (cause) => new PerfAgentSkillDownloadError({ reason: String(cause) }),
-  });
-
-  yield* Effect.try({
-    try: () => {
-      const tar = gunzipSync(Buffer.from(compressed));
-      fs.mkdirSync(skillDir, { recursive: true });
-      extractTarEntries(tar, SKILL_ARCHIVE_PREFIX, skillDir);
-    },
-    catch: (cause) => new PerfAgentSkillDownloadError({ reason: String(cause) }),
-  });
-});
 
 const selectAgents = async (agents: readonly SupportedAgent[], nonInteractive: boolean) => {
   if (nonInteractive) return [...agents];
@@ -242,7 +165,7 @@ export const runAddSkill = async (options: AddSkillOptions) => {
   const selectedAgents = await selectAgents(options.agents, nonInteractive);
   if (selectedAgents.length === 0) return;
 
-  const skillSpinner = spinner("Downloading skill from GitHub...").start();
+  const skillSpinner = spinner("Installing skill...").start();
   const skillDir = path.join(projectRoot, AGENTS_SKILLS_DIR, SKILL_NAME);
   const skillStatus = await Effect.runPromise(
     getPerfAgentSkillStatus(projectRoot).pipe(Effect.provide(NodeServices.layer)),
@@ -257,20 +180,14 @@ export const runAddSkill = async (options: AddSkillOptions) => {
     skillOperation = "unverified";
   } else {
     if (skillStatus.installed) {
-      skillSpinner.text = "Updating skill from GitHub...";
+      skillSpinner.text = "Updating skill...";
       skillOperation = "updated";
     }
 
-    const downloaded = await Effect.runPromise(
-      downloadSkill(skillDir).pipe(
-        Effect.as(true),
-        Effect.catchTag("PerfAgentSkillDownloadError", () => Effect.succeed(false)),
-      ),
-    );
-
-    if (!downloaded) {
-      skillSpinner.fail("Failed to download skill files from GitHub.");
-      logger.error("Check your internet connection and try again.");
+    const wrote = writeBundledSkill(skillDir);
+    if (!wrote) {
+      skillSpinner.fail("Skill files are not bundled with this CLI build.");
+      logger.error("Run `pnpm build` in apps/cli to rebundle, or reinstall the CLI.");
       return;
     }
   }

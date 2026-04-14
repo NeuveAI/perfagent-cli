@@ -1,12 +1,35 @@
 import { createRequire } from "node:module";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Plugin } from "rolldown";
 import { defineConfig } from "vite-plus";
 import { reactCompilerPlugin } from "./react-compiler-plugin";
 
 const require = createRequire(import.meta.url);
 const pkg = require("./package.json");
+
+const collectSkillFiles = (baseDir: string, dir: string = ""): Record<string, string> => {
+  const result: Record<string, string> = {};
+  const target = path.join(baseDir, dir);
+  if (!fs.existsSync(target)) return result;
+  for (const entry of fs.readdirSync(target)) {
+    const fullPath = path.join(target, entry);
+    const relPath = dir ? `${dir}/${entry}` : entry;
+    if (fs.statSync(fullPath).isDirectory()) {
+      Object.assign(result, collectSkillFiles(baseDir, relPath));
+    } else if (entry.endsWith(".md") || entry.endsWith(".js")) {
+      result[relPath] = fs.readFileSync(fullPath, "utf-8");
+    }
+  }
+  return result;
+};
+
+const buildSkillContent = (): string => {
+  const configDir = fileURLToPath(new URL(".", import.meta.url));
+  const skillDir = path.resolve(configDir, "..", "..", "packages", "perf-agent-skill");
+  return JSON.stringify(collectSkillFiles(skillDir));
+};
 
 const resolveExportFile = (entry: unknown): string | undefined => {
   if (typeof entry === "string") return entry;
@@ -97,6 +120,7 @@ export default defineConfig({
     define: {
       __VERSION__: JSON.stringify(pkg.version),
       __RULES_CONTENT__: JSON.stringify({}),
+      __SKILL_CONTENT__: buildSkillContent(),
     },
     deps: {
       alwaysBundle: [/^@neuve\//],

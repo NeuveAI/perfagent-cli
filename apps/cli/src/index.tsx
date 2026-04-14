@@ -20,7 +20,11 @@ import { prompts } from "./utils/prompts";
 import { highlighter } from "./utils/highlighter";
 import { logger } from "./utils/logger";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { hasInstalledPerfAgentSkill } from "./utils/perf-agent-skill";
+import {
+  formatSkillVersion,
+  getPerfAgentSkillStatus,
+  hasInstalledPerfAgentSkill,
+} from "./utils/perf-agent-skill";
 import {
   type BrowserMode,
   isValidBrowserMode,
@@ -153,17 +157,40 @@ const promptSkillInstall = async () => {
   const skillInstalled = await Effect.runPromise(
     hasInstalledPerfAgentSkill(projectRoot, agents).pipe(Effect.provide(NodeServices.layer)),
   );
-  if (skillInstalled) return;
+
+  if (!skillInstalled) {
+    logger.break();
+    const response = await prompts({
+      type: "confirm",
+      name: "installSkill",
+      message: `Install the ${highlighter.info("perf-agent")} skill for your coding agents?`,
+      initial: true,
+    });
+
+    if (response.installSkill) {
+      await runAddSkill({ agents });
+      logger.break();
+    }
+    return;
+  }
+
+  const skillStatus = await Effect.runPromise(
+    getPerfAgentSkillStatus(projectRoot).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  if (skillStatus.isLatest !== false) return;
 
   logger.break();
+  const installedLabel = formatSkillVersion(skillStatus.installedVersion);
+  const latestLabel = formatSkillVersion(skillStatus.latestVersion);
   const response = await prompts({
     type: "confirm",
-    name: "installSkill",
-    message: `Install the ${highlighter.info("perf-agent")} skill for your coding agents?`,
+    name: "updateSkill",
+    message: `Update the ${highlighter.info("perf-agent")} skill (${installedLabel} → ${latestLabel})?`,
     initial: true,
   });
 
-  if (response.installSkill) {
+  if (response.updateSkill) {
     await runAddSkill({ agents });
     logger.break();
   }
