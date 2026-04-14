@@ -7,6 +7,11 @@ import { useAtom } from "@effect/atom-react";
 import type { PerfReport } from "@neuve/supervisor";
 import type {
   AnalysisStep,
+  ConsoleCapture,
+  ConsoleEntry,
+  InsightDetail,
+  NetworkCapture,
+  NetworkRequest,
   PerfMetricSnapshot,
   PerfRegression,
   TraceInsightRef,
@@ -25,11 +30,11 @@ import { getStepElapsedMs, getTotalElapsedMs } from "../../utils/step-elapsed";
 import { RuledBox } from "../ui/ruled-box";
 import {
   classifyCwv,
-  CWV_THRESHOLDS,
   formatCwvTarget,
   formatCwvValue,
   type CwvClassification,
   type CwvMetric,
+  type PerfMetricLabel,
 } from "@neuve/shared/cwv-thresholds";
 
 interface ResultsScreenProps {
@@ -43,6 +48,9 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
   const [statusMessage, setStatusMessage] = useState<{ text: string; color: string } | undefined>(
     undefined,
   );
+  const [showConsole, setShowConsole] = useState<boolean>(false);
+  const [showNetwork, setShowNetwork] = useState<boolean>(false);
+  const [showInsights, setShowInsights] = useState<boolean>(false);
   const commentMutation = usePostPrComment();
   const [saveResult, triggerSave] = useAtom(saveFlowFn, { mode: "promiseExit" });
 
@@ -107,6 +115,15 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
     if (normalizedInput === "r") {
       handleRestartFlow();
     }
+    if (normalizedInput === "c") {
+      setShowConsole((previous) => !previous);
+    }
+    if (normalizedInput === "n") {
+      setShowNetwork((previous) => !previous);
+    }
+    if (normalizedInput === "i") {
+      setShowInsights((previous) => !previous);
+    }
   });
 
   const isPassed = report.status === "passed";
@@ -120,6 +137,11 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
   const hasToolResult = report.events.some((event) => event._tag === "ToolResult");
   const insights = collectTraceInsights(report.metrics);
   const hasInsights = insights.length > 0;
+  const hasConsoleCaptures = report.consoleCaptures.some((capture) => capture.entries.length > 0);
+  const hasNetworkCaptures = report.networkCaptures.some(
+    (capture) => capture.requests.length > 0,
+  );
+  const hasInsightDetails = report.insightDetails.length > 0;
   const showMetricsFallback = !hasMetrics && !hasToolResult;
   const showToolsButNoTraceFallback = !hasMetrics && hasToolResult;
 
@@ -158,6 +180,15 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
       {hasMetrics && <PerfMetricsTable metrics={report.metrics} />}
       {hasInsights && <TraceInsightsList insights={insights} />}
       {hasRegressions && <RegressionsPanel regressions={report.regressions} />}
+      {hasConsoleCaptures && (
+        <ConsoleCapturesPanel captures={report.consoleCaptures} expanded={showConsole} />
+      )}
+      {hasNetworkCaptures && (
+        <NetworkCapturesPanel captures={report.networkCaptures} expanded={showNetwork} />
+      )}
+      {hasInsightDetails && (
+        <InsightDetailsPanel details={report.insightDetails} expanded={showInsights} />
+      )}
 
       <RuledBox color={COLORS.YELLOW} marginTop={1}>
         <Text color={COLORS.YELLOW} bold>
@@ -558,10 +589,364 @@ const iconForSeverity = (severity: PerfRegression["severity"]): string => {
   return REGRESSION_INFO_ICON;
 };
 
-const formatRegressionValue = (metric: string, value: number): string => {
-  const upperMetric = metric.toUpperCase();
-  if (upperMetric in CWV_THRESHOLDS) {
-    return formatCwvValue(upperMetric as CwvMetric, value);
+const TRANSFER_SIZE_DECIMALS = 0;
+
+const formatRegressionValue = (metric: PerfMetricLabel, value: number): string => {
+  if (metric === "TotalTransferSize") {
+    return `${value.toFixed(TRANSFER_SIZE_DECIMALS)} KB`;
   }
-  return value.toString();
+  return formatCwvValue(metric, value);
+};
+
+const CONSOLE_LEVEL_RANK: Record<ConsoleEntry["level"], number> = {
+  error: 0,
+  warn: 1,
+  log: 2,
+  info: 3,
+  debug: 4,
+};
+
+const CONSOLE_LEVEL_LABEL_WIDTH = 9;
+const CONSOLE_TEXT_TRIM_PADDING = 14;
+const CONSOLE_TEXT_MIN_WIDTH = 20;
+
+const truncateText = (text: string, maxWidth: number): string => {
+  if (maxWidth <= 1) return text;
+  if (text.length <= maxWidth) return text;
+  return `${text.slice(0, Math.max(1, maxWidth - 1))}\u2026`;
+};
+
+interface ConsoleSummary {
+  total: number;
+  errors: number;
+  warnings: number;
+  info: number;
+}
+
+const summarizeConsole = (captures: readonly ConsoleCapture[]): ConsoleSummary => {
+  let total = 0;
+  let errors = 0;
+  let warnings = 0;
+  let info = 0;
+  for (const capture of captures) {
+    for (const entry of capture.entries) {
+      total += 1;
+      if (entry.level === "error") errors += 1;
+      else if (entry.level === "warn") warnings += 1;
+      else info += 1;
+    }
+  }
+  return { total, errors, warnings, info };
+};
+
+interface ConsoleCapturesPanelProps {
+  captures: readonly ConsoleCapture[];
+  expanded: boolean;
+}
+
+const ConsoleCapturesPanel = ({ captures, expanded }: ConsoleCapturesPanelProps) => {
+  const COLORS = useColors();
+  const summary = summarizeConsole(captures);
+  const hintLabel = expanded ? "c to collapse" : "c to expand";
+
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      <Text>
+        <Text color={COLORS.TEXT} bold>
+          Console messages{" "}
+        </Text>
+        <Text color={COLORS.DIM}>
+          (total {summary.total}: {summary.errors} error{summary.errors === 1 ? "" : "s"},{" "}
+          {summary.warnings} warning{summary.warnings === 1 ? "" : "s"}, {summary.info} info){" "}
+          [{hintLabel}]
+        </Text>
+      </Text>
+      {expanded && (
+        <Box flexDirection="column" marginTop={1}>
+          {captures.map((capture, captureIndex) => (
+            <ConsoleCaptureBlock
+              key={`${capture.url}-${captureIndex}`}
+              capture={capture}
+              isLast={captureIndex === captures.length - 1}
+            />
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+};
+
+interface ConsoleCaptureBlockProps {
+  capture: ConsoleCapture;
+  isLast: boolean;
+}
+
+const ConsoleCaptureBlock = ({ capture, isLast }: ConsoleCaptureBlockProps) => {
+  const COLORS = useColors();
+  if (capture.entries.length === 0) return undefined;
+  const sortedEntries = [...capture.entries].sort(
+    (left, right) => CONSOLE_LEVEL_RANK[left.level] - CONSOLE_LEVEL_RANK[right.level],
+  );
+  const terminalColumns = process.stdout.columns ?? 80;
+  const maxTextWidth = Math.max(
+    CONSOLE_TEXT_MIN_WIDTH,
+    terminalColumns - CONSOLE_TEXT_TRIM_PADDING,
+  );
+
+  return (
+    <Box flexDirection="column" marginBottom={isLast ? 0 : 1}>
+      <Text color={COLORS.PRIMARY} bold>
+        {capture.url}
+      </Text>
+      {sortedEntries.map((entry, entryIndex) => (
+        <ConsoleEntryRow
+          key={`${entry.level}-${entryIndex}`}
+          entry={entry}
+          maxTextWidth={maxTextWidth}
+        />
+      ))}
+    </Box>
+  );
+};
+
+interface ConsoleEntryRowProps {
+  entry: ConsoleEntry;
+  maxTextWidth: number;
+}
+
+const ConsoleEntryRow = ({ entry, maxTextWidth }: ConsoleEntryRowProps) => {
+  const COLORS = useColors();
+  const levelLabel = `[${entry.level.toUpperCase()}]`;
+  const paddedLevel = levelLabel + " ".repeat(Math.max(0, CONSOLE_LEVEL_LABEL_WIDTH - levelLabel.length));
+  const levelColor = consoleLevelColor(entry.level, COLORS);
+  const entryUrl = Option.getOrUndefined(entry.url);
+  const trimmedText = truncateText(entry.text, maxTextWidth);
+
+  return (
+    <Box flexDirection="column">
+      <Text>
+        <Text color={COLORS.DIM}>{"  "}</Text>
+        <Text color={levelColor}>{paddedLevel}</Text>
+        <Text color={COLORS.TEXT}> {trimmedText}</Text>
+      </Text>
+      {entryUrl && (
+        <Text color={COLORS.DIM}>
+          {"            "}
+          {entryUrl}
+        </Text>
+      )}
+    </Box>
+  );
+};
+
+const consoleLevelColor = (level: ConsoleEntry["level"], colors: ThemeColors): string => {
+  if (level === "error") return colors.RED;
+  if (level === "warn") return colors.YELLOW;
+  if (level === "debug") return colors.DIM;
+  return colors.TEXT;
+};
+
+interface NetworkSummary {
+  total: number;
+  failed: number;
+}
+
+const summarizeNetwork = (captures: readonly NetworkCapture[]): NetworkSummary => {
+  let total = 0;
+  let failed = 0;
+  for (const capture of captures) {
+    for (const request of capture.requests) {
+      total += 1;
+      if (request.failed) failed += 1;
+    }
+  }
+  return { total, failed };
+};
+
+interface NetworkCapturesPanelProps {
+  captures: readonly NetworkCapture[];
+  expanded: boolean;
+}
+
+const NetworkCapturesPanel = ({ captures, expanded }: NetworkCapturesPanelProps) => {
+  const COLORS = useColors();
+  const summary = summarizeNetwork(captures);
+  const hintLabel = expanded ? "n to collapse" : "n to expand";
+
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      <Text>
+        <Text color={COLORS.TEXT} bold>
+          Network requests{" "}
+        </Text>
+        <Text color={COLORS.DIM}>
+          ({summary.total} total, {summary.failed} failed) [{hintLabel}]
+        </Text>
+      </Text>
+      {expanded && (
+        <Box flexDirection="column" marginTop={1}>
+          {captures.map((capture, captureIndex) => (
+            <NetworkCaptureBlock
+              key={`${capture.url}-${captureIndex}`}
+              capture={capture}
+              isLast={captureIndex === captures.length - 1}
+            />
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+};
+
+interface NetworkCaptureBlockProps {
+  capture: NetworkCapture;
+  isLast: boolean;
+}
+
+const NETWORK_STATUS_WIDTH = 3;
+const NETWORK_METHOD_WIDTH = 5;
+const NETWORK_URL_COLUMN_PADDING = 20;
+const NETWORK_URL_MIN_WIDTH = 30;
+
+const NetworkCaptureBlock = ({ capture, isLast }: NetworkCaptureBlockProps) => {
+  const COLORS = useColors();
+  if (capture.requests.length === 0) return undefined;
+  const terminalColumns = process.stdout.columns ?? 80;
+  const urlMaxWidth = Math.max(
+    NETWORK_URL_MIN_WIDTH,
+    terminalColumns - NETWORK_URL_COLUMN_PADDING,
+  );
+
+  return (
+    <Box flexDirection="column" marginBottom={isLast ? 0 : 1}>
+      <Text color={COLORS.PRIMARY} bold>
+        {capture.url}
+      </Text>
+      {capture.requests.map((request, requestIndex) => (
+        <NetworkRequestRow
+          key={`${request.url}-${requestIndex}`}
+          request={request}
+          urlMaxWidth={urlMaxWidth}
+        />
+      ))}
+    </Box>
+  );
+};
+
+interface NetworkRequestRowProps {
+  request: NetworkRequest;
+  urlMaxWidth: number;
+}
+
+const formatNetworkStatus = (request: NetworkRequest): string => {
+  const status = Option.getOrUndefined(request.status);
+  if (status !== undefined) return padCell(String(status), NETWORK_STATUS_WIDTH);
+  return padCell("ERR", NETWORK_STATUS_WIDTH);
+};
+
+const networkStatusColor = (request: NetworkRequest, colors: ThemeColors): string => {
+  const status = Option.getOrUndefined(request.status);
+  if (status === undefined) return colors.RED;
+  if (status >= 400) return colors.RED;
+  if (status >= 300) return colors.YELLOW;
+  if (status >= 200) return colors.GREEN;
+  return colors.DIM;
+};
+
+const NetworkRequestRow = ({ request, urlMaxWidth }: NetworkRequestRowProps) => {
+  const COLORS = useColors();
+  const statusCell = formatNetworkStatus(request);
+  const statusColor = networkStatusColor(request, COLORS);
+  const methodCell = padCell(request.method.toUpperCase(), NETWORK_METHOD_WIDTH);
+  const urlCell = truncateText(request.url, urlMaxWidth);
+  const rowColor = request.failed ? COLORS.RED : COLORS.TEXT;
+
+  return (
+    <Text>
+      <Text color={COLORS.DIM}>{"  "}</Text>
+      <Text color={statusColor}>{statusCell}</Text>
+      <Text color={COLORS.DIM}> </Text>
+      <Text color={rowColor}>{methodCell}</Text>
+      <Text color={rowColor}> {urlCell}</Text>
+      {request.failed && <Text color={COLORS.RED}> [failed]</Text>}
+    </Text>
+  );
+};
+
+interface InsightDetailsPanelProps {
+  details: readonly InsightDetail[];
+  expanded: boolean;
+}
+
+const InsightDetailsPanel = ({ details, expanded }: InsightDetailsPanelProps) => {
+  const COLORS = useColors();
+  const hintLabel = expanded ? "i to collapse" : "i to expand";
+  const namePreview = details.map((detail) => detail.insightName).join(", ");
+
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      <Text>
+        <Text color={COLORS.TEXT} bold>
+          Insight details{" "}
+        </Text>
+        <Text color={COLORS.DIM}>
+          ({details.length}: {namePreview}) [{hintLabel}]
+        </Text>
+      </Text>
+      {expanded && (
+        <Box flexDirection="column" marginTop={1}>
+          {details.map((detail, detailIndex) => (
+            <InsightDetailBlock
+              key={`${detail.insightName}-${detailIndex}`}
+              detail={detail}
+              isLast={detailIndex === details.length - 1}
+            />
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+};
+
+interface InsightDetailBlockProps {
+  detail: InsightDetail;
+  isLast: boolean;
+}
+
+const InsightDetailBlock = ({ detail, isLast }: InsightDetailBlockProps) => {
+  const COLORS = useColors();
+  const insightSetId = Option.getOrUndefined(detail.insightSetId);
+  const estimatedSavings = Option.getOrUndefined(detail.estimatedSavings);
+  const hasResources = detail.externalResources.length > 0;
+
+  return (
+    <Box flexDirection="column" marginBottom={isLast ? 0 : 1}>
+      <Text>
+        <Text color={COLORS.YELLOW}>{"\u25b8 "}</Text>
+        <Text color={COLORS.TEXT} bold>
+          {detail.insightName}
+        </Text>
+        <Text color={COLORS.DIM}> {"\u2014"} {detail.title}</Text>
+        {insightSetId && <Text color={COLORS.DIM}> ({insightSetId})</Text>}
+      </Text>
+      <Box paddingLeft={2} flexDirection="column">
+        <Text color={COLORS.TEXT} wrap="wrap">
+          {detail.summary}
+        </Text>
+        <Box marginTop={1}>
+          <Text color={COLORS.DIM} wrap="wrap">
+            {detail.analysis}
+          </Text>
+        </Box>
+        {estimatedSavings && (
+          <Text color={COLORS.DIM}>Estimated savings: {estimatedSavings}</Text>
+        )}
+        {hasResources && (
+          <Text color={COLORS.DIM} wrap="wrap">
+            Resources: {detail.externalResources.join(" \u00b7 ")}
+          </Text>
+        )}
+      </Box>
+    </Box>
+  );
 };

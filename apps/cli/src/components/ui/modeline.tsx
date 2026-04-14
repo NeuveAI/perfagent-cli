@@ -102,6 +102,22 @@ const useHintSegments = (screen: Screen, gitState: GitState | undefined): HintSe
       }
       hints.push({ key: "s", label: "save flow", cta: true });
       hints.push({ key: "r", label: "restart", cta: true });
+      const hasConsole = screen.report.consoleCaptures.some(
+        (capture) => capture.entries.length > 0,
+      );
+      const hasNetwork = screen.report.networkCaptures.some(
+        (capture) => capture.requests.length > 0,
+      );
+      const hasInsightDetails = screen.report.insightDetails.length > 0;
+      if (hasConsole) {
+        hints.push({ key: "c", label: "console", cta: true });
+      }
+      if (hasNetwork) {
+        hints.push({ key: "n", label: "network", cta: true });
+      }
+      if (hasInsightDetails) {
+        hints.push({ key: "i", label: "insights", cta: true });
+      }
       hints.push({ key: "esc", label: "main menu", cta: true });
       return hints;
     }
