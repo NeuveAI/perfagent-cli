@@ -7,3 +7,7 @@ export const TMP_ARTIFACT_OUTPUT_DIRECTORY = "/tmp/perf-agent-artifacts";
 export const CLI_SESSION_FILE = "/tmp/perf-agent-cli-session.json";
 export const MAX_DAEMON_REQUEST_BODY_BYTES = 1024 * 1024;
 export const MAX_STRINGIFY_LENGTH = 10_000;
+// HACK: MCP SDK StdioClientTransport.close() does stdin.end → wait 2s → SIGTERM → wait 2s → SIGKILL.
+// Worst case is ~4s. 5s lets the SDK's own teardown finish before our force-exit watchdog fires,
+// otherwise Chrome gets orphaned (the exact zombie this is meant to prevent).
+export const SHUTDOWN_GRACE_PERIOD_MS = 5_000;

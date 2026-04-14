@@ -19,7 +19,7 @@ export class DevToolsClient extends ServiceMap.Service<DevToolsClient>()(
     make: Effect.gen(function* () {
       const transport = new StdioClientTransport({
         command: "npx",
-        args: ["chrome-devtools-mcp@0.21.0", "--headless"],
+        args: ["chrome-devtools-mcp@0.21.0", "--headless", "--isolated"],
       });
 
       const client = new Client({

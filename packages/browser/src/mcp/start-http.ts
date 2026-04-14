@@ -4,7 +4,11 @@ import { Effect, Predicate } from "effect";
 import { DevToolsClient } from "../devtools-client";
 import { McpSession } from "./mcp-session";
 import { McpRuntime } from "./runtime";
-import { CLI_SESSION_FILE, MAX_DAEMON_REQUEST_BODY_BYTES } from "./constants";
+import {
+  CLI_SESSION_FILE,
+  MAX_DAEMON_REQUEST_BODY_BYTES,
+  SHUTDOWN_GRACE_PERIOD_MS,
+} from "./constants";
 
 const readRequestBody = (req: http.IncomingMessage): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -89,13 +93,45 @@ const removeSessionFile = () => {
   }
 };
 
-const shutdown = () => {
+const SIGINT_EXIT_CODE = 130;
+const SIGTERM_EXIT_CODE = 143;
+const SIGHUP_EXIT_CODE = 129;
+
+const exitCodeForSignal = (signal: NodeJS.Signals): number => {
+  if (signal === "SIGTERM") return SIGTERM_EXIT_CODE;
+  if (signal === "SIGHUP") return SIGHUP_EXIT_CODE;
+  return SIGINT_EXIT_CODE;
+};
+
+let shuttingDown = false;
+
+const shutdown = (signal: NodeJS.Signals) => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  const exitCode = exitCodeForSignal(signal);
   removeSessionFile();
-  process.exit(0);
+  const forceExitTimer = setTimeout(() => {
+    process.stderr.write(
+      `perf-agent daemon: dispose timed out after ${SHUTDOWN_GRACE_PERIOD_MS}ms, forcing exit\n`,
+    );
+    process.exit(exitCode);
+  }, SHUTDOWN_GRACE_PERIOD_MS);
+  forceExitTimer.unref();
+  httpServer.close();
+  McpRuntime.dispose()
+    .catch((error: unknown) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`perf-agent daemon: dispose error: ${reason}\n`);
+    })
+    .finally(() => {
+      clearTimeout(forceExitTimer);
+      process.exit(exitCode);
+    });
 };
 
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
+process.once("SIGHUP", shutdown);
 process.once("beforeExit", removeSessionFile);
 
 httpServer.listen(0, "127.0.0.1", () => {
