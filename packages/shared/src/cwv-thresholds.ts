@@ -1,5 +1,16 @@
 export type CwvMetric = "LCP" | "FCP" | "CLS" | "INP" | "TTFB";
 
+export type PerfMetricLabel = CwvMetric | "TotalTransferSize";
+
+export const PERF_METRIC_LABELS: readonly PerfMetricLabel[] = [
+  "LCP",
+  "FCP",
+  "CLS",
+  "INP",
+  "TTFB",
+  "TotalTransferSize",
+];
+
 export type CwvClassification = "good" | "needs-improvement" | "poor";
 
 export type CwvMetricKey = "lcpMs" | "fcpMs" | "clsScore" | "inpMs" | "ttfbMs";

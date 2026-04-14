@@ -1,6 +1,12 @@
-import { DateTime, Effect, Layer, Option, ServiceMap } from "effect";
+import { DateTime, Effect, Layer, Option, Predicate, ServiceMap } from "effect";
 import {
+  ConsoleCapture,
+  ConsoleEntry,
   type ExecutedPerfPlan,
+  type ExecutionEvent,
+  InsightDetail,
+  NetworkCapture,
+  NetworkRequest,
   PerfMetricSnapshot,
   PerfRegression,
   PerfReport,
@@ -9,19 +15,32 @@ import {
 } from "@neuve/shared/models";
 import { type ParsedTraceMetrics, parseTraceOutput } from "@neuve/shared/parse-trace-output";
 import {
+  type ParsedConsoleEntry,
+  parseConsoleOutput,
+} from "@neuve/shared/parse-console-output";
+import {
+  type ParsedNetworkRequest,
+  parseNetworkRequests,
+} from "@neuve/shared/parse-network-requests";
+import { parseInsightDetail } from "@neuve/shared/parse-insight-detail";
+import {
   CWV_METRICS,
   CWV_THRESHOLDS,
   type CwvMetric,
+  type PerfMetricLabel,
   classifyCwv,
   formatCwvValue,
 } from "@neuve/shared/cwv-thresholds";
 
 const TRACE_STOPPED_SENTINEL = "The performance trace has been stopped.";
-const TRACE_TOOL_NAME_PREFIXES = ["performance_start_trace", "performance_stop_trace"];
+const CONSOLE_HEADING_SENTINEL = "## Console messages";
+const CONSOLE_EMPTY_SENTINEL = "<no console messages found>";
+const NETWORK_HEADING_SENTINEL = "## Network requests";
+const NETWORK_EMPTY_SENTINEL = "No requests found.";
 
 interface BudgetField {
   key: "lcpMs" | "fcpMs" | "clsScore" | "inpMs" | "ttfbMs" | "totalTransferSizeKb";
-  label: string;
+  label: PerfMetricLabel;
 }
 
 const BUDGET_FIELDS: BudgetField[] = [
@@ -34,9 +53,90 @@ const BUDGET_FIELDS: BudgetField[] = [
 ];
 
 const isTraceToolName = (toolName: string): boolean =>
-  TRACE_TOOL_NAME_PREFIXES.some((prefix) => toolName.startsWith(prefix));
+  toolName === "trace" || toolName.startsWith("performance_");
+
+const decodeToolCallInput = (input: unknown): Record<string, unknown> | undefined => {
+  if (typeof input === "string") {
+    try {
+      const parsed = JSON.parse(input) as unknown;
+      return Predicate.isObject(parsed) ? (parsed as Record<string, unknown>) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  if (Predicate.isObject(input)) return input as Record<string, unknown>;
+  return undefined;
+};
+
+const extractNavigationUrl = (input: unknown): string | undefined => {
+  const decoded = decodeToolCallInput(input);
+  if (!decoded) return undefined;
+  const topUrl = decoded["url"];
+  if (typeof topUrl === "string" && topUrl.length > 0) return topUrl;
+  const command = decoded["command"];
+  if (typeof command === "string" && command === "navigate") {
+    const nestedUrl = decoded["url"];
+    if (typeof nestedUrl === "string" && nestedUrl.length > 0) return nestedUrl;
+  }
+  return undefined;
+};
+
+const extractInsightSetId = (input: unknown, insightName: string): string | undefined => {
+  const decoded = decodeToolCallInput(input);
+  if (!decoded) return undefined;
+  const candidateName = decoded["insightName"];
+  if (typeof candidateName !== "string" || candidateName !== insightName) return undefined;
+  const insightSetId = decoded["insightSetId"];
+  return typeof insightSetId === "string" && insightSetId.length > 0 ? insightSetId : undefined;
+};
+
+const findPrecedingInsightSetId = (
+  events: readonly ExecutionEvent[],
+  eventIndex: number,
+  insightName: string,
+): string | undefined => {
+  for (let index = eventIndex - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event._tag !== "ToolCall") continue;
+    const insightSetId = extractInsightSetId(event.input, insightName);
+    if (insightSetId) return insightSetId;
+  }
+  return undefined;
+};
+
+const toConsoleEntry = (parsed: ParsedConsoleEntry): ConsoleEntry =>
+  new ConsoleEntry({
+    level: parsed.level,
+    text: parsed.text,
+    source: optionalString(parsed.source),
+    url: optionalString(parsed.url),
+  });
+
+const toNetworkRequest = (parsed: ParsedNetworkRequest): NetworkRequest =>
+  new NetworkRequest({
+    url: parsed.url,
+    method: parsed.method,
+    status: optionalNumber(parsed.status),
+    statusText: optionalString(parsed.statusText),
+    resourceType: optionalString(parsed.resourceType),
+    transferSizeKb: optionalNumber(parsed.transferSizeKb),
+    durationMs: optionalNumber(parsed.durationMs),
+    failed: parsed.failed ?? false,
+  });
+
+const isConsoleResult = (result: string): boolean =>
+  result.includes(CONSOLE_HEADING_SENTINEL) && !result.includes(CONSOLE_EMPTY_SENTINEL);
+
+const isNetworkResult = (result: string): boolean =>
+  result.includes(NETWORK_HEADING_SENTINEL) && !result.includes(NETWORK_EMPTY_SENTINEL);
+
+const isInsightDetailResult = (result: string): boolean =>
+  result.trim().startsWith("## Insight Title:");
 
 const optionalNumber = (value: number | undefined): Option.Option<number> =>
+  value === undefined ? Option.none() : Option.some(value);
+
+const optionalString = (value: string | undefined): Option.Option<string> =>
   value === undefined ? Option.none() : Option.some(value);
 
 const toSnapshot = (
@@ -223,26 +323,81 @@ const buildPerfSummary = (
 export class Reporter extends ServiceMap.Service<Reporter>()("@supervisor/Reporter", {
   make: Effect.gen(function* () {
     const report = Effect.fn("Reporter.report")(function* (executed: ExecutedPerfPlan) {
-      const toolResults = executed.events.filter(
-        (event) => event._tag === "ToolResult" && !event.isError,
-      );
-
-      const traceToolResults = toolResults.filter(
-        (event) =>
-          event._tag === "ToolResult" &&
-          isTraceToolName(event.toolName) &&
-          event.result.includes(TRACE_STOPPED_SENTINEL),
-      );
-
       const fallbackUrl = executed.targetUrls[0] ?? "unknown";
       const collectedAt = yield* DateTime.now;
 
       const metrics: PerfMetricSnapshot[] = [];
-      for (const event of traceToolResults) {
-        if (event._tag !== "ToolResult") continue;
-        const parsedList = parseTraceOutput(event.result);
-        for (const parsed of parsedList) {
-          metrics.push(toSnapshot(parsed, fallbackUrl, collectedAt));
+      const consoleCaptures: ConsoleCapture[] = [];
+      const networkCaptures: NetworkCapture[] = [];
+      const insightDetails: InsightDetail[] = [];
+
+      let toolResultCount = 0;
+      let lastKnownUrl = fallbackUrl;
+
+      for (let eventIndex = 0; eventIndex < executed.events.length; eventIndex += 1) {
+        const event = executed.events[eventIndex];
+
+        if (event._tag === "ToolCall") {
+          const navigationUrl = extractNavigationUrl(event.input);
+          if (navigationUrl) lastKnownUrl = navigationUrl;
+          continue;
+        }
+
+        if (event._tag !== "ToolResult" || event.isError) continue;
+        toolResultCount += 1;
+
+        if (
+          isTraceToolName(event.toolName) &&
+          event.result.includes(TRACE_STOPPED_SENTINEL)
+        ) {
+          const parsedList = parseTraceOutput(event.result);
+          for (const parsed of parsedList) {
+            metrics.push(toSnapshot(parsed, fallbackUrl, collectedAt));
+          }
+          continue;
+        }
+
+        if (isConsoleResult(event.result)) {
+          const entries = parseConsoleOutput(event.result).map(toConsoleEntry);
+          if (entries.length > 0) {
+            consoleCaptures.push(
+              new ConsoleCapture({ url: lastKnownUrl, entries, collectedAt }),
+            );
+          }
+          continue;
+        }
+
+        if (isNetworkResult(event.result)) {
+          const requests = parseNetworkRequests(event.result).map(toNetworkRequest);
+          if (requests.length > 0) {
+            networkCaptures.push(
+              new NetworkCapture({ url: lastKnownUrl, requests, collectedAt }),
+            );
+          }
+          continue;
+        }
+
+        if (isInsightDetailResult(event.result)) {
+          const parsed = parseInsightDetail(event.result);
+          if (!parsed) continue;
+          const insightSetId = findPrecedingInsightSetId(
+            executed.events,
+            eventIndex,
+            parsed.insightName,
+          );
+          insightDetails.push(
+            new InsightDetail({
+              insightSetId: optionalString(insightSetId),
+              insightName: parsed.insightName,
+              title: parsed.title,
+              summary: parsed.summary,
+              analysis: parsed.analysis,
+              estimatedSavings: optionalString(parsed.estimatedSavings),
+              externalResources: parsed.externalResources,
+              collectedAt,
+            }),
+          );
+          continue;
         }
       }
 
@@ -262,7 +417,7 @@ export class Reporter extends ServiceMap.Service<Reporter>()("@supervisor/Report
         .filter(Boolean);
 
       const hasBudget = Option.isSome(executed.perfBudget);
-      const summary = buildPerfSummary(metrics, regressions, toolResults.length, hasBudget);
+      const summary = buildPerfSummary(metrics, regressions, toolResultCount, hasBudget);
 
       const report = new PerfReport({
         ...executed,
@@ -271,6 +426,9 @@ export class Reporter extends ServiceMap.Service<Reporter>()("@supervisor/Report
         pullRequest: Option.none(),
         metrics,
         regressions,
+        consoleCaptures,
+        networkCaptures,
+        insightDetails,
       });
 
       yield* Effect.logInfo("Report generated", {
@@ -278,6 +436,9 @@ export class Reporter extends ServiceMap.Service<Reporter>()("@supervisor/Report
         metricCount: metrics.length,
         regressionCount: regressions.length,
         screenshotCount: screenshotPaths.length,
+        consoleCaptureCount: consoleCaptures.length,
+        networkCaptureCount: networkCaptures.length,
+        insightDetailCount: insightDetails.length,
       });
 
       return report;

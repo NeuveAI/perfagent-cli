@@ -13,6 +13,9 @@
     "./is-command-available": "./src/is-command-available.ts",
     "./infer-agent": "./src/infer-agent.ts",
     "./parse-trace-output": "./src/parse-trace-output.ts",
+    "./parse-console-output": "./src/parse-console-output.ts",
+    "./parse-network-requests": "./src/parse-network-requests.ts",
+    "./parse-insight-detail": "./src/parse-insight-detail.ts",
     "./cwv-thresholds": "./src/cwv-thresholds.ts"
   },
   "scripts": {

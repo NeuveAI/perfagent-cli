@@ -2,6 +2,7 @@ import { DateTime, Match, Option, Predicate, Schema } from "effect";
 import {
   CWV_METRICS,
   CWV_THRESHOLDS,
+  PERF_METRIC_LABELS,
   classifyCwv,
   formatCwvTarget,
   formatCwvValue,
@@ -462,9 +463,50 @@ export class PerfMetricSnapshot extends Schema.Class<PerfMetricSnapshot>(
   collectedAt: Schema.DateTimeUtc,
 }) {}
 
+export class ConsoleEntry extends Schema.Class<ConsoleEntry>("@shared/ConsoleEntry")({
+  level: Schema.Literals(["log", "info", "warn", "error", "debug"] as const),
+  text: Schema.String,
+  source: Schema.OptionFromUndefinedOr(Schema.String),
+  url: Schema.OptionFromUndefinedOr(Schema.String),
+}) {}
+
+export class ConsoleCapture extends Schema.Class<ConsoleCapture>("@shared/ConsoleCapture")({
+  url: Schema.String,
+  entries: Schema.Array(ConsoleEntry),
+  collectedAt: Schema.DateTimeUtc,
+}) {}
+
+export class NetworkRequest extends Schema.Class<NetworkRequest>("@shared/NetworkRequest")({
+  url: Schema.String,
+  method: Schema.String,
+  status: Schema.OptionFromUndefinedOr(Schema.Number),
+  statusText: Schema.OptionFromUndefinedOr(Schema.String),
+  resourceType: Schema.OptionFromUndefinedOr(Schema.String),
+  transferSizeKb: Schema.OptionFromUndefinedOr(Schema.Number),
+  durationMs: Schema.OptionFromUndefinedOr(Schema.Number),
+  failed: Schema.Boolean,
+}) {}
+
+export class NetworkCapture extends Schema.Class<NetworkCapture>("@shared/NetworkCapture")({
+  url: Schema.String,
+  requests: Schema.Array(NetworkRequest),
+  collectedAt: Schema.DateTimeUtc,
+}) {}
+
+export class InsightDetail extends Schema.Class<InsightDetail>("@shared/InsightDetail")({
+  insightSetId: Schema.OptionFromUndefinedOr(Schema.String),
+  insightName: Schema.String,
+  title: Schema.String,
+  summary: Schema.String,
+  analysis: Schema.String,
+  estimatedSavings: Schema.OptionFromUndefinedOr(Schema.String),
+  externalResources: Schema.Array(Schema.String),
+  collectedAt: Schema.DateTimeUtc,
+}) {}
+
 export class PerfRegression extends Schema.Class<PerfRegression>("@shared/PerfRegression")({
   url: Schema.String,
-  metric: Schema.String,
+  metric: Schema.Literals([...PERF_METRIC_LABELS]),
   baselineValue: Schema.Number,
   currentValue: Schema.Number,
   percentChange: Schema.Number,
@@ -1086,6 +1128,9 @@ export class PerfReport extends ExecutedPerfPlan.extend<PerfReport>("@supervisor
   pullRequest: Schema.Option(Schema.suspend(() => PullRequest)),
   metrics: Schema.Array(PerfMetricSnapshot),
   regressions: Schema.Array(PerfRegression),
+  consoleCaptures: Schema.Array(ConsoleCapture),
+  networkCaptures: Schema.Array(NetworkCapture),
+  insightDetails: Schema.Array(InsightDetail),
 }) {
   /** @todo(rasmus): UNUSED */
   get stepStatuses(): ReadonlyMap<
@@ -1254,19 +1299,18 @@ export class PerfReport extends ExecutedPerfPlan.extend<PerfReport>("@supervisor
   }
 }
 
-export class CiStepResult extends Schema.Class<CiStepResult>("@shared/CiStepResult")({
-  title: Schema.String,
-  status: Schema.Literals(["passed", "failed", "skipped", "not-run"] as const),
-  duration_ms: Schema.optional(Schema.Number),
-  error: Schema.optional(Schema.String),
-}) {}
-
 export class CiResultOutput extends Schema.Class<CiResultOutput>("@shared/CiResultOutput")({
   version: Schema.String,
   status: Schema.Literals(["passed", "failed"] as const),
   title: Schema.String,
   duration_ms: Schema.Number,
-  steps: Schema.Array(CiStepResult),
+  metrics: Schema.Array(PerfMetricSnapshot),
+  regressions: Schema.Array(PerfRegression),
+  insightNames: Schema.Array(Schema.String),
+  consoleCaptureCount: Schema.Number,
+  networkRequestCount: Schema.Number,
+  failedRequestCount: Schema.Number,
+  insightDetailCount: Schema.Number,
   artifacts: Schema.Struct({
     video: Schema.optional(Schema.String),
     replay: Schema.optional(Schema.String),

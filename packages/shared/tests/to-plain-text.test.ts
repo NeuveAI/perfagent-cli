@@ -70,6 +70,9 @@ const makeReport = (
     pullRequest: Option.none(),
     metrics: [],
     regressions: [],
+    consoleCaptures: [],
+    networkCaptures: [],
+    insightDetails: [],
   });
 
 describe("PerfReport.toPlainText", () => {

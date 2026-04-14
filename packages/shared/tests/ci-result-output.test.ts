@@ -1,88 +1,86 @@
 import { describe, expect, it } from "vite-plus/test";
-import { Schema } from "effect";
-import { CiResultOutput, CiStepResult } from "../src/models";
+import { DateTime, Option, Schema } from "effect";
+import {
+  CiResultOutput,
+  PerfMetricSnapshot,
+  PerfRegression,
+  TraceInsightRef,
+} from "../src/models";
 
-describe("CiStepResult", () => {
-  it("creates a passed step", () => {
-    const step = new CiStepResult({
-      title: "Navigate to login",
-      status: "passed",
-      duration_ms: 1200,
-    });
-    expect(step.title).toBe("Navigate to login");
-    expect(step.status).toBe("passed");
-    expect(step.duration_ms).toBe(1200);
-    expect(step.error).toBeUndefined();
-  });
+const exampleCollectedAt = DateTime.makeUnsafe("2026-01-01T00:00:00.000Z");
 
-  it("creates a failed step with error", () => {
-    const step = new CiStepResult({
-      title: "Submit form",
-      status: "failed",
-      duration_ms: 2100,
-      error: "Submit button not found",
-    });
-    expect(step.status).toBe("failed");
-    expect(step.error).toBe("Submit button not found");
-  });
+const exampleMetric = new PerfMetricSnapshot({
+  url: "https://example.com",
+  lcpMs: Option.some(2400),
+  fcpMs: Option.some(1800),
+  clsScore: Option.some(0.02),
+  inpMs: Option.some(150),
+  ttfbMs: Option.some(300),
+  totalTransferSizeKb: Option.some(520),
+  traceInsights: [
+    new TraceInsightRef({ insightSetId: "set-1", insightName: "LCPBreakdown" }),
+    new TraceInsightRef({ insightSetId: "set-1", insightName: "RenderBlocking" }),
+  ],
+  collectedAt: exampleCollectedAt,
+});
 
-  it("creates a step without optional fields", () => {
-    const step = new CiStepResult({
-      title: "Skipped step",
-      status: "skipped",
-    });
-    expect(step.duration_ms).toBeUndefined();
-    expect(step.error).toBeUndefined();
-  });
-
-  it("accepts not-run status", () => {
-    const step = new CiStepResult({
-      title: "Pending step",
-      status: "not-run",
-    });
-    expect(step.status).toBe("not-run");
-  });
+const exampleRegression = new PerfRegression({
+  url: "https://example.com",
+  metric: "LCP",
+  baselineValue: 2000,
+  currentValue: 2400,
+  percentChange: 20,
+  severity: "warning",
 });
 
 describe("CiResultOutput", () => {
-  it("creates a passing result", () => {
+  it("creates a passing result with perf data and rollup counters", () => {
     const result = new CiResultOutput({
       version: "0.1.0",
       status: "passed",
-      title: "Verify login flow",
+      title: "Verify landing page performance",
       duration_ms: 4100,
-      steps: [
-        new CiStepResult({ title: "Navigate", status: "passed", duration_ms: 1000 }),
-        new CiStepResult({ title: "Submit", status: "passed", duration_ms: 3100 }),
-      ],
+      metrics: [exampleMetric],
+      regressions: [],
+      insightNames: ["LCPBreakdown", "RenderBlocking"],
+      consoleCaptureCount: 3,
+      networkRequestCount: 42,
+      failedRequestCount: 0,
+      insightDetailCount: 2,
       artifacts: { video: "/tmp/video.mp4" },
-      summary: "2 passed, 0 failed out of 2 steps",
+      summary: "LCP 2400ms (target 2500ms)",
     });
     expect(result.status).toBe("passed");
-    expect(result.steps.length).toBe(2);
+    expect(result.metrics.length).toBe(1);
+    expect(result.regressions.length).toBe(0);
+    expect(result.insightNames).toEqual(["LCPBreakdown", "RenderBlocking"]);
+    expect(result.consoleCaptureCount).toBe(3);
+    expect(result.networkRequestCount).toBe(42);
+    expect(result.failedRequestCount).toBe(0);
+    expect(result.insightDetailCount).toBe(2);
     expect(result.artifacts.video).toBe("/tmp/video.mp4");
-    expect(result.artifacts.replay).toBeUndefined();
   });
 
-  it("creates a failing result", () => {
+  it("creates a failing result with regressions", () => {
     const result = new CiResultOutput({
       version: "0.1.0",
       status: "failed",
-      title: "Verify login flow",
+      title: "Verify landing page performance",
       duration_ms: 2000,
-      steps: [
-        new CiStepResult({
-          title: "Submit form",
-          status: "failed",
-          duration_ms: 2000,
-          error: "Button not found",
-        }),
-      ],
+      metrics: [exampleMetric],
+      regressions: [exampleRegression],
+      insightNames: ["LCPBreakdown"],
+      consoleCaptureCount: 0,
+      networkRequestCount: 10,
+      failedRequestCount: 2,
+      insightDetailCount: 1,
       artifacts: {},
-      summary: "0 passed, 1 failed out of 1 step",
+      summary: "LCP regressed 20% (warning)",
     });
     expect(result.status).toBe("failed");
-    expect(result.steps[0].error).toBe("Button not found");
+    expect(result.regressions[0].metric).toBe("LCP");
+    expect(result.regressions[0].severity).toBe("warning");
+    expect(result.failedRequestCount).toBe(2);
   });
 
   it("encodes to JSON via Schema.encodeSync", () => {
@@ -91,36 +89,58 @@ describe("CiResultOutput", () => {
       status: "passed",
       title: "Test",
       duration_ms: 1000,
-      steps: [new CiStepResult({ title: "Step 1", status: "passed", duration_ms: 1000 })],
+      metrics: [exampleMetric],
+      regressions: [],
+      insightNames: ["LCPBreakdown"],
+      consoleCaptureCount: 1,
+      networkRequestCount: 5,
+      failedRequestCount: 0,
+      insightDetailCount: 1,
       artifacts: { video: "/tmp/v.mp4", replay: "/tmp/r.html" },
-      summary: "1 passed",
+      summary: "ok",
     });
     const encoded = Schema.encodeSync(CiResultOutput)(result);
     expect(encoded.version).toBe("0.1.0");
     expect(encoded.status).toBe("passed");
-    expect(encoded.steps.length).toBe(1);
+    expect(encoded.metrics.length).toBe(1);
+    expect(encoded.metrics[0].url).toBe("https://example.com");
+    expect(encoded.insightNames).toEqual(["LCPBreakdown"]);
+    expect(encoded.consoleCaptureCount).toBe(1);
+    expect(encoded.networkRequestCount).toBe(5);
+    expect(encoded.failedRequestCount).toBe(0);
+    expect(encoded.insightDetailCount).toBe(1);
     expect(encoded.artifacts.video).toBe("/tmp/v.mp4");
     expect(encoded.artifacts.replay).toBe("/tmp/r.html");
   });
 
-  it("round-trips through encode and decode", () => {
+  it("round-trips metrics and regressions through encode and decode", () => {
     const original = new CiResultOutput({
       version: "0.1.0",
       status: "failed",
       title: "Test run",
       duration_ms: 5000,
-      steps: [
-        new CiStepResult({ title: "Step A", status: "passed", duration_ms: 2000 }),
-        new CiStepResult({ title: "Step B", status: "failed", error: "Oops" }),
-      ],
+      metrics: [exampleMetric],
+      regressions: [exampleRegression],
+      insightNames: ["LCPBreakdown", "RenderBlocking"],
+      consoleCaptureCount: 2,
+      networkRequestCount: 7,
+      failedRequestCount: 1,
+      insightDetailCount: 2,
       artifacts: {},
-      summary: "1 passed, 1 failed",
+      summary: "regression detected",
     });
     const encoded = Schema.encodeSync(CiResultOutput)(original);
     const decoded = Schema.decodeSync(CiResultOutput)(encoded);
     expect(decoded.version).toBe(original.version);
     expect(decoded.status).toBe(original.status);
-    expect(decoded.steps.length).toBe(2);
-    expect(decoded.steps[1].error).toBe("Oops");
+    expect(decoded.metrics.length).toBe(1);
+    expect(decoded.metrics[0].url).toBe("https://example.com");
+    expect(decoded.regressions.length).toBe(1);
+    expect(decoded.regressions[0].metric).toBe("LCP");
+    expect(decoded.insightNames).toEqual(["LCPBreakdown", "RenderBlocking"]);
+    expect(decoded.consoleCaptureCount).toBe(2);
+    expect(decoded.networkRequestCount).toBe(7);
+    expect(decoded.failedRequestCount).toBe(1);
+    expect(decoded.insightDetailCount).toBe(2);
   });
 });
