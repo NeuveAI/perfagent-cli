@@ -102,6 +102,7 @@ export default defineConfig({
       alwaysBundle: [/^@neuve\//],
       neverBundle: [
         "@agentclientprotocol/claude-agent-acp",
+        "@neuve/local-agent",
         "@zed-industries/codex-acp",
         "oxc-resolver",
       ],

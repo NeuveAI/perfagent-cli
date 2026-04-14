@@ -21,6 +21,7 @@
     "@ai-sdk/provider": "^3.0.8",
     "@effect/platform-node": "4.0.0-beta.35",
     "@neuve/devtools": "workspace:*",
+    "@neuve/local-agent": "workspace:*",
     "@neuve/shared": "workspace:*",
     "@github/copilot": "^1.0.12",
     "@google/gemini-cli": "^0.35.3",

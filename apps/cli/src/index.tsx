@@ -233,7 +233,7 @@ program
   .option("-m, --message <instruction>", "natural language instruction for what to test")
   .option(
     "-a, --agent <provider>",
-    "agent provider to use (claude, codex, copilot, gemini, cursor, opencode, droid, or pi)",
+    "agent provider to use (claude, codex, copilot, gemini, cursor, opencode, droid, pi, or local)",
   )
   .option("-t, --target <target>", "what to test: unstaged, branch, or changes", "changes")
   .option("--verbose", "enable verbose logging")
@@ -373,7 +373,7 @@ const tuiCommand = program
   .option("-y, --yes", "run immediately without confirmation")
   .option(
     "-a, --agent <provider>",
-    "agent provider to use (claude, codex, copilot, gemini, cursor, opencode, droid, or pi)",
+    "agent provider to use (claude, codex, copilot, gemini, cursor, opencode, droid, pi, or local)",
   )
   .option("-t, --target <target>", "what to test: unstaged, branch, or changes", "changes")
   .option("--verbose", "enable verbose logging")

@@ -2,6 +2,7 @@ import { Config, Effect, Option } from "effect";
 import type { AgentProvider } from "./models";
 
 const AGENT_ENV_MAP: ReadonlyArray<readonly [envVariable: string, agent: AgentProvider]> = [
+  ["PERF_AGENT_LOCAL", "local"],
   ["CLAUDECODE", "claude"],
   ["CURSOR_AGENT", "cursor"],
   ["CODEX_CI", "codex"],

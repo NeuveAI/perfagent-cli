@@ -252,6 +252,7 @@ export const AgentProvider = Schema.Literals([
   "opencode",
   "droid",
   "pi",
+  "local",
 ] as const);
 export type AgentProvider = typeof AgentProvider.Type;
 
@@ -264,6 +265,7 @@ export const AGENT_PROVIDER_DISPLAY_NAMES: Record<AgentProvider, string> = {
   opencode: "OpenCode",
   droid: "Factory Droid",
   pi: "Pi",
+  local: "Local (Ollama)",
 };
 const TOOL_CALL_DISPLAY_TEXT_CHAR_LIMIT = 80;
 

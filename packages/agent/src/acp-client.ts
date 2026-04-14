@@ -104,6 +104,11 @@ export class AcpProviderNotInstalledError extends Schema.ErrorClass<AcpProviderN
       () =>
         "Pi is not installed. Install it with `npm install -g @mariozechner/pi-coding-agent`, or use Claude Code with `perf-agent -a claude`.",
     ),
+    Match.when(
+      "local",
+      () =>
+        "Ollama is not installed. Install it from https://ollama.com, or use Claude Code with `perf-agent -a claude`.",
+    ),
     Match.orElse(
       () => "Your coding agent CLI is not installed. Please install it and then re-run perf-agent.",
     ),
@@ -543,6 +548,54 @@ export class AcpAdapter extends ServiceMap.Service<
       });
     }),
   ).pipe(Layer.provide(NodeServices.layer));
+
+  static layerLocal = Layer.effect(AcpAdapter)(
+    Effect.gen(function* () {
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+
+      yield* ChildProcess.make("ollama", ["--version"]).pipe(
+        spawner.string,
+        Effect.timeoutOrElse({
+          duration: ACP_AUTH_CHECK_TIMEOUT,
+          onTimeout: () =>
+            new AcpConnectionInitError({
+              cause: "Ollama timed out during version check. Ensure `ollama --version` runs quickly.",
+            }).asEffect(),
+        }),
+        Effect.catchReason("PlatformError", "NotFound", () =>
+          new AcpProviderNotInstalledError({ provider: "local" }).asEffect(),
+        ),
+        Effect.catchTag("PlatformError", (platformError) =>
+          new AcpConnectionInitError({
+            cause: `Ollama found but failed to run: ${platformError.message}`,
+          }).asEffect(),
+        ),
+      );
+
+      yield* Effect.tryPromise({
+        try: () =>
+          fetch("http://localhost:11434/api/version", {
+            signal: AbortSignal.timeout(5000),
+          }).then((response) => {
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          }),
+        catch: () =>
+          new AcpConnectionInitError({
+            cause:
+              "Ollama is not running. Start it with `ollama serve` or open the Ollama app, then re-run perf-agent.",
+          }),
+      });
+
+      const binPath = resolvePackageBin("@neuve/local-agent");
+
+      return AcpAdapter.of({
+        provider: "local",
+        bin: process.execPath,
+        args: [binPath],
+        env: {},
+      });
+    }),
+  ).pipe(Layer.provide(NodeServices.layer));
 }
 
 export class AcpClient extends ServiceMap.Service<AcpClient>()("@neuve/AcpClient", {
@@ -950,4 +1003,5 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@neuve/AcpClient
   static layerCursor = this.layer.pipe(Layer.provide(AcpAdapter.layerCursor));
   static layerOpencode = this.layer.pipe(Layer.provide(AcpAdapter.layerOpencode));
   static layerDroid = this.layer.pipe(Layer.provide(AcpAdapter.layerDroid));
+  static layerLocal = this.layer.pipe(Layer.provide(AcpAdapter.layerLocal));
 }
