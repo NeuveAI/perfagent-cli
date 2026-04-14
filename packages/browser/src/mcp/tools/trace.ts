@@ -45,6 +45,31 @@ const TraceAction = z.discriminatedUnion("command", [
 
 type TraceAction = z.infer<typeof TraceAction>;
 
+interface CallToolResultLike {
+  readonly content: ReadonlyArray<{
+    readonly type: string;
+    readonly text?: string;
+    readonly data?: string;
+    readonly mimeType?: string;
+  }>;
+  readonly isError?: boolean;
+}
+
+const rewriteStartAck = (result: CallToolResultLike): CallToolResultLike => {
+  const rewrittenContent = result.content.map((item) => {
+    if (item.type !== "text" || item.text === undefined) return item;
+    if (!item.text.includes("performance_stop_trace")) return item;
+    return {
+      ...item,
+      text: item.text.replaceAll(
+        "performance_stop_trace",
+        'trace with command="stop"',
+      ),
+    };
+  });
+  return { ...result, content: rewrittenContent };
+};
+
 export const registerTraceTool = <E>(
   server: McpServer,
   runtime: ManagedRuntime.ManagedRuntime<McpSession | DevToolsClient, E>,
@@ -56,9 +81,12 @@ export const registerTraceTool = <E>(
       description: [
         'Call shape: { "action": { "command": "<name>", ...args } }',
         "",
+        "Cold-load profiling is one-shot: call `start` with `reload: true, autoStop: true` to record -> auto-stop -> return CWV + insights in a single response.",
+        "Manual profiling (INP / interactions): call `start` with `reload: false, autoStop: false`, then perform user actions via `interact`, then call `stop`.",
+        "",
         "Examples:",
-        '  { "action": { "command": "start", "reload": true } }',
-        '  { "action": { "command": "stop" } }',
+        '  { "action": { "command": "start", "reload": true, "autoStop": true } }   # cold-load, one-shot',
+        '  { "action": { "command": "stop" } }                                       # manual profiling only',
         '  { "action": { "command": "analyze", "insightSetId": "NAVIGATION_0", "insightName": "LCPBreakdown" } }',
         '  { "action": { "command": "emulate", "cpuThrottling": 4, "network": "Slow 3G" } }',
         "",
@@ -66,12 +94,11 @@ export const registerTraceTool = <E>(
         "",
         "Performance profiling and analysis.",
         "",
-        "Workflow: `emulate` (optional throttling) -> `start` (begins trace, reload=true for cold-load) ->",
-        "`stop` (returns CWV summary + insight IDs) -> `analyze` (drill into specific insights like",
-        "LCPBreakdown, RenderBlocking, DocumentLatency).",
+        "Workflow: `emulate` (optional throttling) -> `start` (begins trace; for cold-load pass reload=true, autoStop=true) ->",
+        "`analyze` (drill into specific insights like LCPBreakdown, RenderBlocking, DocumentLatency).",
         "",
-        "For interaction profiling: start with reload=false, perform real interactions via `interact`,",
-        "then stop to capture INP and other interaction metrics.",
+        "For interaction profiling: start with reload=false, autoStop=false, perform real interactions via `interact`,",
+        "then call `stop` to capture INP and other interaction metrics.",
         "Use `memory` for heap snapshots to detect memory leaks.",
         "Use `lighthouse` for accessibility, SEO, and best-practices audits (NOT for performance — use traces).",
       ].join("\n"),
@@ -83,14 +110,19 @@ export const registerTraceTool = <E>(
           const devtools = yield* DevToolsClient;
 
           switch (action.command) {
-            case "start":
-              return yield* devtools.callTool("performance_start_trace", {
-                reload: action.reload,
-                autoStop: action.autoStop,
-                ...(action.filePath !== undefined && {
-                  filePath: action.filePath,
-                }),
-              });
+            case "start": {
+              const startResult = yield* devtools.callTool(
+                "performance_start_trace",
+                {
+                  reload: action.reload,
+                  autoStop: action.autoStop,
+                  ...(action.filePath !== undefined && {
+                    filePath: action.filePath,
+                  }),
+                },
+              );
+              return rewriteStartAck(startResult);
+            }
             case "stop":
               return yield* devtools.callTool("performance_stop_trace", {
                 ...(action.filePath !== undefined && {
