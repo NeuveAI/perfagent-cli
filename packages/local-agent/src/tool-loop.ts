@@ -119,7 +119,7 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
           update: {
             sessionUpdate: "tool_call",
             toolCallId: toolCall.id,
-            title: `${functionName}(${Object.keys(args).join(", ")})`,
+            title: functionName,
             kind: "read",
             status: "failed",
             rawInput: args,
@@ -148,7 +148,7 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
         update: {
           sessionUpdate: "tool_call",
           toolCallId: toolCall.id,
-          title: `${functionName}(${Object.keys(args).join(", ")})`,
+          title: functionName,
           kind: "read",
           status: "pending",
           rawInput: args,
@@ -168,9 +168,10 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
         update: {
           sessionUpdate: "tool_call_update",
           toolCallId: toolCall.id,
+          title: functionName,
           status: isError ? "failed" : "completed",
           content: [{ type: "content", content: { type: "text", text: messageText } }],
-          rawOutput: { text: messageText },
+          rawOutput: messageText,
         },
       });
 
