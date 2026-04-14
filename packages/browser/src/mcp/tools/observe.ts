@@ -102,9 +102,17 @@ export const registerObserveTool = <E>(
     {
       title: "Observe",
       description: [
-        "Read page state without side effects.",
+        'Call shape: { "action": { "command": "<name>", ...args } }',
+        "",
+        "Examples:",
+        '  { "action": { "command": "snapshot" } }',
+        '  { "action": { "command": "console" } }',
+        '  { "action": { "command": "network" } }',
+        '  { "action": { "command": "evaluate", "function": "() => document.title" } }',
         "",
         "Commands: snapshot, screenshot, console, network, pages, evaluate.",
+        "",
+        "Read page state without side effects.",
         "",
         "Use `snapshot` to get the accessibility tree with element UIDs — this is the primary way",
         "to discover elements before interacting with them via the `interact` tool.",

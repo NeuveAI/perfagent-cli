@@ -54,9 +54,17 @@ export const registerTraceTool = <E>(
     {
       title: "Trace",
       description: [
-        "Performance profiling and analysis.",
+        'Call shape: { "action": { "command": "<name>", ...args } }',
+        "",
+        "Examples:",
+        '  { "action": { "command": "start", "reload": true } }',
+        '  { "action": { "command": "stop" } }',
+        '  { "action": { "command": "analyze", "insightSetId": "NAVIGATION_0", "insightName": "LCPBreakdown" } }',
+        '  { "action": { "command": "emulate", "cpuThrottling": 4, "network": "Slow 3G" } }',
         "",
         "Commands: start, stop, analyze, memory, lighthouse, emulate.",
+        "",
+        "Performance profiling and analysis.",
         "",
         "Workflow: `emulate` (optional throttling) -> `start` (begins trace, reload=true for cold-load) ->",
         "`stop` (returns CWV summary + insight IDs) -> `analyze` (drill into specific insights like",
