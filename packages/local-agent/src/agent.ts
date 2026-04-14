@@ -63,7 +63,11 @@ export class LocalAgent implements acp.Agent {
         throw error;
       }
     } else {
-      mcpBridge = { listToolsAsOpenAI: () => [], callTool: async () => "No MCP servers configured", close: async () => {} };
+      mcpBridge = {
+        listToolsAsOpenAI: () => [],
+        callTool: async () => ({ text: "No MCP servers configured", isError: true }),
+        close: async () => {},
+      };
     }
 
     const meta = (params as Record<string, unknown>)["_meta"] as

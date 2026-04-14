@@ -6,6 +6,7 @@ import type { McpBridge } from "./mcp-bridge.js";
 import { log } from "./log.js";
 
 const MAX_TOOL_ROUNDS = 15;
+const DOOM_LOOP_THRESHOLD = 3;
 
 export interface ToolLoopOptions {
   sessionId: string;
@@ -41,8 +42,16 @@ const repairAndParseJson = (raw: string): Record<string, unknown> => {
   return {};
 };
 
+interface ToolCallFingerprint {
+  toolName: string;
+  argsHash: string;
+}
+
 export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
   const { sessionId, messages, tools, ollamaClient, mcpBridge, connection, signal } = options;
+
+  const recentCalls: ToolCallFingerprint[] = [];
+  let lastToolError: string | undefined;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     if (signal.aborted) return;
@@ -95,6 +104,45 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
       const rawArgs = toolCall.function.arguments;
       const args = repairAndParseJson(rawArgs);
 
+      const argsHash = JSON.stringify(args);
+      const lastCall = recentCalls[recentCalls.length - 1];
+      const matchesLast =
+        Boolean(lastCall) && lastCall?.toolName === functionName && lastCall?.argsHash === argsHash;
+      if (!matchesLast) {
+        recentCalls.length = 0;
+      }
+      const wouldTripThreshold = matchesLast && recentCalls.length >= DOOM_LOOP_THRESHOLD - 1;
+      if (wouldTripThreshold) {
+        log("doom loop detected", { tool: functionName, repeats: DOOM_LOOP_THRESHOLD });
+        await connection.sessionUpdate({
+          sessionId,
+          update: {
+            sessionUpdate: "tool_call",
+            toolCallId: toolCall.id,
+            title: `${functionName}(${Object.keys(args).join(", ")})`,
+            kind: "read",
+            status: "failed",
+            rawInput: args,
+          },
+        });
+        const lastErrorOrUnknown = lastToolError ?? "unknown";
+        await connection.sessionUpdate({
+          sessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: {
+              type: "text",
+              text: `[Local agent: detected ${DOOM_LOOP_THRESHOLD} identical consecutive tool calls (${functionName}). Aborting to avoid wasted cycles. Last error: ${lastErrorOrUnknown}. Check the tool description for the expected call shape.]`,
+            },
+          },
+        });
+        return;
+      }
+      recentCalls.push({ toolName: functionName, argsHash });
+      if (recentCalls.length > DOOM_LOOP_THRESHOLD) {
+        recentCalls.shift();
+      }
+
       await connection.sessionUpdate({
         sessionId,
         update: {
@@ -107,23 +155,29 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
         },
       });
 
-      const result = await mcpBridge.callTool(functionName, args);
+      const { text, isError } = await mcpBridge.callTool(functionName, args);
+      if (isError) {
+        lastToolError = text;
+      }
+      const messageText = isError
+        ? `${text}\n\nHint: Check the tool's call shape in its description. Wrap your arguments under the wrapper key shown in the example.`
+        : text;
 
       await connection.sessionUpdate({
         sessionId,
         update: {
           sessionUpdate: "tool_call_update",
           toolCallId: toolCall.id,
-          status: "completed",
-          content: [{ type: "content", content: { type: "text", text: result } }],
-          rawOutput: { text: result },
+          status: isError ? "failed" : "completed",
+          content: [{ type: "content", content: { type: "text", text: messageText } }],
+          rawOutput: { text: messageText },
         },
       });
 
       messages.push({
         role: "tool" as const,
         tool_call_id: toolCall.id,
-        content: result,
+        content: messageText,
       });
     }
 
