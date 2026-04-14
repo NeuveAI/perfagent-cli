@@ -552,6 +552,13 @@ export class AcpAdapter extends ServiceMap.Service<
   static layerLocal = Layer.effect(AcpAdapter)(
     Effect.gen(function* () {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const configuredModel = yield* Config.string("PERF_AGENT_LOCAL_MODEL").pipe(
+        Config.withDefault("gemma4:e4b"),
+      );
+      const baseUrl = yield* Config.string("PERF_AGENT_OLLAMA_URL").pipe(
+        Config.withDefault("http://localhost:11434/v1/"),
+      );
+      const apiBase = baseUrl.replace(/\/v1\/?$/, "");
 
       yield* ChildProcess.make("ollama", ["--version"]).pipe(
         spawner.string,
@@ -574,7 +581,7 @@ export class AcpAdapter extends ServiceMap.Service<
 
       yield* Effect.tryPromise({
         try: () =>
-          fetch("http://localhost:11434/api/version", {
+          fetch(`${apiBase}/api/version`, {
             signal: AbortSignal.timeout(5000),
           }).then((response) => {
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -585,6 +592,29 @@ export class AcpAdapter extends ServiceMap.Service<
               "Ollama is not running. Start it with `ollama serve` or open the Ollama app, then re-run perf-agent.",
           }),
       });
+
+      const availableModels = yield* Effect.tryPromise({
+        try: () =>
+          fetch(`${apiBase}/api/tags`, {
+            signal: AbortSignal.timeout(5000),
+          })
+            .then((response) => response.json() as Promise<{ models?: Array<{ name: string }> }>)
+            .then((body) => (body.models ?? []).map((model) => model.name)),
+        catch: (cause) =>
+          new AcpConnectionInitError({
+            cause: `Failed to list Ollama models: ${String(cause)}`,
+          }),
+      });
+
+      const hasModel = availableModels.some(
+        (name) => name === configuredModel || name === `${configuredModel}:latest`,
+      );
+
+      if (!hasModel) {
+        return yield* new AcpConnectionInitError({
+          cause: `Model "${configuredModel}" not found in Ollama. Run \`ollama pull ${configuredModel}\` to download it. If the pull fails with a version error, update Ollama at https://ollama.com/download. Available models: ${availableModels.length > 0 ? availableModels.join(", ") : "(none)"}.`,
+        }).asEffect();
+      }
 
       const binPath = resolvePackageBin("@neuve/local-agent");
 
@@ -894,7 +924,9 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@neuve/AcpClient
       const lastActivityAt = yield* Ref.make(Date.now());
 
       const effectivePrompt =
-        adapter.provider !== "claude" && Option.isSome(systemPrompt)
+        adapter.provider !== "claude" &&
+        adapter.provider !== "local" &&
+        Option.isSome(systemPrompt)
           ? `${systemPrompt.value}\n\n${prompt}`
           : prompt;
 

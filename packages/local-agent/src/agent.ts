@@ -2,11 +2,12 @@ import type * as acp from "@agentclientprotocol/sdk";
 import { createOllamaClient, type OllamaClient } from "./ollama-client.js";
 import { createMcpBridge, type McpBridge } from "./mcp-bridge.js";
 import { runToolLoop } from "./tool-loop.js";
+import { log } from "./log.js";
+import { LOCAL_AGENT_SYSTEM_PROMPT } from "./system-prompt.js";
 import type { ChatCompletionMessageParam, ChatCompletionTool } from "openai/resources/chat/completions";
 
 interface Session {
   id: string;
-  systemPrompt: string;
   messages: ChatCompletionMessageParam[];
   tools: ChatCompletionTool[];
   mcpBridge: McpBridge;
@@ -26,6 +27,7 @@ export class LocalAgent implements acp.Agent {
   async initialize(
     _params: acp.InitializeRequest,
   ): Promise<acp.InitializeResponse> {
+    log("initialize", { model: this.ollamaClient.model });
     return {
       protocolVersion: 1,
       agentCapabilities: {},
@@ -43,12 +45,23 @@ export class LocalAgent implements acp.Agent {
       | Record<string, { command: string; args?: string[]; env?: Record<string, string> }>
       | undefined;
 
+    log("newSession", {
+      sessionId,
+      mcpServerCount: mcpServers ? Object.keys(mcpServers).length : 0,
+    });
+
     let mcpBridge: McpBridge;
     let tools: ChatCompletionTool[] = [];
 
     if (mcpServers && Object.keys(mcpServers).length > 0) {
-      mcpBridge = await createMcpBridge(mcpServers);
-      tools = mcpBridge.listToolsAsOpenAI();
+      try {
+        mcpBridge = await createMcpBridge(mcpServers);
+        tools = mcpBridge.listToolsAsOpenAI();
+        log("mcp bridge connected", { toolCount: tools.length });
+      } catch (error) {
+        log("mcp bridge failed", { error: String(error) });
+        throw error;
+      }
     } else {
       mcpBridge = { listToolsAsOpenAI: () => [], callTool: async () => "No MCP servers configured", close: async () => {} };
     }
@@ -56,11 +69,14 @@ export class LocalAgent implements acp.Agent {
     const meta = (params as Record<string, unknown>)["_meta"] as
       | { systemPrompt?: string }
       | undefined;
-    const systemPrompt = meta?.systemPrompt ?? "";
+    if (meta?.systemPrompt) {
+      log("ignoring incoming system prompt (using local-agent prompt instead)", {
+        incomingLength: meta.systemPrompt.length,
+      });
+    }
 
     this.sessions.set(sessionId, {
       id: sessionId,
-      systemPrompt,
       messages: [],
       tools,
       mcpBridge,
@@ -86,15 +102,24 @@ export class LocalAgent implements acp.Agent {
     session.pendingPrompt = new AbortController();
 
     const userText = extractPromptText(params.prompt);
+    log("prompt", { sessionId: session.id, userTextLength: userText.length });
 
-    const messages: ChatCompletionMessageParam[] = [];
+    const messages: ChatCompletionMessageParam[] = [
+      { role: "system", content: LOCAL_AGENT_SYSTEM_PROMPT },
+      ...session.messages,
+      { role: "user", content: userText },
+    ];
 
-    if (session.systemPrompt) {
-      messages.push({ role: "system", content: session.systemPrompt });
-    }
-
-    messages.push(...session.messages);
-    messages.push({ role: "user", content: userText });
+    await this.connection.sessionUpdate({
+      sessionId: session.id,
+      update: {
+        sessionUpdate: "agent_thought_chunk",
+        content: {
+          type: "text",
+          text: `Starting local inference with ${this.ollamaClient.model}...`,
+        },
+      },
+    });
 
     try {
       await runToolLoop({
@@ -108,8 +133,20 @@ export class LocalAgent implements acp.Agent {
       });
     } catch (error) {
       if (session.pendingPrompt.signal.aborted) {
+        log("prompt cancelled");
         return { stopReason: "cancelled" };
       }
+      log("prompt error", { error: String(error) });
+      await this.connection.sessionUpdate({
+        sessionId: session.id,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            type: "text",
+            text: `\n\n**Error from local agent:** ${error instanceof Error ? error.message : String(error)}`,
+          },
+        },
+      });
       throw error;
     }
 

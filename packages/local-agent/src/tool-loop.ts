@@ -3,6 +3,8 @@ import type { ChatCompletionMessageParam, ChatCompletionTool } from "openai/reso
 import type { OllamaClient } from "./ollama-client.js";
 import type { McpBridge } from "./mcp-bridge.js";
 
+import { log } from "./log.js";
+
 const MAX_TOOL_ROUNDS = 15;
 
 export interface ToolLoopOptions {
@@ -45,24 +47,44 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     if (signal.aborted) return;
 
+    log("calling ollama", { round, messageCount: messages.length, toolCount: tools.length });
     const completion = await ollamaClient.complete({ messages, tools, signal });
     const choice = completion.choices[0];
-    if (!choice) return;
-
+    if (!choice) {
+      log("ollama returned no choices");
+      await connection.sessionUpdate({
+        sessionId,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "[Local agent: Ollama returned no choices]" },
+        },
+      });
+      return;
+    }
     const assistantMessage = choice.message;
+    const toolCalls = assistantMessage.tool_calls;
+    log("ollama responded", {
+      round,
+      finishReason: choice.finish_reason,
+      hasToolCalls: Boolean(toolCalls?.length),
+      toolCallCount: toolCalls?.length ?? 0,
+      contentPreview: (assistantMessage.content ?? "").slice(0, 200),
+    });
+
     messages.push(assistantMessage);
 
-    const toolCalls = assistantMessage.tool_calls;
     if (!toolCalls || toolCalls.length === 0) {
-      if (assistantMessage.content) {
-        await connection.sessionUpdate({
-          sessionId,
-          update: {
-            sessionUpdate: "agent_message_chunk",
-            content: { type: "text", text: assistantMessage.content },
-          },
-        });
-      }
+      const text =
+        assistantMessage.content && assistantMessage.content.length > 0
+          ? assistantMessage.content
+          : `[Local agent: model returned empty response at round ${round} with finish_reason="${choice.finish_reason}". The model may not support tool calling or the system prompt may need adjustment.]`;
+      await connection.sessionUpdate({
+        sessionId,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text },
+        },
+      });
       return;
     }
 
