@@ -1,4 +1,11 @@
 import { DateTime, Match, Option, Predicate, Schema } from "effect";
+import {
+  CWV_METRICS,
+  CWV_THRESHOLDS,
+  classifyCwv,
+  formatCwvTarget,
+  formatCwvValue,
+} from "./cwv-thresholds";
 
 export interface SavedFlowStep {
   id: string;
@@ -436,6 +443,11 @@ export class PerfBudget extends Schema.Class<PerfBudget>("@shared/PerfBudget")({
   totalTransferSizeKb: Schema.OptionFromUndefinedOr(Schema.Number),
 }) {}
 
+export class TraceInsightRef extends Schema.Class<TraceInsightRef>("@shared/TraceInsightRef")({
+  insightSetId: Schema.String,
+  insightName: Schema.String,
+}) {}
+
 export class PerfMetricSnapshot extends Schema.Class<PerfMetricSnapshot>(
   "@shared/PerfMetricSnapshot",
 )({
@@ -446,7 +458,7 @@ export class PerfMetricSnapshot extends Schema.Class<PerfMetricSnapshot>(
   inpMs: Schema.OptionFromUndefinedOr(Schema.Number),
   ttfbMs: Schema.OptionFromUndefinedOr(Schema.Number),
   totalTransferSizeKb: Schema.OptionFromUndefinedOr(Schema.Number),
-  traceInsights: Schema.Array(Schema.String),
+  traceInsights: Schema.Array(TraceInsightRef),
   collectedAt: Schema.DateTimeUtc,
 }) {}
 
@@ -1107,7 +1119,39 @@ export class PerfReport extends ExecutedPerfPlan.extend<PerfReport>("@supervisor
     return statuses;
   }
 
+  get uniqueInsightNames(): readonly string[] {
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+    for (const snapshot of this.metrics) {
+      for (const insight of snapshot.traceInsights) {
+        if (seen.has(insight.insightName)) continue;
+        seen.add(insight.insightName);
+        ordered.push(insight.insightName);
+      }
+    }
+    return ordered;
+  }
+
+  get hasPoorMetric(): boolean {
+    for (const snapshot of this.metrics) {
+      for (const metric of CWV_METRICS) {
+        const threshold = CWV_THRESHOLDS[metric];
+        const value = Option.getOrUndefined(snapshot[threshold.key]);
+        if (value === undefined) continue;
+        if (classifyCwv(metric, value) === "poor") return true;
+      }
+    }
+    return false;
+  }
+
   get status(): "passed" | "failed" {
+    if (this.metrics.length > 0) {
+      if (this.hasPoorMetric) return "failed";
+      if (this.regressions.some((regression) => regression.severity === "critical")) {
+        return "failed";
+      }
+      return "passed";
+    }
     for (const { status } of this.stepStatuses.values()) {
       if (status === "failed") return "failed";
     }
@@ -1116,46 +1160,88 @@ export class PerfReport extends ExecutedPerfPlan.extend<PerfReport>("@supervisor
 
   get toPlainText(): string {
     const statuses = this.stepStatuses;
-    const passedCount = this.steps.filter(
-      (step) => statuses.get(step.id)?.status === "passed",
-    ).length;
-    const failedCount = this.steps.filter(
-      (step) => statuses.get(step.id)?.status === "failed",
-    ).length;
-    const skippedCount = this.steps.filter(
-      (step) => statuses.get(step.id)?.status === "skipped",
-    ).length;
-
     const icon = this.status === "passed" ? "\u2705" : "\u274C";
-    const summaryParts = [`${passedCount} passed`, `${failedCount} failed`];
-    if (skippedCount > 0) summaryParts.push(`${skippedCount} skipped`);
-    const countSummary = summaryParts.join(", ");
     const summaryText = this.summary.trim();
-    const stepWord = this.steps.length === 1 ? "step" : "steps";
-    const lines = [
-      `${icon} ${this.title} \u2014 ${this.status.toUpperCase()}`,
-      "",
-      this.steps.length === 0
-        ? "agent did not execute any analysis steps"
-        : `${countSummary} out of ${this.steps.length} ${stepWord}`,
-      "",
-    ];
+    const lines: string[] = [`${icon} ${this.title} \u2014 ${this.status.toUpperCase()}`, ""];
+    let countSummary = "";
 
-    for (const step of this.steps) {
-      const entry = statuses.get(step.id);
-      const stepStatus = entry?.status ?? "not-run";
-      const stepIcon =
-        stepStatus === "passed"
-          ? "\u2713"
-          : stepStatus === "failed"
-            ? "\u2717"
-            : stepStatus === "skipped"
-              ? "\u2192"
-              : "\u2013";
-      lines.push(`  ${stepIcon} ${step.title}`);
-      if (entry?.summary) {
-        lines.push(`    ${entry.summary}`);
+    if (this.metrics.length > 0) {
+      for (const snapshot of this.metrics) {
+        lines.push(snapshot.url);
+        for (const metric of CWV_METRICS) {
+          const threshold = CWV_THRESHOLDS[metric];
+          const value = Option.getOrUndefined(snapshot[threshold.key]);
+          if (value === undefined) continue;
+          const classification = classifyCwv(metric, value);
+          const metricIcon =
+            classification === "good"
+              ? "\u2713"
+              : classification === "needs-improvement"
+                ? "\u26A0"
+                : "\u2717";
+          lines.push(
+            `  ${metricIcon} ${metric}: ${formatCwvValue(metric, value)} (target ${formatCwvTarget(metric)})`,
+          );
+        }
+        lines.push("");
       }
+
+      const insightNames = this.uniqueInsightNames;
+      if (insightNames.length > 0) {
+        lines.push(`Insights: ${insightNames.join(", ")}`);
+        lines.push("");
+      }
+
+      if (this.regressions.length > 0) {
+        lines.push("Regressions:");
+        for (const regression of this.regressions) {
+          const regressionIcon =
+            regression.severity === "critical"
+              ? "\u2717"
+              : regression.severity === "warning"
+                ? "\u26A0"
+                : "\u00B7";
+          const percentSign = regression.percentChange >= 0 ? "+" : "";
+          lines.push(
+            `  ${regressionIcon} ${regression.metric} on ${regression.url} — ${regression.currentValue} (target ${regression.baselineValue}, ${percentSign}${regression.percentChange.toFixed(0)}%, ${regression.severity})`,
+          );
+        }
+        lines.push("");
+      }
+    } else if (this.steps.length > 0) {
+      const passedCount = this.steps.filter(
+        (step) => statuses.get(step.id)?.status === "passed",
+      ).length;
+      const failedCount = this.steps.filter(
+        (step) => statuses.get(step.id)?.status === "failed",
+      ).length;
+      const skippedCount = this.steps.filter(
+        (step) => statuses.get(step.id)?.status === "skipped",
+      ).length;
+      const summaryParts = [`${passedCount} passed`, `${failedCount} failed`];
+      if (skippedCount > 0) summaryParts.push(`${skippedCount} skipped`);
+      countSummary = summaryParts.join(", ");
+      const stepWord = this.steps.length === 1 ? "step" : "steps";
+      lines.push(`${countSummary} out of ${this.steps.length} ${stepWord}`);
+      lines.push("");
+      for (const step of this.steps) {
+        const entry = statuses.get(step.id);
+        const stepStatus = entry?.status ?? "not-run";
+        const stepIcon =
+          stepStatus === "passed"
+            ? "\u2713"
+            : stepStatus === "failed"
+              ? "\u2717"
+              : stepStatus === "skipped"
+                ? "\u2192"
+                : "\u2013";
+        lines.push(`  ${stepIcon} ${step.title}`);
+        if (entry?.summary) {
+          lines.push(`    ${entry.summary}`);
+        }
+      }
+    } else {
+      lines.push("agent did not run any performance tools");
     }
 
     if (summaryText.length > 0 && summaryText !== countSummary) {
@@ -1164,7 +1250,7 @@ export class PerfReport extends ExecutedPerfPlan.extend<PerfReport>("@supervisor
       lines.push(summaryText);
     }
 
-    return lines.join("\n");
+    return lines.join("\n").trimEnd();
   }
 }
 

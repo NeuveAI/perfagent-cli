@@ -11,7 +11,9 @@
     "./utils": "./src/utils.ts",
     "./launched-from": "./src/launched-from.ts",
     "./is-command-available": "./src/is-command-available.ts",
-    "./infer-agent": "./src/infer-agent.ts"
+    "./infer-agent": "./src/infer-agent.ts",
+    "./parse-trace-output": "./src/parse-trace-output.ts",
+    "./cwv-thresholds": "./src/cwv-thresholds.ts"
   },
   "scripts": {
     "lint": "vp lint && tsc --noEmit",
