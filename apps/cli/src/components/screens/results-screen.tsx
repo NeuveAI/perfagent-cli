@@ -5,7 +5,12 @@ import { Option } from "effect";
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 import { useAtom } from "@effect/atom-react";
 import type { PerfReport } from "@neuve/supervisor";
-import type { AnalysisStep } from "@neuve/shared/models";
+import type {
+  AnalysisStep,
+  PerfMetricSnapshot,
+  PerfRegression,
+  TraceInsightRef,
+} from "@neuve/shared/models";
 import { copyToClipboard } from "../../utils/copy-to-clipboard";
 import { trackEvent } from "../../utils/session-analytics";
 import { useColors } from "../theme-context";
@@ -18,6 +23,14 @@ import { saveFlowFn } from "../../data/flow-storage-atom";
 import { formatElapsedTime } from "../../utils/format-elapsed-time";
 import { getStepElapsedMs, getTotalElapsedMs } from "../../utils/step-elapsed";
 import { RuledBox } from "../ui/ruled-box";
+import {
+  classifyCwv,
+  CWV_THRESHOLDS,
+  formatCwvTarget,
+  formatCwvValue,
+  type CwvClassification,
+  type CwvMetric,
+} from "@neuve/shared/cwv-thresholds";
 
 interface ResultsScreenProps {
   report: PerfReport;
@@ -102,6 +115,14 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
   const statusLabel = isPassed ? "Passed" : "Failed";
   const totalElapsedMs = getTotalElapsedMs(report.steps);
 
+  const hasMetrics = report.metrics.length > 0;
+  const hasRegressions = report.regressions.length > 0;
+  const hasToolResult = report.events.some((event) => event._tag === "ToolResult");
+  const insights = collectTraceInsights(report.metrics);
+  const hasInsights = insights.length > 0;
+  const showMetricsFallback = !hasMetrics && !hasToolResult;
+  const showToolsButNoTraceFallback = !hasMetrics && hasToolResult;
+
   return (
     <Box flexDirection="column" width="100%" paddingY={1} paddingX={1}>
       <Box>
@@ -117,16 +138,26 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
         <Text color={statusColor} bold>
           {statusIcon} {statusLabel}
         </Text>
-        {report.steps.length === 0 && (
-          <Text color={COLORS.DIM}>{"  "}agent did not execute any test steps</Text>
+        {showMetricsFallback && (
+          <Text color={COLORS.DIM}>{"  "}Agent did not run any performance tools.</Text>
         )}
-        {report.steps.length > 0 && (
+        {showToolsButNoTraceFallback && (
+          <Text color={COLORS.DIM}>
+            {"  "}Agent ran tools but didn{"\u2019"}t capture a performance trace. Check the trace
+            command output in the raw events.
+          </Text>
+        )}
+        {hasMetrics && (
           <Text color={COLORS.DIM}>
             {"  "}
-            {report.steps.length} step{report.steps.length === 1 ? "" : "s"}
+            {report.metrics.length} trace{report.metrics.length === 1 ? "" : "s"} captured
           </Text>
         )}
       </Box>
+
+      {hasMetrics && <PerfMetricsTable metrics={report.metrics} />}
+      {hasInsights && <TraceInsightsList insights={insights} />}
+      {hasRegressions && <RegressionsPanel regressions={report.regressions} />}
 
       <RuledBox color={COLORS.YELLOW} marginTop={1}>
         <Text color={COLORS.YELLOW} bold>
@@ -272,4 +303,265 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
       ))}
     </Box>
   );
+};
+
+const CWV_METRIC_ORDER: readonly CwvMetric[] = ["LCP", "FCP", "CLS", "INP", "TTFB"];
+
+const METRIC_COLUMN_WIDTH = 7;
+const VALUE_COLUMN_WIDTH = 9;
+const TARGET_COLUMN_WIDTH = 9;
+const STATUS_COLUMN_WIDTH = 18;
+
+const padCell = (text: string, width: number): string => {
+  if (text.length >= width) return text.slice(0, width);
+  return text + " ".repeat(width - text.length);
+};
+
+const collectTraceInsights = (metrics: readonly PerfMetricSnapshot[]): TraceInsightRef[] => {
+  const seen = new Set<string>();
+  const ordered: TraceInsightRef[] = [];
+  for (const metric of metrics) {
+    for (const insight of metric.traceInsights) {
+      if (seen.has(insight.insightName)) continue;
+      seen.add(insight.insightName);
+      ordered.push(insight);
+    }
+  }
+  return ordered;
+};
+
+interface CwvRow {
+  metric: CwvMetric;
+  value: number;
+  classification: CwvClassification;
+}
+
+const collectCwvRows = (snapshot: PerfMetricSnapshot): CwvRow[] => {
+  const rows: CwvRow[] = [];
+  for (const metric of CWV_METRIC_ORDER) {
+    const value = getMetricValue(snapshot, metric);
+    if (value === undefined) continue;
+    rows.push({ metric, value, classification: classifyCwv(metric, value) });
+  }
+  return rows;
+};
+
+const getMetricValue = (
+  snapshot: PerfMetricSnapshot,
+  metric: CwvMetric,
+): number | undefined => {
+  if (metric === "LCP") return Option.getOrUndefined(snapshot.lcpMs);
+  if (metric === "FCP") return Option.getOrUndefined(snapshot.fcpMs);
+  if (metric === "CLS") return Option.getOrUndefined(snapshot.clsScore);
+  if (metric === "INP") return Option.getOrUndefined(snapshot.inpMs);
+  return Option.getOrUndefined(snapshot.ttfbMs);
+};
+
+interface PerfMetricsTableProps {
+  metrics: readonly PerfMetricSnapshot[];
+}
+
+const PerfMetricsTable = ({ metrics }: PerfMetricsTableProps) => {
+  const renderableSnapshots = metrics
+    .map((snapshot) => ({ snapshot, rows: collectCwvRows(snapshot) }))
+    .filter((entry) => entry.rows.length > 0);
+
+  if (renderableSnapshots.length === 0) return undefined;
+
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      {renderableSnapshots.map((entry, index) => (
+        <PerfMetricsTableSnapshot
+          key={`${entry.snapshot.url}-${index}`}
+          snapshot={entry.snapshot}
+          rows={entry.rows}
+        />
+      ))}
+    </Box>
+  );
+};
+
+interface PerfMetricsTableSnapshotProps {
+  snapshot: PerfMetricSnapshot;
+  rows: readonly CwvRow[];
+}
+
+const PerfMetricsTableSnapshot = ({ snapshot, rows }: PerfMetricsTableSnapshotProps) => {
+  const COLORS = useColors();
+  const headerLine = `${padCell("Metric", METRIC_COLUMN_WIDTH)} \u2502 ${padCell(
+    "Value",
+    VALUE_COLUMN_WIDTH,
+  )} \u2502 ${padCell("Target", TARGET_COLUMN_WIDTH)} \u2502 ${padCell(
+    "Status",
+    STATUS_COLUMN_WIDTH,
+  )}`;
+  const dividerLine = `${"\u2500".repeat(METRIC_COLUMN_WIDTH + 1)}\u253c${"\u2500".repeat(
+    VALUE_COLUMN_WIDTH + 2,
+  )}\u253c${"\u2500".repeat(TARGET_COLUMN_WIDTH + 2)}\u253c${"\u2500".repeat(
+    STATUS_COLUMN_WIDTH + 1,
+  )}`;
+
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Text color={COLORS.PRIMARY} bold>
+        {snapshot.url}
+      </Text>
+      <Text color={COLORS.DIM}>{headerLine}</Text>
+      <Text color={COLORS.DIM}>{dividerLine}</Text>
+      {rows.map((row) => (
+        <PerfMetricsTableRow key={row.metric} row={row} />
+      ))}
+    </Box>
+  );
+};
+
+interface PerfMetricsTableRowProps {
+  row: CwvRow;
+}
+
+const PerfMetricsTableRow = ({ row }: PerfMetricsTableRowProps) => {
+  const COLORS = useColors();
+  const statusColor = colorForClassification(row.classification, COLORS);
+  const statusIcon = iconForClassification(row.classification);
+  const statusLabel = `${statusIcon} ${row.classification}`;
+  const metricCell = padCell(row.metric, METRIC_COLUMN_WIDTH);
+  const valueCell = padCell(formatCwvValue(row.metric, row.value), VALUE_COLUMN_WIDTH);
+  const targetCell = padCell(formatCwvTarget(row.metric), TARGET_COLUMN_WIDTH);
+  const statusCell = padCell(statusLabel, STATUS_COLUMN_WIDTH);
+
+  return (
+    <Text>
+      <Text color={COLORS.TEXT}>{metricCell}</Text>
+      <Text color={COLORS.DIM}> {"\u2502"} </Text>
+      <Text color={statusColor}>{valueCell}</Text>
+      <Text color={COLORS.DIM}> {"\u2502"} </Text>
+      <Text color={COLORS.DIM}>{targetCell}</Text>
+      <Text color={COLORS.DIM}> {"\u2502"} </Text>
+      <Text color={statusColor}>{statusCell}</Text>
+    </Text>
+  );
+};
+
+interface ThemeColors {
+  GREEN: string;
+  YELLOW: string;
+  RED: string;
+  DIM: string;
+  TEXT: string;
+  PRIMARY: string;
+}
+
+const colorForClassification = (
+  classification: CwvClassification,
+  colors: ThemeColors,
+): string => {
+  if (classification === "good") return colors.GREEN;
+  if (classification === "needs-improvement") return colors.YELLOW;
+  return colors.RED;
+};
+
+const iconForClassification = (classification: CwvClassification): string => {
+  if (classification === "good") return figures.tick;
+  if (classification === "needs-improvement") return figures.warning;
+  return figures.cross;
+};
+
+interface TraceInsightsListProps {
+  insights: readonly TraceInsightRef[];
+}
+
+const TraceInsightsList = ({ insights }: TraceInsightsListProps) => {
+  const COLORS = useColors();
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      <Text color={COLORS.TEXT} bold>
+        Trace insights{" "}
+        <Text color={COLORS.DIM}>(drill in via `trace analyze` with insightSetId):</Text>
+      </Text>
+      {insights.map((insight) => (
+        <Text key={`${insight.insightSetId}-${insight.insightName}`}>
+          <Text color={COLORS.DIM}> {figures.bullet}</Text>{" "}
+          <Text color={COLORS.TEXT}>{insight.insightName}</Text>
+        </Text>
+      ))}
+    </Box>
+  );
+};
+
+interface RegressionsPanelProps {
+  regressions: readonly PerfRegression[];
+}
+
+const RegressionsPanel = ({ regressions }: RegressionsPanelProps) => {
+  const COLORS = useColors();
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      <Text color={COLORS.TEXT} bold>
+        Regressions:
+      </Text>
+      {regressions.map((regression, index) => (
+        <RegressionRow
+          key={`${regression.url}-${regression.metric}-${index}`}
+          regression={regression}
+        />
+      ))}
+    </Box>
+  );
+};
+
+interface RegressionRowProps {
+  regression: PerfRegression;
+}
+
+const REGRESSION_CRITICAL_ICON = "\u2717";
+const REGRESSION_WARNING_ICON = "\u26a0";
+const REGRESSION_INFO_ICON = "\u00b7";
+
+const RegressionRow = ({ regression }: RegressionRowProps) => {
+  const COLORS = useColors();
+  const color = colorForSeverity(regression.severity, COLORS);
+  const icon = iconForSeverity(regression.severity);
+  const currentLabel = formatRegressionValue(regression.metric, regression.currentValue);
+  const targetLabel = formatRegressionValue(regression.metric, regression.baselineValue);
+  const deltaSign = regression.percentChange >= 0 ? "+" : "";
+  const deltaLabel = `${deltaSign}${regression.percentChange.toFixed(0)}%`;
+
+  return (
+    <Text>
+      <Text color={color}>
+        {"  "}
+        {icon}{" "}
+      </Text>
+      <Text color={COLORS.TEXT}>
+        {regression.metric} on {regression.url}
+      </Text>
+      <Text color={COLORS.DIM}>
+        {" "}
+        {"\u2014"} {currentLabel} (target {targetLabel}, {deltaLabel}, {regression.severity})
+      </Text>
+    </Text>
+  );
+};
+
+const colorForSeverity = (
+  severity: PerfRegression["severity"],
+  colors: ThemeColors,
+): string => {
+  if (severity === "critical") return colors.RED;
+  if (severity === "warning") return colors.YELLOW;
+  return colors.DIM;
+};
+
+const iconForSeverity = (severity: PerfRegression["severity"]): string => {
+  if (severity === "critical") return REGRESSION_CRITICAL_ICON;
+  if (severity === "warning") return REGRESSION_WARNING_ICON;
+  return REGRESSION_INFO_ICON;
+};
+
+const formatRegressionValue = (metric: string, value: number): string => {
+  const upperMetric = metric.toUpperCase();
+  if (upperMetric in CWV_THRESHOLDS) {
+    return formatCwvValue(upperMetric as CwvMetric, value);
+  }
+  return value.toString();
 };
