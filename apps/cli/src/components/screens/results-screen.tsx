@@ -29,6 +29,7 @@ import { saveFlowFn } from "../../data/flow-storage-atom";
 import { formatElapsedTime } from "../../utils/format-elapsed-time";
 import { getStepElapsedMs, getTotalElapsedMs } from "../../utils/step-elapsed";
 import { RuledBox } from "../ui/ruled-box";
+import { ErrorBoundary } from "../ui/error-boundary";
 import {
   classifyCwv,
   formatCwvTarget,
@@ -196,14 +197,16 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
 
   if (showRawEvents) {
     return (
-      <RawEventsView
-        events={report.events}
-        consoleCaptures={report.consoleCaptures}
-        networkCaptures={report.networkCaptures}
-        insightDetails={report.insightDetails}
-        instruction={report.instruction}
-        scrollOffset={rawScrollOffset}
-      />
+      <ErrorBoundary label="Raw-events view">
+        <RawEventsView
+          events={report.events}
+          consoleCaptures={report.consoleCaptures}
+          networkCaptures={report.networkCaptures}
+          insightDetails={report.insightDetails}
+          instruction={report.instruction}
+          scrollOffset={rawScrollOffset}
+        />
+      </ErrorBoundary>
     );
   }
 
@@ -660,7 +663,7 @@ const CONSOLE_TEXT_TRIM_PADDING = 14;
 const CONSOLE_TEXT_MIN_WIDTH = 20;
 
 const truncateText = (text: string, maxWidth: number): string => {
-  if (maxWidth <= 1) return text;
+  if (!Number.isFinite(maxWidth) || maxWidth <= 1) return text;
   if (text.length <= maxWidth) return text;
   return `${text.slice(0, Math.max(1, maxWidth - 1))}\u2026`;
 };
@@ -1043,9 +1046,11 @@ const RawEventsView = ({
 }: RawEventsViewProps) => {
   const COLORS = useColors();
   const [columns, rows] = useStdoutDimensions();
+  const safeColumns = Number.isFinite(columns) && columns > 0 ? columns : RAW_VIEW_MIN_CONTENT_WIDTH_COLS;
+  const safeRows = Number.isFinite(rows) && rows > 0 ? rows : RAW_VIEW_MIN_VISIBLE_ROWS;
   const contentWidth = Math.max(
     RAW_VIEW_MIN_CONTENT_WIDTH_COLS,
-    columns - RAW_VIEW_CONTENT_WIDTH_MARGIN_COLS,
+    safeColumns - RAW_VIEW_CONTENT_WIDTH_MARGIN_COLS,
   );
   const lines = buildRawLines({
     events,
@@ -1055,11 +1060,12 @@ const RawEventsView = ({
     colors: COLORS,
     maxWidth: contentWidth,
   });
-  const visibleRows = Math.max(RAW_VIEW_MIN_VISIBLE_ROWS, rows - RAW_VIEW_CHROME_ROWS);
-  const maxScroll = Math.max(0, lines.length - visibleRows);
-  const clampedOffset = Math.min(scrollOffset, maxScroll);
-  const visibleLines = lines.slice(clampedOffset, clampedOffset + visibleRows);
+  const visibleRows = Math.max(RAW_VIEW_MIN_VISIBLE_ROWS, safeRows - RAW_VIEW_CHROME_ROWS);
   const totalLines = lines.length;
+  const maxScroll = Math.max(0, totalLines - visibleRows);
+  const safeScrollOffset = Number.isFinite(scrollOffset) ? Math.max(0, Math.floor(scrollOffset)) : 0;
+  const clampedOffset = Math.min(safeScrollOffset, maxScroll);
+  const visibleLines = lines.slice(clampedOffset, clampedOffset + visibleRows);
   const lastVisibleLine = Math.min(totalLines, clampedOffset + visibleRows);
   const positionLabel =
     totalLines === 0 ? "empty" : `${clampedOffset + 1}-${lastVisibleLine} / ${totalLines}`;
@@ -1380,8 +1386,19 @@ const appendInsightLines = (
 
 const formatToolInput = (input: unknown): string => {
   if (input === undefined) return "(no input)";
+  if (typeof input === "string") {
+    try {
+      const parsed = JSON.parse(input);
+      const pretty = JSON.stringify(parsed, undefined, RAW_JSON_INDENT_SPACES);
+      if (pretty !== undefined) return truncateText(pretty, RAW_TOOL_INPUT_MAX_CHARS);
+    } catch {
+      return truncateText(input, RAW_TOOL_INPUT_MAX_CHARS);
+    }
+    return truncateText(input, RAW_TOOL_INPUT_MAX_CHARS);
+  }
   try {
     const json = JSON.stringify(input, undefined, RAW_JSON_INDENT_SPACES);
+    if (json === undefined) return "(no input)";
     return truncateText(json, RAW_TOOL_INPUT_MAX_CHARS);
   } catch {
     return truncateText(String(input), RAW_TOOL_INPUT_MAX_CHARS);
@@ -1389,8 +1406,8 @@ const formatToolInput = (input: unknown): string => {
 };
 
 const wrapPlain = (text: string, maxWidth: number): string[] => {
-  if (maxWidth <= 1) return [text];
   const sourceLines = text.split("\n");
+  if (!Number.isFinite(maxWidth) || maxWidth < 1) return sourceLines;
   const result: string[] = [];
   for (const sourceLine of sourceLines) {
     if (sourceLine.length === 0) {
