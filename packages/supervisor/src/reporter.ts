@@ -2,6 +2,7 @@ import { DateTime, Effect, Layer, Option, Predicate, ServiceMap } from "effect";
 import {
   ConsoleCapture,
   ConsoleEntry,
+  collectUniqueInsightNames,
   type ExecutedPerfPlan,
   type ExecutionEvent,
   InsightDetail,
@@ -265,19 +266,6 @@ const formatRegressionSummary = (
   return `${regressions.length} regression${regressions.length === 1 ? "" : "s"}: ${parts.join(", ")}`;
 };
 
-const uniqueInsightNames = (snapshots: readonly PerfMetricSnapshot[]): string[] => {
-  const seen = new Set<string>();
-  const ordered: string[] = [];
-  for (const snapshot of snapshots) {
-    for (const insight of snapshot.traceInsights) {
-      if (seen.has(insight.insightName)) continue;
-      seen.add(insight.insightName);
-      ordered.push(insight.insightName);
-    }
-  }
-  return ordered;
-};
-
 const uniqueUrls = (snapshots: readonly PerfMetricSnapshot[]): string[] => {
   const seen = new Set<string>();
   const ordered: string[] = [];
@@ -312,7 +300,7 @@ const buildPerfSummary = (
   if (metricsLine.length > 0) lines.push(metricsLine);
   if (regressionLine !== undefined) lines.push(regressionLine);
 
-  const insightNames = uniqueInsightNames(snapshots);
+  const insightNames = collectUniqueInsightNames(snapshots);
   if (insightNames.length > 0) {
     lines.push(`Insights available: ${insightNames.join(", ")}`);
   }

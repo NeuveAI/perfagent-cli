@@ -463,6 +463,21 @@ export class PerfMetricSnapshot extends Schema.Class<PerfMetricSnapshot>(
   collectedAt: Schema.DateTimeUtc,
 }) {}
 
+export const collectUniqueInsightNames = (
+  snapshots: readonly PerfMetricSnapshot[],
+): readonly string[] => {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const snapshot of snapshots) {
+    for (const insight of snapshot.traceInsights) {
+      if (seen.has(insight.insightName)) continue;
+      seen.add(insight.insightName);
+      ordered.push(insight.insightName);
+    }
+  }
+  return ordered;
+};
+
 export class ConsoleEntry extends Schema.Class<ConsoleEntry>("@shared/ConsoleEntry")({
   level: Schema.Literals(["log", "info", "warn", "error", "debug"] as const),
   text: Schema.String,
@@ -1165,16 +1180,7 @@ export class PerfReport extends ExecutedPerfPlan.extend<PerfReport>("@supervisor
   }
 
   get uniqueInsightNames(): readonly string[] {
-    const seen = new Set<string>();
-    const ordered: string[] = [];
-    for (const snapshot of this.metrics) {
-      for (const insight of snapshot.traceInsights) {
-        if (seen.has(insight.insightName)) continue;
-        seen.add(insight.insightName);
-        ordered.push(insight.insightName);
-      }
-    }
-    return ordered;
+    return collectUniqueInsightNames(this.metrics);
   }
 
   get hasPoorMetric(): boolean {

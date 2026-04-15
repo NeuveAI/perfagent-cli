@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
-import { Effect, Option } from "effect";
+import { Effect, Option, Schema } from "effect";
 import {
   AnalysisStep,
   ChangesFor,
   ExecutedPerfPlan,
   type ExecutionEvent,
   PerfPlan,
+  PerfReport,
   PlanId,
   StepId,
   ToolCall,
@@ -163,5 +164,81 @@ describe("Reporter", () => {
     expect(report.insightDetails.length).toBe(1);
     expect(report.insightDetails[0].insightName).toBe("LCPBreakdown");
     expect(Option.getOrUndefined(report.insightDetails[0].insightSetId)).toBe("NAVIGATION_0");
+  });
+
+  it("encodes and decodes PerfReport through Schema.encodeSync", async () => {
+    const navigateCall = new ToolCall({
+      toolName: "interact",
+      input: JSON.stringify({ command: "navigate", url: "https://example.com/" }),
+    });
+    const traceResult = new ToolResult({
+      toolName: "trace",
+      result: TRACE_PAYLOAD,
+      isError: false,
+    });
+    const consoleResult = new ToolResult({
+      toolName: "observe",
+      result: CONSOLE_PAYLOAD,
+      isError: false,
+    });
+    const networkResult = new ToolResult({
+      toolName: "observe",
+      result: NETWORK_PAYLOAD,
+      isError: false,
+    });
+    const insightCall = new ToolCall({
+      toolName: "trace",
+      input: JSON.stringify({
+        command: "analyze",
+        insightSetId: "NAVIGATION_0",
+        insightName: "LCPBreakdown",
+      }),
+    });
+    const insightResult = new ToolResult({
+      toolName: "trace",
+      result: INSIGHT_PAYLOAD,
+      isError: false,
+    });
+
+    const report = await Effect.runPromise(
+      Effect.gen(function* () {
+        const reporter = yield* Reporter;
+        return yield* reporter.report(
+          makeExecutedPlan([
+            navigateCall,
+            traceResult,
+            consoleResult,
+            networkResult,
+            insightCall,
+            insightResult,
+          ]),
+        );
+      }).pipe(Effect.provide(Reporter.layer)),
+    );
+
+    const encoded = Schema.encodeSync(PerfReport)(report);
+    const decoded = Schema.decodeSync(PerfReport)(encoded);
+
+    expect(decoded.metrics.length).toBe(report.metrics.length);
+    expect(decoded.metrics[0].url).toBe(report.metrics[0].url);
+    expect(Option.getOrUndefined(decoded.metrics[0].lcpMs)).toBe(
+      Option.getOrUndefined(report.metrics[0].lcpMs),
+    );
+    expect(Option.getOrUndefined(decoded.metrics[0].clsScore)).toBe(
+      Option.getOrUndefined(report.metrics[0].clsScore),
+    );
+    expect(decoded.regressions.length).toBe(report.regressions.length);
+    expect(decoded.consoleCaptures.length).toBe(report.consoleCaptures.length);
+    expect(decoded.consoleCaptures[0].entries.length).toBe(
+      report.consoleCaptures[0].entries.length,
+    );
+    expect(decoded.networkCaptures.length).toBe(report.networkCaptures.length);
+    expect(decoded.networkCaptures[0].requests.length).toBe(
+      report.networkCaptures[0].requests.length,
+    );
+    expect(decoded.insightDetails.length).toBe(report.insightDetails.length);
+    expect(decoded.insightDetails[0].insightName).toBe(report.insightDetails[0].insightName);
+    expect(decoded.uniqueInsightNames).toEqual(report.uniqueInsightNames);
+    expect(decoded.status).toBe(report.status);
   });
 });
