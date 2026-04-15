@@ -2,6 +2,8 @@ declare const __VERSION__: string | undefined;
 export const VERSION: string = typeof __VERSION__ !== "undefined" ? __VERSION__ : "dev";
 
 export const TESTING_TOOL_TEXT_CHAR_LIMIT = 100;
+export const TESTING_RESULT_PREVIEW_MAX_CHARS = 120;
+export const TESTING_ARG_PREVIEW_MAX_CHARS = 80;
 export const TESTING_TIMER_UPDATE_INTERVAL_MS = 1000;
 export const SHIMMER_TICK_MS = 50;
 export const SHIMMER_GRADIENT_WIDTH = 16;

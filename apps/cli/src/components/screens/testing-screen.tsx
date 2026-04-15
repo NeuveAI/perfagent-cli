@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Box, Static, Text, useInput } from "ink";
 import figures from "figures";
-import { Cause, DateTime, Option } from "effect";
+import { Cause, DateTime, Option, Predicate } from "effect";
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 import * as Atom from "effect/unstable/reactivity/Atom";
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
@@ -13,7 +13,12 @@ import {
   type ExecutedPerfPlan,
   type ExecutionEvent,
 } from "@neuve/shared/models";
-import { TESTING_TIMER_UPDATE_INTERVAL_MS, TESTING_TOOL_TEXT_CHAR_LIMIT } from "../../constants";
+import {
+  TESTING_ARG_PREVIEW_MAX_CHARS,
+  TESTING_RESULT_PREVIEW_MAX_CHARS,
+  TESTING_TIMER_UPDATE_INTERVAL_MS,
+  TESTING_TOOL_TEXT_CHAR_LIMIT,
+} from "../../constants";
 import { useColors, theme } from "../theme-context";
 import InkSpinner from "ink-spinner";
 import { Spinner } from "../ui/spinner";
@@ -49,16 +54,126 @@ interface ToolCallDisplay {
   tool: FormattedToolCall;
   isRunning: boolean;
   resultTokens: number | undefined;
+  rawInput: unknown;
+  resultText: string | undefined;
+  resultIsError: boolean;
+  progressBytes: number | undefined;
 }
 
 const MAX_VISIBLE_TOOL_CALLS = 5;
 const APPROX_CHARS_PER_TOKEN = 4;
 const EXPANDED_VIEWPORT_OVERHEAD = 6;
+const BYTES_PER_KB = 1024;
+const BYTES_PER_MB = 1024 * 1024;
 
 const formatTokenCount = (tokens: number): string => {
   if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}k`;
   return `${tokens}`;
 };
+
+const formatStreamingBytes = (bytes: number): string => {
+  if (bytes >= BYTES_PER_MB) return `${(bytes / BYTES_PER_MB).toFixed(1)} MB`;
+  if (bytes >= BYTES_PER_KB) return `${(bytes / BYTES_PER_KB).toFixed(1)} KB`;
+  return `${bytes} B`;
+};
+
+const truncateSingleLine = (text: string, maxChars: number): string => {
+  const singleLine = text.replace(/\s+/g, " ").trim();
+  if (singleLine.length <= maxChars) return singleLine;
+  return `${singleLine.slice(0, Math.max(1, maxChars - 1))}\u2026`;
+};
+
+const parseRawInput = (rawInput: unknown): Record<string, unknown> => {
+  if (typeof rawInput === "string") {
+    try {
+      const parsed: unknown = JSON.parse(rawInput);
+      if (Predicate.isObject(parsed)) return parsed as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+  if (Predicate.isObject(rawInput)) return rawInput as Record<string, unknown>;
+  return {};
+};
+
+const getActionObject = (input: Record<string, unknown>): Record<string, unknown> | undefined => {
+  const action = input["action"];
+  if (Predicate.isObject(action)) return action as Record<string, unknown>;
+  return undefined;
+};
+
+const formatCommandPreview = (rawInput: unknown): string => {
+  const input = parseRawInput(rawInput);
+  const action = getActionObject(input);
+  if (action && typeof action["command"] === "string") return action["command"];
+  if (typeof input["command"] === "string") return input["command"];
+  return "";
+};
+
+const ARGS_SKIP_KEYS = new Set(["command", "includeSnapshot"]);
+
+const ARGS_PRIMARY_KEYS_BY_COMMAND: Record<string, readonly string[]> = {
+  navigate: ["url", "direction"],
+  click: ["uid"],
+  type: ["text"],
+  fill: ["uid", "value"],
+  press_key: ["key"],
+  hover: ["uid"],
+  drag: ["fromUid", "toUid"],
+  upload_file: ["uid", "filePath"],
+  handle_dialog: ["accept"],
+  wait_for: ["text"],
+  resize: ["width", "height"],
+  new_tab: ["url"],
+  screenshot: ["uid", "fullPage"],
+  snapshot: ["verbose"],
+  evaluate: ["function"],
+  network: ["reqid", "resourceTypes"],
+  console: ["msgid", "types"],
+  analyze: ["insightSetId", "insightName"],
+  start: ["reload", "autoStop"],
+  emulate: ["cpuThrottling", "network"],
+};
+
+const formatScalarValue = (value: unknown): string => {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return `[${value.length}]`;
+  return "";
+};
+
+const formatArgsPreview = (rawInput: unknown, command: string): string => {
+  const input = parseRawInput(rawInput);
+  const source = getActionObject(input) ?? input;
+  const primaryKeys = ARGS_PRIMARY_KEYS_BY_COMMAND[command] ?? [];
+  const parts: string[] = [];
+
+  for (const key of primaryKeys) {
+    if (!(key in source)) continue;
+    const formatted = formatScalarValue(source[key]);
+    if (!formatted) continue;
+    if (primaryKeys.length === 1) {
+      parts.push(formatted);
+    } else {
+      parts.push(`${key}=${formatted}`);
+    }
+  }
+
+  if (parts.length === 0) {
+    for (const [key, value] of Object.entries(source)) {
+      if (ARGS_SKIP_KEYS.has(key)) continue;
+      const formatted = formatScalarValue(value);
+      if (!formatted) continue;
+      parts.push(`${key}=${formatted}`);
+      if (parts.length >= 2) break;
+    }
+  }
+
+  return truncateSingleLine(parts.join(" "), TESTING_ARG_PREVIEW_MAX_CHARS);
+};
+
+const formatResultPreview = (result: string): string =>
+  truncateSingleLine(result, TESTING_RESULT_PREVIEW_MAX_CHARS);
 
 const collectToolCalls = (
   events: readonly ExecutionEvent[],
@@ -74,6 +189,10 @@ const collectToolCalls = (
         tool: formatToolCall(event.toolName, event.input),
         isRunning: false,
         resultTokens: undefined,
+        rawInput: event.input,
+        resultText: undefined,
+        resultIsError: false,
+        progressBytes: undefined,
       });
     }
     if (event._tag === "ToolProgress" && calls.length > 0) {
@@ -81,6 +200,7 @@ const collectToolCalls = (
       calls[calls.length - 1] = {
         ...lastCall,
         resultTokens: Math.round(event.outputSize / APPROX_CHARS_PER_TOKEN),
+        progressBytes: event.outputSize,
       };
     }
     if (event._tag === "ToolResult" && calls.length > 0) {
@@ -88,6 +208,8 @@ const collectToolCalls = (
       calls[calls.length - 1] = {
         ...lastCall,
         resultTokens: Math.round(event.result.length / APPROX_CHARS_PER_TOKEN),
+        resultText: event.result,
+        resultIsError: event.isError,
       };
     }
   }
@@ -205,54 +327,80 @@ const buildToolCallRows = (
   for (let toolIndex = 0; toolIndex < toolCalls.length; toolIndex++) {
     const display = toolCalls[toolIndex];
     const baseKey = `${keyPrefix}-t${toolIndex}`;
+    const commandPreview = formatCommandPreview(display.rawInput);
+    const argsPreview = commandPreview
+      ? formatArgsPreview(display.rawInput, commandPreview)
+      : display.tool.args;
+    const hasResult = display.resultText !== undefined;
+    const statusGlyph = display.resultIsError ? figures.cross : figures.tick;
+    const statusColor = display.resultIsError ? colors.RED : colors.GREEN;
+
+    rows.push(
+      <Text key={`${baseKey}-head`} color={colors.DIM} wrap="truncate">
+        {indent}
+        {figures.lineVertical}{" "}
+        {display.isRunning && (
+          <Text>
+            <InkSpinner type="line" />
+          </Text>
+        )}
+        {hasResult && <Text color={statusColor}>{statusGlyph}</Text>}
+        {!display.isRunning && !hasResult && <Text color={colors.DIM}>{figures.circle}</Text>}
+        <Text> </Text>
+        <Text color={colors.TEXT}>{display.tool.name}</Text>
+        {commandPreview && (
+          <Text>
+            {"  "}
+            <Text color={colors.PRIMARY}>{commandPreview}</Text>
+          </Text>
+        )}
+        {argsPreview && (
+          <Text>
+            {"  "}
+            <Text color={colors.TEXT}>{argsPreview}</Text>
+          </Text>
+        )}
+        {!hasResult && display.progressBytes !== undefined && (
+          <Text color={colors.DIM}>
+            {"  "}
+            {figures.pointerSmall} {formatStreamingBytes(display.progressBytes)} streaming
+          </Text>
+        )}
+        {hasResult && display.resultTokens !== undefined && (
+          <Text color={colors.DIM}>
+            {" "}
+            {figures.arrowDown} {formatTokenCount(display.resultTokens)} tokens
+          </Text>
+        )}
+      </Text>,
+    );
 
     if (display.tool.multilineArgs) {
       const lines = display.tool.multilineArgs.split("\n");
-      rows.push(
-        <Text key={`${baseKey}-h`} color={colors.DIM} wrap="truncate">
-          {indent}
-          {figures.lineVertical} <Text color={colors.TEXT}>{display.tool.name}</Text>(
-          {display.isRunning && (
-            <Text>
-              {" "}
-              <InkSpinner type="line" />
-            </Text>
-          )}
-          {display.resultTokens !== undefined &&
-            ` ${figures.arrowDown} ${formatTokenCount(display.resultTokens)} tokens`}
-        </Text>,
-      );
       for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
         rows.push(
-          <Text key={`${baseKey}-${lineIndex}`} color={colors.DIM}>
+          <Text key={`${baseKey}-m${lineIndex}`} color={colors.DIM} wrap="truncate">
             {indent}
-            {figures.lineVertical} {"  "}
+            {figures.lineVertical} {"    "}
             <Text color={colors.TEXT}>{lines[lineIndex]}</Text>
           </Text>,
         );
       }
-      rows.push(
-        <Text key={`${baseKey}-c`} color={colors.DIM}>
-          {indent}
-          {figures.lineVertical} )
-        </Text>,
-      );
-    } else {
-      rows.push(
-        <Text key={baseKey} color={colors.DIM} wrap="truncate">
-          {indent}
-          {figures.lineVertical} <Text color={colors.TEXT}>{display.tool.name}</Text>(
-          {display.tool.args})
-          {display.isRunning && (
-            <Text>
-              {" "}
-              <InkSpinner type="line" />
+    }
+
+    if (hasResult && display.resultText) {
+      const resultPreview = formatResultPreview(display.resultText);
+      if (resultPreview) {
+        rows.push(
+          <Text key={`${baseKey}-res`} color={colors.DIM} wrap="truncate">
+            {indent}
+            {figures.lineVertical} {"  "}
+            <Text color={colors.DIM}>
+              {figures.arrowRight} {resultPreview}
             </Text>
-          )}
-          {display.resultTokens !== undefined &&
-            ` ${figures.arrowDown} ${formatTokenCount(display.resultTokens)} tokens`}
-        </Text>,
-      );
+          </Text>,
+        );
+      }
     }
   }
   return rows;
