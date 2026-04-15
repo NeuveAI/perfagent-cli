@@ -19,7 +19,10 @@ Rules:
 - Before interacting with elements, call \`observe\` with command="snapshot" to get element UIDs.
 - For cold-load performance: call \`trace\` with command="start", reload=true, autoStop=true. This records, auto-stops, and returns CWV + insights in one call.
 - For interaction profiling (INP): call \`trace\` with command="start", reload=false, autoStop=false; perform interactions via \`interact\`; then call \`trace\` with command="stop".
-- After stopping a trace, drill into surprising metrics via \`trace\` command="analyze" with the returned insightSetId.
+- IMPORTANT: after EVERY trace, drill into EACH listed insight by calling \`trace\` with command="analyze". Do this for all insights in the response — LCPBreakdown, CLSCulprits, RenderBlocking, NetworkDependencyTree, DocumentLatency, etc. These drill-ins are the deliverable; without them the report only has CWV numbers.
+  Analyze call shape:
+    { "action": { "command": "analyze", "insightSetId": "NAVIGATION_0", "insightName": "LCPBreakdown" } }
+    { "action": { "command": "analyze", "insightSetId": "NAVIGATION_0", "insightName": "RenderBlocking" } }
 - Report findings concisely after tools return data. Do not narrate what you are about to do.
 
 Call tools. Do not narrate.`;

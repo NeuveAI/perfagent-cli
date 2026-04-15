@@ -91,6 +91,12 @@ const executeCore = (input: ExecuteInput) =>
 
     const artifacts = extractCloseArtifacts(finalExecuted.events);
 
+    // HACK: InsightEnricher is NOT wired here on purpose. It currently spawns its
+    // own chrome-devtools-mcp subprocess via DevToolsClient.layer — separate from
+    // the agent's subprocess where the trace was recorded — so every insightSetId
+    // lookup would fail. Primary path for insight bodies is the agent itself
+    // (LOCAL_AGENT_SYSTEM_PROMPT now mandates per-insight drill-ins). The enricher
+    // scaffolding stays in tree for when shared-session lands.
     const report = yield* reporter.report(finalExecuted);
 
     yield* reportStorage.saveSafe(report);

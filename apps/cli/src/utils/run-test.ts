@@ -1,6 +1,12 @@
 import { Config, Effect, Option, Schema, Stream } from "effect";
 import { type ChangesFor, type PlanId, CiResultOutput } from "@neuve/shared/models";
-import { Executor, ExecutedPerfPlan, Reporter, ReportStorage, Github } from "@neuve/supervisor";
+import {
+  Executor,
+  ExecutedPerfPlan,
+  Reporter,
+  ReportStorage,
+  Github,
+} from "@neuve/supervisor";
 import { Analytics } from "@neuve/shared/observability";
 import { detectParentAgent } from "@neuve/shared/launched-from";
 import type { AgentBackend } from "@neuve/agent";
@@ -211,6 +217,11 @@ export const runHeadless = (options: HeadlessRunOptions) =>
             ciReporter.groupClose();
           }
 
+          // HACK: InsightEnricher is scaffolded in `packages/supervisor/src/insight-enricher.ts`
+          // but not wired here — it currently spawns its own chrome-devtools-mcp subprocess,
+          // separate from the agent's, so `insightSetId`s from the agent's trace would never
+          // resolve. Primary path for drill-ins is the agent (LOCAL_AGENT_SYSTEM_PROMPT
+          // mandates per-insight analyze). Revisit when shared-session support lands.
           const report = yield* reporter.report(finalExecuted);
 
           if (!isJsonOutput) {

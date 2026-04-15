@@ -1,6 +1,7 @@
 export { Updates } from "./updates";
 export { Executor, ExecutionError, type ExecuteOptions } from "./executor";
 export { Reporter } from "./reporter";
+export { InsightEnricher } from "./insight-enricher";
 export {
   AgentProvider,
   AnalysisContext,
