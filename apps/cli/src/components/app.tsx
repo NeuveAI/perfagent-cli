@@ -28,6 +28,7 @@ export const App = ({ agent }: { agent: AgentBackend }) => {
   const screen = useNavigationStore((state) => state.screen);
   const setScreen = useNavigationStore((state) => state.setScreen);
   const navigateTo = useNavigationStore((state) => state.navigateTo);
+  const overlayOpen = useNavigationStore((state) => state.overlayOpen);
   const { data: gitState } = useGitState();
 
   const setAgentProvider = useAtomSet(agentProviderAtom);
@@ -76,7 +77,7 @@ export const App = ({ agent }: { agent: AgentBackend }) => {
       void runUpdateCommand(latestVersion);
       return;
     }
-    if (key.escape && screen._tag !== "Main") {
+    if (key.escape && screen._tag !== "Main" && !overlayOpen) {
       goBack();
     }
     if (key.ctrl && input === "p" && screen._tag === "Main" && gitState?.isGitRepo) {

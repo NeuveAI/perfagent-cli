@@ -109,6 +109,13 @@ const useHintSegments = (screen: Screen, gitState: GitState | undefined): HintSe
         (capture) => capture.requests.length > 0,
       );
       const hasInsightDetails = screen.report.insightDetails.length > 0;
+      const hasToolEvents = screen.report.events.some(
+        (event) =>
+          event._tag === "ToolCall" ||
+          event._tag === "ToolResult" ||
+          event._tag === "ToolProgress",
+      );
+      const hasRawEvents = hasConsole || hasNetwork || hasInsightDetails || hasToolEvents;
       if (hasConsole) {
         hints.push({ key: "c", label: "console", cta: true });
       }
@@ -117,6 +124,9 @@ const useHintSegments = (screen: Screen, gitState: GitState | undefined): HintSe
       }
       if (hasInsightDetails) {
         hints.push({ key: "i", label: "insights", cta: true });
+      }
+      if (hasRawEvents) {
+        hints.push({ key: "ctrl+o", label: "raw events", cta: true });
       }
       hints.push({ key: "esc", label: "main menu", cta: true });
       return hints;

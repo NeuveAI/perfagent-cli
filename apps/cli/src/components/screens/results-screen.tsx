@@ -9,13 +9,14 @@ import type {
   AnalysisStep,
   ConsoleCapture,
   ConsoleEntry,
+  ExecutionEvent,
   InsightDetail,
   NetworkCapture,
   NetworkRequest,
   PerfMetricSnapshot,
   PerfRegression,
-  TraceInsightRef,
 } from "@neuve/shared/models";
+import { useStdoutDimensions } from "../../hooks/use-stdout-dimensions";
 import { copyToClipboard } from "../../utils/copy-to-clipboard";
 import { trackEvent } from "../../utils/session-analytics";
 import { useColors } from "../theme-context";
@@ -45,12 +46,27 @@ interface ResultsScreenProps {
 export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
   const COLORS = useColors();
   const setScreen = useNavigationStore((state) => state.setScreen);
+  const setOverlayOpen = useNavigationStore((state) => state.setOverlayOpen);
   const [statusMessage, setStatusMessage] = useState<{ text: string; color: string } | undefined>(
     undefined,
   );
   const [showConsole, setShowConsole] = useState<boolean>(false);
   const [showNetwork, setShowNetwork] = useState<boolean>(false);
   const [showInsights, setShowInsights] = useState<boolean>(false);
+  const [showRawEvents, setShowRawEvents] = useState<boolean>(false);
+  const [rawScrollOffset, setRawScrollOffset] = useState<number>(0);
+
+  const openRawEvents = () => {
+    setShowRawEvents(true);
+    setRawScrollOffset(0);
+    setOverlayOpen(true);
+  };
+
+  const closeRawEvents = () => {
+    setShowRawEvents(false);
+    setRawScrollOffset(0);
+    setOverlayOpen(false);
+  };
   const commentMutation = usePostPrComment();
   const [saveResult, triggerSave] = useAtom(saveFlowFn, { mode: "promiseExit" });
 
@@ -100,9 +116,42 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
     );
   };
 
-  useInput((input) => {
+  useInput((input, key) => {
     const normalizedInput = input.toLowerCase();
 
+    if (showRawEvents) {
+      if (key.escape) {
+        closeRawEvents();
+        return;
+      }
+      if (key.downArrow || normalizedInput === "j") {
+        setRawScrollOffset((previous) => previous + 1);
+        return;
+      }
+      if (key.upArrow || normalizedInput === "k") {
+        setRawScrollOffset((previous) => Math.max(0, previous - 1));
+        return;
+      }
+      if (key.pageDown || (key.ctrl && input === "d")) {
+        setRawScrollOffset((previous) => previous + RAW_EVENTS_PAGE_STEP);
+        return;
+      }
+      if (key.pageUp || (key.ctrl && input === "u")) {
+        setRawScrollOffset((previous) => Math.max(0, previous - RAW_EVENTS_PAGE_STEP));
+        return;
+      }
+      if (key.ctrl && input === "o") {
+        closeRawEvents();
+        return;
+      }
+      return;
+    }
+
+    if (key.ctrl && input === "o") {
+      trackEvent("results:opened_raw_events");
+      openRawEvents();
+      return;
+    }
     if (normalizedInput === "y") {
       handleCopyToClipboard();
     }
@@ -135,8 +184,8 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
   const hasMetrics = report.metrics.length > 0;
   const hasRegressions = report.regressions.length > 0;
   const hasToolResult = report.events.some((event) => event._tag === "ToolResult");
-  const insights = collectTraceInsights(report.metrics);
-  const hasInsights = insights.length > 0;
+  const insightNames = report.uniqueInsightNames;
+  const hasInsights = insightNames.length > 0;
   const hasConsoleCaptures = report.consoleCaptures.some((capture) => capture.entries.length > 0);
   const hasNetworkCaptures = report.networkCaptures.some(
     (capture) => capture.requests.length > 0,
@@ -144,6 +193,19 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
   const hasInsightDetails = report.insightDetails.length > 0;
   const showMetricsFallback = !hasMetrics && !hasToolResult;
   const showToolsButNoTraceFallback = !hasMetrics && hasToolResult;
+
+  if (showRawEvents) {
+    return (
+      <RawEventsView
+        events={report.events}
+        consoleCaptures={report.consoleCaptures}
+        networkCaptures={report.networkCaptures}
+        insightDetails={report.insightDetails}
+        instruction={report.instruction}
+        scrollOffset={rawScrollOffset}
+      />
+    );
+  }
 
   return (
     <Box flexDirection="column" width="100%" paddingY={1} paddingX={1}>
@@ -178,7 +240,7 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
       </Box>
 
       {hasMetrics && <PerfMetricsTable metrics={report.metrics} />}
-      {hasInsights && <TraceInsightsList insights={insights} />}
+      {hasInsights && <TraceInsightsList insightNames={insightNames} />}
       {hasRegressions && <RegressionsPanel regressions={report.regressions} />}
       {hasConsoleCaptures && (
         <ConsoleCapturesPanel captures={report.consoleCaptures} expanded={showConsole} />
@@ -348,19 +410,6 @@ const padCell = (text: string, width: number): string => {
   return text + " ".repeat(width - text.length);
 };
 
-const collectTraceInsights = (metrics: readonly PerfMetricSnapshot[]): TraceInsightRef[] => {
-  const seen = new Set<string>();
-  const ordered: TraceInsightRef[] = [];
-  for (const metric of metrics) {
-    for (const insight of metric.traceInsights) {
-      if (seen.has(insight.insightName)) continue;
-      seen.add(insight.insightName);
-      ordered.push(insight);
-    }
-  }
-  return ordered;
-};
-
 interface CwvRow {
   metric: CwvMetric;
   value: number;
@@ -498,10 +547,10 @@ const iconForClassification = (classification: CwvClassification): string => {
 };
 
 interface TraceInsightsListProps {
-  insights: readonly TraceInsightRef[];
+  insightNames: readonly string[];
 }
 
-const TraceInsightsList = ({ insights }: TraceInsightsListProps) => {
+const TraceInsightsList = ({ insightNames }: TraceInsightsListProps) => {
   const COLORS = useColors();
   return (
     <Box flexDirection="column" marginTop={1}>
@@ -509,10 +558,10 @@ const TraceInsightsList = ({ insights }: TraceInsightsListProps) => {
         Trace insights{" "}
         <Text color={COLORS.DIM}>(drill in via `trace analyze` with insightSetId):</Text>
       </Text>
-      {insights.map((insight) => (
-        <Text key={`${insight.insightSetId}-${insight.insightName}`}>
+      {insightNames.map((insightName) => (
+        <Text key={insightName}>
           <Text color={COLORS.DIM}> {figures.bullet}</Text>{" "}
-          <Text color={COLORS.TEXT}>{insight.insightName}</Text>
+          <Text color={COLORS.TEXT}>{insightName}</Text>
         </Text>
       ))}
     </Box>
@@ -949,4 +998,411 @@ const InsightDetailBlock = ({ detail, isLast }: InsightDetailBlockProps) => {
       </Box>
     </Box>
   );
+};
+
+const RAW_EVENTS_PAGE_STEP = 10;
+const RAW_TOOL_INPUT_MAX_CHARS = 500;
+const RAW_TOOL_OUTPUT_MAX_CHARS = 500;
+const RAW_JSON_INDENT_SPACES = 2;
+const RAW_VIEW_CHROME_ROWS = 8;
+const RAW_VIEW_MIN_VISIBLE_ROWS = 10;
+const RAW_VIEW_MIN_CONTENT_WIDTH_COLS = 40;
+const RAW_VIEW_CONTENT_WIDTH_MARGIN_COLS = 2;
+const RAW_TOOL_INDENT_MARGIN_COLS = 4;
+const RAW_NETWORK_URL_MIN_WIDTH_COLS = 20;
+const RAW_NETWORK_STATUS_MIN_WIDTH_COLS = 10;
+const RAW_INSIGHT_BODY_INDENT_COLS = 2;
+
+interface RawLine {
+  text: string;
+  color?: string;
+  bold?: boolean;
+}
+
+const renderRawLineText = (text: string): string => {
+  if (text.length === 0) return " ";
+  return text;
+};
+
+interface RawEventsViewProps {
+  events: readonly ExecutionEvent[];
+  consoleCaptures: readonly ConsoleCapture[];
+  networkCaptures: readonly NetworkCapture[];
+  insightDetails: readonly InsightDetail[];
+  instruction: string;
+  scrollOffset: number;
+}
+
+const RawEventsView = ({
+  events,
+  consoleCaptures,
+  networkCaptures,
+  insightDetails,
+  instruction,
+  scrollOffset,
+}: RawEventsViewProps) => {
+  const COLORS = useColors();
+  const [columns, rows] = useStdoutDimensions();
+  const contentWidth = Math.max(
+    RAW_VIEW_MIN_CONTENT_WIDTH_COLS,
+    columns - RAW_VIEW_CONTENT_WIDTH_MARGIN_COLS,
+  );
+  const lines = buildRawLines({
+    events,
+    consoleCaptures,
+    networkCaptures,
+    insightDetails,
+    colors: COLORS,
+    maxWidth: contentWidth,
+  });
+  const visibleRows = Math.max(RAW_VIEW_MIN_VISIBLE_ROWS, rows - RAW_VIEW_CHROME_ROWS);
+  const maxScroll = Math.max(0, lines.length - visibleRows);
+  const clampedOffset = Math.min(scrollOffset, maxScroll);
+  const visibleLines = lines.slice(clampedOffset, clampedOffset + visibleRows);
+  const totalLines = lines.length;
+  const lastVisibleLine = Math.min(totalLines, clampedOffset + visibleRows);
+  const positionLabel =
+    totalLines === 0 ? "empty" : `${clampedOffset + 1}-${lastVisibleLine} / ${totalLines}`;
+
+  return (
+    <Box flexDirection="column" width="100%" paddingY={1} paddingX={1}>
+      <Box>
+        <Logo />
+        <Text wrap="truncate">
+          {" "}
+          <Text color={COLORS.DIM}>{figures.pointerSmall}</Text>{" "}
+          <Text color={COLORS.TEXT}>{instruction}</Text>
+        </Text>
+      </Box>
+      <Box marginTop={1}>
+        <Text color={COLORS.YELLOW} bold>
+          Raw events
+        </Text>
+        <Text color={COLORS.DIM}>
+          {"  "}
+          {positionLabel}
+          {"  "}[
+          <Text color={COLORS.PRIMARY} bold>
+            {"\u2191\u2193"}
+          </Text>
+          {" scroll  "}
+          <Text color={COLORS.PRIMARY} bold>
+            pgup/pgdn
+          </Text>
+          {" page  "}
+          <Text color={COLORS.PRIMARY} bold>
+            esc
+          </Text>
+          {" back]"}
+        </Text>
+      </Box>
+      <Box flexDirection="column" marginTop={1}>
+        {totalLines === 0 && (
+          <Text color={COLORS.DIM}>No detailed events captured.</Text>
+        )}
+        {visibleLines.map((line, index) => (
+          <Text
+            key={`raw-${clampedOffset + index}`}
+            color={line.color ?? COLORS.TEXT}
+            bold={line.bold === true}
+            wrap="truncate"
+          >
+            {renderRawLineText(line.text)}
+          </Text>
+        ))}
+      </Box>
+    </Box>
+  );
+};
+
+interface BuildRawLinesArgs {
+  events: readonly ExecutionEvent[];
+  consoleCaptures: readonly ConsoleCapture[];
+  networkCaptures: readonly NetworkCapture[];
+  insightDetails: readonly InsightDetail[];
+  colors: ReturnType<typeof useColors>;
+  maxWidth: number;
+}
+
+const buildRawLines = ({
+  events,
+  consoleCaptures,
+  networkCaptures,
+  insightDetails,
+  colors,
+  maxWidth,
+}: BuildRawLinesArgs): RawLine[] => {
+  const lines: RawLine[] = [];
+  appendToolEventLines(lines, events, colors, maxWidth);
+  appendConsoleLines(lines, consoleCaptures, colors, maxWidth);
+  appendNetworkLines(lines, networkCaptures, colors, maxWidth);
+  appendInsightLines(lines, insightDetails, colors, maxWidth);
+  return lines;
+};
+
+const appendSectionHeader = (
+  lines: RawLine[],
+  title: string,
+  color: string,
+  maxWidth: number,
+) => {
+  if (lines.length > 0) lines.push({ text: "" });
+  lines.push({ text: title, color, bold: true });
+  lines.push({
+    text: "\u2500".repeat(Math.min(maxWidth, title.length + 4)),
+    color,
+  });
+};
+
+const appendToolEventLines = (
+  lines: RawLine[],
+  events: readonly ExecutionEvent[],
+  colors: ReturnType<typeof useColors>,
+  maxWidth: number,
+) => {
+  const toolEvents = events.filter(
+    (event) =>
+      event._tag === "ToolCall" ||
+      event._tag === "ToolResult" ||
+      event._tag === "ToolProgress",
+  );
+  if (toolEvents.length === 0) return;
+
+  appendSectionHeader(
+    lines,
+    `Tool events (${toolEvents.length})`,
+    colors.YELLOW,
+    maxWidth,
+  );
+
+  for (const event of toolEvents) {
+    if (event._tag === "ToolCall") {
+      lines.push({
+        text: `${figures.arrowRight} call  ${event.toolName}`,
+        color: colors.PRIMARY,
+        bold: true,
+      });
+      const inputText = formatToolInput(event.input);
+      for (const line of wrapPlain(inputText, maxWidth - RAW_TOOL_INDENT_MARGIN_COLS)) {
+        lines.push({ text: `    ${line}`, color: colors.DIM });
+      }
+      continue;
+    }
+    if (event._tag === "ToolResult") {
+      const icon = event.isError ? figures.cross : figures.tick;
+      const statusColor = event.isError ? colors.RED : colors.GREEN;
+      lines.push({
+        text: `${icon} result ${event.toolName}`,
+        color: statusColor,
+        bold: true,
+      });
+      const truncated = truncateText(event.result, RAW_TOOL_OUTPUT_MAX_CHARS);
+      for (const line of wrapPlain(truncated, maxWidth - RAW_TOOL_INDENT_MARGIN_COLS)) {
+        lines.push({ text: `    ${line}`, color: colors.DIM });
+      }
+      continue;
+    }
+    lines.push({
+      text: `  ${figures.ellipsis} progress ${event.toolName} (${event.outputSize} bytes)`,
+      color: colors.DIM,
+    });
+  }
+};
+
+const appendConsoleLines = (
+  lines: RawLine[],
+  captures: readonly ConsoleCapture[],
+  colors: ReturnType<typeof useColors>,
+  maxWidth: number,
+) => {
+  let totalEntries = 0;
+  for (const capture of captures) totalEntries += capture.entries.length;
+  if (totalEntries === 0) return;
+
+  appendSectionHeader(
+    lines,
+    `Console captures (${totalEntries})`,
+    colors.YELLOW,
+    maxWidth,
+  );
+
+  const themeColors: ThemeColors = {
+    GREEN: colors.GREEN,
+    YELLOW: colors.YELLOW,
+    RED: colors.RED,
+    DIM: colors.DIM,
+    TEXT: colors.TEXT,
+    PRIMARY: colors.PRIMARY,
+  };
+
+  for (const capture of captures) {
+    if (capture.entries.length === 0) continue;
+    lines.push({ text: capture.url, color: colors.PRIMARY, bold: true });
+    for (const entry of capture.entries) {
+      const level = `[${entry.level.toUpperCase()}]`;
+      const padded = level + " ".repeat(Math.max(0, CONSOLE_LEVEL_LABEL_WIDTH - level.length));
+      const levelColor = consoleLevelColor(entry.level, themeColors);
+      const prefix = `  ${padded} `;
+      const availableWidth = Math.max(RAW_NETWORK_STATUS_MIN_WIDTH_COLS, maxWidth - prefix.length);
+      const wrapped = wrapPlain(entry.text, availableWidth);
+      if (wrapped.length === 0) {
+        lines.push({ text: prefix, color: levelColor });
+      }
+      wrapped.forEach((segment, index) => {
+        const linePrefix = index === 0 ? prefix : " ".repeat(prefix.length);
+        lines.push({ text: `${linePrefix}${segment}`, color: levelColor });
+      });
+      const entryUrl = Option.getOrUndefined(entry.url);
+      if (entryUrl) {
+        lines.push({
+          text: `  ${" ".repeat(CONSOLE_LEVEL_LABEL_WIDTH)} ${truncateText(
+            entryUrl,
+            Math.max(
+              RAW_NETWORK_STATUS_MIN_WIDTH_COLS,
+              maxWidth - CONSOLE_LEVEL_LABEL_WIDTH - RAW_TOOL_INDENT_MARGIN_COLS,
+            ),
+          )}`,
+          color: colors.DIM,
+        });
+      }
+    }
+    lines.push({ text: "" });
+  }
+};
+
+const appendNetworkLines = (
+  lines: RawLine[],
+  captures: readonly NetworkCapture[],
+  colors: ReturnType<typeof useColors>,
+  maxWidth: number,
+) => {
+  let totalRequests = 0;
+  for (const capture of captures) totalRequests += capture.requests.length;
+  if (totalRequests === 0) return;
+
+  appendSectionHeader(
+    lines,
+    `Network captures (${totalRequests})`,
+    colors.YELLOW,
+    maxWidth,
+  );
+
+  const themeColors: ThemeColors = {
+    GREEN: colors.GREEN,
+    YELLOW: colors.YELLOW,
+    RED: colors.RED,
+    DIM: colors.DIM,
+    TEXT: colors.TEXT,
+    PRIMARY: colors.PRIMARY,
+  };
+
+  for (const capture of captures) {
+    if (capture.requests.length === 0) continue;
+    lines.push({ text: capture.url, color: colors.PRIMARY, bold: true });
+    for (const request of capture.requests) {
+      const status = formatNetworkStatus(request);
+      const method = padCell(request.method.toUpperCase(), NETWORK_METHOD_WIDTH);
+      const durationMs = Option.getOrUndefined(request.durationMs);
+      const transferKb = Option.getOrUndefined(request.transferSizeKb);
+      const extras: string[] = [];
+      if (durationMs !== undefined) extras.push(`${Math.round(durationMs)}ms`);
+      if (transferKb !== undefined) extras.push(`${transferKb.toFixed(0)}KB`);
+      if (request.failed) extras.push("failed");
+      const extrasLabel = extras.length > 0 ? ` [${extras.join(", ")}]` : "";
+      const prefix = `  ${status} ${method} `;
+      const urlMax = Math.max(
+        RAW_NETWORK_URL_MIN_WIDTH_COLS,
+        maxWidth - prefix.length - extrasLabel.length,
+      );
+      const urlCell = truncateText(request.url, urlMax);
+      const lineColor = request.failed
+        ? colors.RED
+        : networkStatusColor(request, themeColors);
+      lines.push({
+        text: `${prefix}${urlCell}${extrasLabel}`,
+        color: lineColor,
+      });
+    }
+    lines.push({ text: "" });
+  }
+};
+
+const appendInsightLines = (
+  lines: RawLine[],
+  details: readonly InsightDetail[],
+  colors: ReturnType<typeof useColors>,
+  maxWidth: number,
+) => {
+  if (details.length === 0) return;
+
+  appendSectionHeader(
+    lines,
+    `Insight details (${details.length})`,
+    colors.YELLOW,
+    maxWidth,
+  );
+
+  for (const detail of details) {
+    lines.push({
+      text: `${figures.pointerSmall} ${detail.insightName} \u2014 ${detail.title}`,
+      color: colors.TEXT,
+      bold: true,
+    });
+    const insightSetId = Option.getOrUndefined(detail.insightSetId);
+    if (insightSetId) {
+      lines.push({ text: `  (${insightSetId})`, color: colors.DIM });
+    }
+    for (const line of wrapPlain(detail.summary, maxWidth - RAW_INSIGHT_BODY_INDENT_COLS)) {
+      lines.push({ text: `  ${line}`, color: colors.TEXT });
+    }
+    lines.push({ text: "" });
+    for (const line of wrapPlain(detail.analysis, maxWidth - RAW_INSIGHT_BODY_INDENT_COLS)) {
+      lines.push({ text: `  ${line}`, color: colors.DIM });
+    }
+    const estimatedSavings = Option.getOrUndefined(detail.estimatedSavings);
+    if (estimatedSavings) {
+      lines.push({
+        text: `  Estimated savings: ${estimatedSavings}`,
+        color: colors.DIM,
+      });
+    }
+    if (detail.externalResources.length > 0) {
+      for (const line of wrapPlain(
+        `Resources: ${detail.externalResources.join(" \u00b7 ")}`,
+        maxWidth - RAW_INSIGHT_BODY_INDENT_COLS,
+      )) {
+        lines.push({ text: `  ${line}`, color: colors.DIM });
+      }
+    }
+    lines.push({ text: "" });
+  }
+};
+
+const formatToolInput = (input: unknown): string => {
+  if (input === undefined) return "(no input)";
+  try {
+    const json = JSON.stringify(input, undefined, RAW_JSON_INDENT_SPACES);
+    return truncateText(json, RAW_TOOL_INPUT_MAX_CHARS);
+  } catch {
+    return truncateText(String(input), RAW_TOOL_INPUT_MAX_CHARS);
+  }
+};
+
+const wrapPlain = (text: string, maxWidth: number): string[] => {
+  if (maxWidth <= 1) return [text];
+  const sourceLines = text.split("\n");
+  const result: string[] = [];
+  for (const sourceLine of sourceLines) {
+    if (sourceLine.length === 0) {
+      result.push("");
+      continue;
+    }
+    let remaining = sourceLine;
+    while (remaining.length > maxWidth) {
+      result.push(remaining.slice(0, maxWidth));
+      remaining = remaining.slice(maxWidth);
+    }
+    if (remaining.length > 0) result.push(remaining);
+  }
+  return result;
 };

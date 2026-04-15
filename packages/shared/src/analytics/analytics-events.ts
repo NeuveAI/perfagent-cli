@@ -85,6 +85,7 @@ export interface EventMap {
   "results:copied_to_clipboard": undefined;
   "results:posted_to_pr": undefined;
   "results:restarted": undefined;
+  "results:opened_raw_events": undefined;
 
   // Suggestions
   "suggestion:accepted": undefined;
