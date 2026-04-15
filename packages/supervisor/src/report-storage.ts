@@ -1,4 +1,14 @@
-import { DateTime, Effect, FileSystem, Layer, Option, Schema, ServiceMap } from "effect";
+import {
+  DateTime,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  Order,
+  Predicate,
+  Schema,
+  ServiceMap,
+} from "effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as path from "node:path";
 import { PerfReport } from "@neuve/shared/models";
@@ -30,6 +40,117 @@ export interface PersistedReport {
   readonly latestMarkdownPath: string;
   readonly slug: string;
 }
+
+export interface ReportManifest {
+  readonly absolutePath: string;
+  readonly filename: string;
+  readonly url: string | undefined;
+  readonly branch: string;
+  readonly title: string;
+  readonly status: string;
+  readonly id: string;
+  readonly collectedAt: Date;
+}
+
+export class ReportLoadError extends Schema.ErrorClass<ReportLoadError>("ReportLoadError")({
+  _tag: Schema.tag("ReportLoadError"),
+  filename: Schema.String,
+  cause: Schema.Defect,
+}) {
+  message = `Failed to load report "${this.filename}"`;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Predicate.isObject(value);
+
+const EMPTY_DIR_ENTRIES: readonly string[] = [];
+
+// HACK: recursive walker strips Effect's tagged-Option wrappers from legacy
+// on-disk reports. Real pre-task-61 files wrap EVERY Option field (e.g.
+// `baseUrl`, nested `events[].plan`, `metrics[].insightSetId`) as
+// `{_id:"Option",_tag:"Some",value:...}` or `{_id:"Option",_tag:"None"}`.
+// The JSON codec (`Schema.toCodecJson(PerfReport)`) expects Some-values to
+// appear inline and None-values to appear as `null`; the `OptionFromUndefinedOr`
+// keys themselves are required by the decoder, so dropping them would trigger
+// `Missing key at ["baseUrl"]`. We therefore produce `null` for None here —
+// that `null` is a decoder-protocol token, not a domain value, and never
+// escapes into application code. CLAUDE.md's no-null rule applies to domain
+// code and on-disk representations, both of which are handled by the schema.
+const NONE_SENTINEL: unknown = null;
+const unwrapTaggedOption = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(unwrapTaggedOption);
+  if (!isRecord(value)) return value;
+  const tag = value["_id"];
+  const optionTag = value["_tag"];
+  if (tag === "Option" && optionTag === "Some") {
+    return unwrapTaggedOption(value["value"]);
+  }
+  if (tag === "Option" && optionTag === "None") {
+    return NONE_SENTINEL;
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(value)) {
+    out[key] = unwrapTaggedOption(val);
+  }
+  return out;
+};
+
+// Known `OptionFromUndefinedOr` field names on `PerfReport` / `PerfPlanDraft` /
+// nested schemas. Old on-disk files may omit these entirely (pre-dating the
+// schema field), so we fill them with `null` before decode so the JSON codec
+// accepts a `Missing key` as `None`.
+const OPTION_UNDEFINED_KEYS: readonly string[] = [
+  "baseUrl",
+  "perfBudget",
+  "pullRequest",
+  "insightSetId",
+  "estimatedSavings",
+  "summary",
+  "startedAt",
+  "endedAt",
+  "routeHint",
+  "source",
+  "url",
+  "status",
+  "statusText",
+  "resourceType",
+  "transferSizeKb",
+  "durationMs",
+  "lcpMs",
+  "fcpMs",
+  "clsScore",
+  "inpMs",
+  "ttfbMs",
+  "totalTransferSizeKb",
+];
+
+const fillMissingOptionKeys = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(fillMissingOptionKeys);
+  if (!isRecord(value)) return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(value)) {
+    out[key] = fillMissingOptionKeys(val);
+  }
+  for (const key of OPTION_UNDEFINED_KEYS) {
+    if (!(key in out)) out[key] = NONE_SENTINEL;
+  }
+  return out;
+};
+
+const normalizeLegacyReportJson = (parsed: unknown): unknown =>
+  fillMissingOptionKeys(unwrapTaggedOption(parsed));
+
+/** Shallow status derivation for the manifest listing. Mirrors the "failed if
+ * any StepFailed event" half of `PerfReport.status` without touching the full
+ * metrics/regressions logic, so we can list a report even when nested fields
+ * would fail a full decode. */
+const deriveStatusFromEvents = (events: unknown): string => {
+  if (!Array.isArray(events)) return "passed";
+  for (const event of events) {
+    if (isRecord(event) && event["_tag"] === "StepFailed") return "failed";
+  }
+  return "passed";
+};
 
 const slugify = (text: string): string =>
   text
@@ -248,8 +369,16 @@ const formatMarkdown = (report: PerfReport, persistedAt: DateTime.Utc): string =
   return `${sections.join("\n").trimEnd()}\n`;
 };
 
+// HACK: `Schema.encodeSync(PerfReport)` emits `undefined` for `OptionFromUndefinedOr`
+// `None` fields; `JSON.stringify` then drops those keys entirely; and the decoder
+// rejects the round-trip with `Missing key at ["baseUrl"]`. The JSON codec form
+// encodes `None` as `null` (JSON-safe, still round-trips). Flagged to lead as an
+// open question — the schema-level fix would be switching `OptionFromUndefinedOr`
+// fields to `optional(OptionFromUndefinedOr(...))` or `OptionFromNullOr(...)`.
+const PerfReportJsonCodec = Schema.toCodecJson(PerfReport);
+
 const encodeReportJson = (report: PerfReport): string => {
-  const encoded = Schema.encodeSync(PerfReport)(report);
+  const encoded = Schema.encodeSync(PerfReportJsonCodec)(report);
   return `${JSON.stringify(encoded, undefined, REPORT_JSON_INDENT)}\n`;
 };
 
@@ -361,7 +490,125 @@ export class ReportStorage extends ServiceMap.Service<ReportStorage>()(
         );
       });
 
-      return { save, saveSafe } as const;
+      const readManifestFile = Effect.fn("ReportStorage.readManifestFile")(function* (
+        absolutePath: string,
+        filename: string,
+      ) {
+        const content = yield* fileSystem.readFileString(absolutePath);
+        const parsed = yield* Effect.try({
+          try: (): unknown => JSON.parse(content),
+          catch: (cause) => new ReportLoadError({ filename, cause }),
+        });
+        if (!isRecord(parsed)) {
+          return yield* new ReportLoadError({
+            filename,
+            cause: "report root is not an object",
+          }).asEffect();
+        }
+
+        const rawId = parsed["id"];
+        const rawTitle = parsed["title"];
+        const rawBranch = parsed["currentBranch"];
+        const rawTargetUrls = parsed["targetUrls"];
+
+        if (
+          typeof rawId !== "string" ||
+          typeof rawTitle !== "string" ||
+          typeof rawBranch !== "string"
+        ) {
+          return yield* new ReportLoadError({
+            filename,
+            cause: "missing required top-level string fields (id/title/currentBranch)",
+          }).asEffect();
+        }
+
+        const url =
+          Array.isArray(rawTargetUrls) && typeof rawTargetUrls[0] === "string"
+            ? rawTargetUrls[0]
+            : undefined;
+
+        const status = deriveStatusFromEvents(parsed["events"]);
+        const info = yield* fileSystem.stat(absolutePath);
+        const collectedAt = Option.getOrElse(info.mtime, () => new Date(0));
+        return {
+          absolutePath,
+          filename,
+          url,
+          branch: rawBranch,
+          title: rawTitle,
+          status,
+          id: rawId,
+          collectedAt,
+        } satisfies ReportManifest;
+      });
+
+      const list = Effect.fn("ReportStorage.list")(function* () {
+        const reportsDir = yield* getReportsDirectory;
+
+        const entries = yield* fileSystem
+          .readDirectory(reportsDir)
+          .pipe(
+            Effect.catchReason("PlatformError", "NotFound", () => Effect.succeed(EMPTY_DIR_ENTRIES)),
+          );
+
+        const candidates = entries.filter(
+          (entry) => entry.endsWith(".json") && entry !== REPORT_LATEST_JSON_NAME,
+        );
+
+        const manifests: ReportManifest[] = [];
+        for (const filename of candidates) {
+          const absolutePath = path.join(reportsDir, filename);
+          const manifest = yield* readManifestFile(absolutePath, filename).pipe(
+            Effect.catchTags({
+              ReportLoadError: (error) =>
+                Effect.logWarning("Report manifest parse failed", {
+                  filename,
+                  cause: error.cause,
+                  message: error.message,
+                }).pipe(Effect.as(undefined)),
+              PlatformError: (error) =>
+                Effect.logWarning("Report manifest read failed", {
+                  filename,
+                  reason: error.reason,
+                  message: error.message,
+                }).pipe(Effect.as(undefined)),
+            }),
+          );
+          if (manifest !== undefined) manifests.push(manifest);
+        }
+
+        const byCollectedAtDesc = Order.flip(
+          Order.mapInput(Order.Date, (manifest: ReportManifest) => manifest.collectedAt),
+        );
+        manifests.sort(byCollectedAtDesc);
+
+        yield* Effect.logDebug("Reports listed", { count: manifests.length });
+        return manifests;
+      });
+
+      const load = Effect.fn("ReportStorage.load")(function* (absolutePath: string) {
+        const filename = path.basename(absolutePath);
+        yield* Effect.annotateCurrentSpan({ filename });
+        const content = yield* fileSystem.readFileString(absolutePath).pipe(
+          Effect.catchTag("PlatformError", (error) =>
+            new ReportLoadError({ filename, cause: error }).asEffect(),
+          ),
+        );
+        const parsed = yield* Effect.try({
+          try: (): unknown => JSON.parse(content),
+          catch: (cause) => new ReportLoadError({ filename, cause }),
+        });
+        const normalized = normalizeLegacyReportJson(parsed);
+        const report = yield* Schema.decodeUnknownEffect(PerfReportJsonCodec)(normalized).pipe(
+          Effect.catchTag("SchemaError", (error) =>
+            new ReportLoadError({ filename, cause: error }).asEffect(),
+          ),
+        );
+        yield* Effect.logDebug("Report loaded", { filename, reportId: report.id });
+        return report;
+      });
+
+      return { save, saveSafe, list, load } as const;
     }),
   },
 ) {

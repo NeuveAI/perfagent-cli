@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import figures from "figures";
+import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
+import { useAtomValue } from "@effect/atom-react";
+import { recentReportsAtom } from "../../data/recent-reports-atom";
+import { formatRelativeTime } from "../../utils/format-relative-time";
+import { formatHostPath } from "../../utils/format-host-path";
 import { ChangesFor, checkoutBranch } from "@neuve/supervisor";
 import type { GitState, AnalysisContext } from "@neuve/shared/models";
 import { usePreferencesStore } from "../../stores/use-preferences";
@@ -34,6 +39,11 @@ const MIN_COLUMNS_FOR_CYCLE_HINT = 80;
 export const MainMenu = ({ gitState }: MainMenuProps) => {
   const COLORS = useColors();
   const [columns] = useStdoutDimensions();
+  const recentReportsResult = useAtomValue(recentReportsAtom);
+  const latestManifest =
+    AsyncResult.isSuccess(recentReportsResult) && recentReportsResult.value.length > 0
+      ? recentReportsResult.value[0]
+      : undefined;
   const instructionHistory = usePreferencesStore((state) => state.instructionHistory);
   const setScreen = useNavigationStore((state) => state.setScreen);
   const [selectedContext, setSelectedContext] = useState<AnalysisContext | undefined>(undefined);
@@ -242,6 +252,8 @@ export const MainMenu = ({ gitState }: MainMenuProps) => {
         <Logo />
       </Box>
 
+      {latestManifest && <LastRunBanner manifest={latestManifest} />}
+
       {gitState?.hasUntestedChanges && (
           <Box
             paddingX={1}
@@ -345,6 +357,31 @@ export const MainMenu = ({ gitState }: MainMenuProps) => {
       </Box>
 
       <InlineError message={errorMessage} />
+    </Box>
+  );
+};
+
+interface LastRunBannerProps {
+  readonly manifest: {
+    readonly url: string | undefined;
+    readonly collectedAt: Date;
+    readonly status: string;
+  };
+}
+
+const LastRunBanner = ({ manifest }: LastRunBannerProps) => {
+  const COLORS = useColors();
+  const host = formatHostPath(manifest.url) ?? "(no url)";
+  const passed = manifest.status === "passed";
+  const statusColor = passed ? COLORS.GREEN : COLORS.RED;
+  const statusIcon = passed ? figures.tick : figures.cross;
+
+  return (
+    <Box paddingX={1} marginBottom={1}>
+      <Text color={COLORS.DIM}>Last run: </Text>
+      <Text color={COLORS.TEXT}>{host}</Text>
+      <Text color={COLORS.DIM}>   {formatRelativeTime(manifest.collectedAt)}   </Text>
+      <Text color={statusColor}>{statusIcon}</Text>
     </Box>
   );
 };

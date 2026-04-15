@@ -26,6 +26,7 @@ export type Screen = Data.TaggedEnum<{
   };
   Results: { report: PerfReport; videoUrl?: string };
   SavedFlowPicker: {};
+  RecentReportsPicker: {};
   Watch: {
     changesFor: ChangesFor;
     instruction: string;
@@ -48,25 +49,26 @@ export const screenForTestingOrPortPicker = (props: {
   return Screen.PortPicker(props);
 };
 
+/** Which local overlay a screen is showing. Used by the modeline to render
+ * overlay-specific hints and by the global `esc` handler in app.tsx to stay
+ * out of the way while the overlay owns its own close action. */
+export type ResultsOverlay = "insights" | "rawEvents" | "ask";
+
 interface NavigationStore {
   screen: Screen;
   previousScreen: Screen;
-  /** Set when a screen has an overlay open that wants to handle `esc` locally
-   * (e.g. the drill-in view on the Results screen). While true, the global
-   * `esc → goBack` handler in app.tsx must not fire, otherwise the screen gets
-   * unmounted underneath the overlay's own close action. */
-  overlayOpen: boolean;
+  overlay: ResultsOverlay | undefined;
   navigateTo: (screen: Screen) => void;
   setScreen: (screen: Screen) => void;
-  setOverlayOpen: (open: boolean) => void;
+  setOverlay: (overlay: ResultsOverlay | undefined) => void;
 }
 
 export const useNavigationStore = create<NavigationStore>((set) => ({
   screen: Screen.Main(),
   previousScreen: Screen.Main(),
-  overlayOpen: false,
+  overlay: undefined,
   navigateTo: (screen) =>
-    set((state) => ({ screen, previousScreen: state.screen, overlayOpen: false })),
-  setScreen: (screen) => set({ screen, overlayOpen: false }),
-  setOverlayOpen: (open) => set({ overlayOpen: open }),
+    set((state) => ({ screen, previousScreen: state.screen, overlay: undefined })),
+  setScreen: (screen) => set({ screen, overlay: undefined }),
+  setOverlay: (overlay) => set({ overlay }),
 }));

@@ -12,6 +12,7 @@ import { Analytics } from "@neuve/shared/observability";
 import type { AgentBackend } from "@neuve/agent";
 import type { AcpConfigOption, PerfReport, PlanId } from "@neuve/shared/models";
 import { cliAtomRuntime } from "./runtime";
+import { recentReportsAtom } from "./recent-reports-atom";
 import { stripUndefinedRequirement } from "../utils/strip-undefined-requirement";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { extractCloseArtifacts } from "../utils/extract-close-artifacts";
@@ -100,6 +101,7 @@ const executeCore = (input: ExecuteInput) =>
     const report = yield* reporter.report(finalExecuted);
 
     yield* reportStorage.saveSafe(report);
+    yield* Atom.refresh(recentReportsAtom);
 
     const passedCount = report.steps.filter(
       (step) => report.stepStatuses.get(step.id)?.status === "passed",

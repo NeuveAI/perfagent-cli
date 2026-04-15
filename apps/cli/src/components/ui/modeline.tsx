@@ -4,7 +4,7 @@ import stringWidth from "string-width";
 import { useColors, theme } from "../theme-context";
 import { HintBar, HINT_SEPARATOR, type HintSegment } from "./hint-bar";
 import { Option } from "effect";
-import { useNavigationStore, Screen } from "../../stores/use-navigation";
+import { useNavigationStore, Screen, type ResultsOverlay } from "../../stores/use-navigation";
 import { usePlanExecutionStore } from "../../stores/use-plan-execution-store";
 import { useGitState, type GitState } from "../../hooks/use-git-state";
 import { useProjectPreferencesStore } from "../../stores/use-project-preferences";
@@ -14,13 +14,22 @@ import { TextShimmer } from "./text-shimmer";
 import { AGENT_PROVIDER_DISPLAY_NAMES } from "@neuve/shared/models";
 import { useAtomValue } from "@effect/atom-react";
 import { agentProviderAtom } from "../../data/runtime";
+import { recentReportsAtom } from "../../data/recent-reports-atom";
+import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 
-const useHintSegments = (screen: Screen, gitState: GitState | undefined): HintSegment[] => {
+const useHintSegments = (
+  screen: Screen,
+  gitState: GitState | undefined,
+  overlay: ResultsOverlay | undefined,
+): HintSegment[] => {
   const COLORS = useColors();
   const cookieBrowserKeys = useProjectPreferencesStore((state) => state.cookieBrowserKeys);
   const notifications = usePreferencesStore((state) => state.notifications);
   const expanded = usePlanExecutionStore((state) => state.expanded);
   const agentProviderValue = useAtomValue(agentProviderAtom);
+  const recentReportsResult = useAtomValue(recentReportsAtom);
+  const hasRecentReports =
+    AsyncResult.isSuccess(recentReportsResult) && recentReportsResult.value.length > 0;
 
   switch (screen._tag) {
     case "Main": {
@@ -37,6 +46,9 @@ const useHintSegments = (screen: Screen, gitState: GitState | undefined): HintSe
         },
         { key: "ctrl+r", label: "saved flows", cta: true },
       ];
+      if (hasRecentReports) {
+        segments.push({ key: "ctrl+f", label: "past runs", cta: true });
+      }
       if (gitState?.isGitRepo) {
         segments.push({ key: "ctrl+w", label: "watch", cta: true });
         segments.push({ key: "ctrl+p", label: "pick pr", cta: true });
@@ -52,6 +64,12 @@ const useHintSegments = (screen: Screen, gitState: GitState | undefined): HintSe
         { key: "enter", label: "select", color: COLORS.PRIMARY, cta: true },
       ];
     case "SavedFlowPicker":
+      return [
+        { key: "↑↓", label: "nav" },
+        { key: "esc", label: "back", cta: true },
+        { key: "enter", label: "select", color: COLORS.PRIMARY, cta: true },
+      ];
+    case "RecentReportsPicker":
       return [
         { key: "↑↓", label: "nav" },
         { key: "esc", label: "back", cta: true },
@@ -96,6 +114,28 @@ const useHintSegments = (screen: Screen, gitState: GitState | undefined): HintSe
       ];
     }
     case "Results": {
+      if (overlay === "insights") {
+        return [
+          { key: "↑↓", label: "scroll" },
+          { key: "pgup/pgdn", label: "page" },
+          { key: "i", label: "close", cta: true },
+          { key: "esc", label: "close", cta: true },
+        ];
+      }
+      if (overlay === "rawEvents") {
+        return [
+          { key: "↑↓", label: "scroll" },
+          { key: "pgup/pgdn", label: "page" },
+          { key: "ctrl+o", label: "close", cta: true },
+          { key: "esc", label: "close", cta: true },
+        ];
+      }
+      if (overlay === "ask") {
+        return [
+          { key: "enter", label: "submit", color: COLORS.PRIMARY, cta: true },
+          { key: "esc", label: "close", cta: true },
+        ];
+      }
       const hints: HintSegment[] = [{ key: "y", label: "copy", cta: true }];
       if (Option.isSome(screen.report.pullRequest)) {
         hints.push({ key: "p", label: "post to PR", cta: true });
@@ -146,8 +186,9 @@ export const Modeline = () => {
   const [columns] = useStdoutDimensions();
   const { data: gitState } = useGitState();
   const screen = useNavigationStore((state) => state.screen);
+  const overlay = useNavigationStore((state) => state.overlay);
   const { latestVersion, updateAvailable } = useUpdateCheck();
-  const baseSegments = useHintSegments(screen, gitState);
+  const baseSegments = useHintSegments(screen, gitState, overlay);
 
   const allSegments = updateAvailable
     ? [

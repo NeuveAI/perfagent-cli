@@ -49,7 +49,7 @@ interface ResultsScreenProps {
 export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
   const COLORS = useColors();
   const setScreen = useNavigationStore((state) => state.setScreen);
-  const setOverlayOpen = useNavigationStore((state) => state.setOverlayOpen);
+  const setOverlay = useNavigationStore((state) => state.setOverlay);
   const [statusMessage, setStatusMessage] = useState<{ text: string; color: string } | undefined>(
     undefined,
   );
@@ -71,14 +71,14 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
     setAskOpen(true);
     setAskInput("");
     setAskError(undefined);
-    setOverlayOpen(true);
+    setOverlay("ask");
   };
 
   const closeAsk = () => {
     setAskOpen(false);
     setAskInput("");
     setAskError(undefined);
-    setOverlayOpen(false);
+    setOverlay(undefined);
   };
 
   const handleAskSubmit = async (value: string) => {
@@ -98,25 +98,25 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
   const openRawEvents = () => {
     setShowRawEvents(true);
     setRawScrollOffset(0);
-    setOverlayOpen(true);
+    setOverlay("rawEvents");
   };
 
   const closeRawEvents = () => {
     setShowRawEvents(false);
     setRawScrollOffset(0);
-    setOverlayOpen(false);
+    setOverlay(undefined);
   };
 
   const openInsights = () => {
     setShowInsights(true);
     setInsightScrollOffset(0);
-    setOverlayOpen(true);
+    setOverlay("insights");
   };
 
   const closeInsights = () => {
     setShowInsights(false);
     setInsightScrollOffset(0);
-    setOverlayOpen(false);
+    setOverlay(undefined);
   };
   const commentMutation = usePostPrComment();
   const [saveResult, triggerSave] = useAtom(saveFlowFn, { mode: "promiseExit" });
@@ -166,6 +166,24 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
       }),
     );
   };
+
+  const hasMetrics = report.metrics.length > 0;
+  const hasRegressions = report.regressions.length > 0;
+  const hasToolResult = report.events.some((event) => event._tag === "ToolResult");
+  const insightNames = report.uniqueInsightNames;
+  const hasInsights = insightNames.length > 0;
+  const hasConsoleCaptures = report.consoleCaptures.some((capture) => capture.entries.length > 0);
+  const hasNetworkCaptures = report.networkCaptures.some(
+    (capture) => capture.requests.length > 0,
+  );
+  const hasInsightDetails = report.insightDetails.length > 0;
+  const hasToolEvents = report.events.some(
+    (event) =>
+      event._tag === "ToolCall" ||
+      event._tag === "ToolResult" ||
+      event._tag === "ToolProgress",
+  );
+  const hasRawEvents = hasConsoleCaptures || hasNetworkCaptures || hasInsightDetails || hasToolEvents;
 
   useInput((input, key) => {
     const normalizedInput = input.toLowerCase();
@@ -235,6 +253,7 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
     }
 
     if (key.ctrl && input === "o") {
+      if (!hasRawEvents) return;
       trackEvent("results:opened_raw_events");
       openRawEvents();
       return;
@@ -243,6 +262,7 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
       handleCopyToClipboard();
     }
     if (normalizedInput === "p") {
+      if (!hasPullRequest) return;
       handlePostPullRequestComment();
     }
     if (normalizedInput === "s") {
@@ -257,12 +277,15 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
       return;
     }
     if (normalizedInput === "c") {
+      if (!hasConsoleCaptures) return;
       setShowConsole((previous) => !previous);
     }
     if (normalizedInput === "n") {
+      if (!hasNetworkCaptures) return;
       setShowNetwork((previous) => !previous);
     }
     if (normalizedInput === "i") {
+      if (!hasInsightDetails) return;
       openInsights();
       return;
     }
@@ -274,16 +297,6 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
   const statusLabel = isPassed ? "Passed" : "Failed";
   const totalElapsedMs = getTotalElapsedMs(report.steps);
 
-  const hasMetrics = report.metrics.length > 0;
-  const hasRegressions = report.regressions.length > 0;
-  const hasToolResult = report.events.some((event) => event._tag === "ToolResult");
-  const insightNames = report.uniqueInsightNames;
-  const hasInsights = insightNames.length > 0;
-  const hasConsoleCaptures = report.consoleCaptures.some((capture) => capture.entries.length > 0);
-  const hasNetworkCaptures = report.networkCaptures.some(
-    (capture) => capture.requests.length > 0,
-  );
-  const hasInsightDetails = report.insightDetails.length > 0;
   const showMetricsFallback = !hasMetrics && !hasToolResult;
   const showToolsButNoTraceFallback = !hasMetrics && hasToolResult;
 
@@ -1103,7 +1116,7 @@ const InsightDetailsPanel = ({ details, expanded, scrollOffset }: InsightDetails
           )}
           {visibleLines.map((line, index) => (
             <Text
-              key={`insight-${clampedOffset + index}`}
+              key={`insight-row-${index}`}
               color={line.color ?? COLORS.TEXT}
               bold={line.bold === true}
               wrap="truncate"
@@ -1296,7 +1309,7 @@ const RawEventsView = ({
         )}
         {visibleLines.map((line, index) => (
           <Text
-            key={`raw-${clampedOffset + index}`}
+            key={`raw-row-${index}`}
             color={line.color ?? COLORS.TEXT}
             bold={line.bold === true}
             wrap="truncate"

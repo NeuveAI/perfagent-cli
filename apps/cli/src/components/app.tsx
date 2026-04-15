@@ -6,6 +6,7 @@ import { PortPickerScreen } from "./screens/port-picker-screen";
 import { TestingScreen } from "./screens/testing-screen";
 import { ResultsScreen } from "./screens/results-screen";
 import { SavedFlowPickerScreen } from "./screens/saved-flow-picker-screen";
+import { RecentReportsPickerScreen } from "./screens/recent-reports-picker-screen";
 import { WatchScreen } from "./screens/watch-screen";
 import { AgentPickerScreen } from "./screens/agent-picker-screen";
 import { MainMenu } from "./screens/main-menu-screen";
@@ -20,16 +21,21 @@ import { clearInkDisplay } from "../utils/clear-ink-display";
 import { useStdoutDimensions } from "../hooks/use-stdout-dimensions";
 import { ALT_SCREEN_OFF } from "../constants";
 import { AgentBackend } from "@neuve/agent";
-import { useAtomSet } from "@effect/atom-react";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { agentProviderAtom } from "../data/runtime";
+import { recentReportsAtom } from "../data/recent-reports-atom";
+import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 import { Option } from "effect";
 
 export const App = ({ agent }: { agent: AgentBackend }) => {
   const screen = useNavigationStore((state) => state.screen);
   const setScreen = useNavigationStore((state) => state.setScreen);
   const navigateTo = useNavigationStore((state) => state.navigateTo);
-  const overlayOpen = useNavigationStore((state) => state.overlayOpen);
+  const overlay = useNavigationStore((state) => state.overlay);
   const { data: gitState } = useGitState();
+  const recentReportsResult = useAtomValue(recentReportsAtom);
+  const hasRecentReports =
+    AsyncResult.isSuccess(recentReportsResult) && recentReportsResult.value.length > 0;
 
   const setAgentProvider = useAtomSet(agentProviderAtom);
   useEffect(() => {
@@ -77,7 +83,7 @@ export const App = ({ agent }: { agent: AgentBackend }) => {
       void runUpdateCommand(latestVersion);
       return;
     }
-    if (key.escape && screen._tag !== "Main" && !overlayOpen) {
+    if (key.escape && screen._tag !== "Main" && overlay === undefined) {
       goBack();
     }
     if (key.ctrl && input === "p" && screen._tag === "Main" && gitState?.isGitRepo) {
@@ -85,6 +91,9 @@ export const App = ({ agent }: { agent: AgentBackend }) => {
     }
     if (key.ctrl && input === "r" && screen._tag === "Main") {
       navigateTo(Screen.SavedFlowPicker());
+    }
+    if (key.ctrl && input === "f" && screen._tag === "Main" && hasRecentReports) {
+      navigateTo(Screen.RecentReportsPicker());
     }
     if (key.ctrl && input === "w" && screen._tag === "Main" && gitState?.isGitRepo) {
       const mainBranch = gitState.mainBranch ?? "main";
@@ -140,6 +149,8 @@ export const App = ({ agent }: { agent: AgentBackend }) => {
         );
       case "SavedFlowPicker":
         return <SavedFlowPickerScreen />;
+      case "RecentReportsPicker":
+        return <RecentReportsPickerScreen />;
       case "Watch":
         return (
           <WatchScreen
