@@ -1,6 +1,6 @@
 import { Layer, References } from "effect";
 import { DevTools } from "effect/unstable/devtools";
-import { FlowStorage, Reporter, Updates, Watch } from "@neuve/supervisor";
+import { FlowStorage, Reporter, ReportStorage, Updates, Watch } from "@neuve/supervisor";
 import type { AgentBackend } from "@neuve/agent";
 
 import { Analytics, DebugFileLoggerLayer, Tracing } from "@neuve/shared/observability";
@@ -13,6 +13,7 @@ export const layerCli = ({ verbose, agent }: { verbose: boolean; agent: AgentBac
   return Layer.mergeAll(
     sdkLayer,
     Reporter.layer,
+    ReportStorage.layer,
     Updates.layer,
     FlowStorage.layer,
     DevTools.layer(),

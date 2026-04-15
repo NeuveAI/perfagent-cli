@@ -1,6 +1,6 @@
 import { Config, Effect, Option, Schema, Stream } from "effect";
 import { type ChangesFor, type PlanId, CiResultOutput } from "@neuve/shared/models";
-import { Executor, ExecutedPerfPlan, Reporter, Github } from "@neuve/supervisor";
+import { Executor, ExecutedPerfPlan, Reporter, ReportStorage, Github } from "@neuve/supervisor";
 import { Analytics } from "@neuve/shared/observability";
 import { detectParentAgent } from "@neuve/shared/launched-from";
 import type { AgentBackend } from "@neuve/agent";
@@ -37,6 +37,7 @@ export const runHeadless = (options: HeadlessRunOptions) =>
         Effect.gen(function* () {
           const executor = yield* Executor;
           const reporter = yield* Reporter;
+          const reportStorage = yield* ReportStorage;
           const analytics = yield* Analytics;
 
           const sessionStartedAt = Date.now();
@@ -211,6 +212,10 @@ export const runHeadless = (options: HeadlessRunOptions) =>
           }
 
           const report = yield* reporter.report(finalExecuted);
+
+          if (!isJsonOutput) {
+            yield* reportStorage.saveSafe(report);
+          }
 
           const statuses = report.stepStatuses;
           const passedCount = report.steps.filter(

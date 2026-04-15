@@ -10,6 +10,16 @@ export const EXECUTION_RECENT_COMMIT_LIMIT = 5;
 export const PERF_AGENT_STATE_DIR = ".perf-agent";
 export const TESTED_FINGERPRINT_FILE = "last-tested";
 
+export const REPORT_DIRECTORY_NAME = "reports";
+export const REPORT_LATEST_JSON_NAME = "latest.json";
+export const REPORT_LATEST_MARKDOWN_NAME = "latest.md";
+export const REPORT_SLUG_MAX_LENGTH = 60;
+export const REPORT_DEFAULT_SLUG = "perf-report";
+export const REPORT_JSON_INDENT = 2;
+export const REPORT_MAX_CONSOLE_ENTRIES_IN_MARKDOWN = 10;
+export const REPORT_MAX_NETWORK_ENTRIES_IN_MARKDOWN = 10;
+export const REPORT_ANALYSIS_PREVIEW_CHARS = 4000;
+
 export const ALL_STEPS_TERMINAL_GRACE_MS = 2 * 60 * 1000;
 
 export const FRAMEWORK_DEFAULT_PORTS: Record<string, number> = {

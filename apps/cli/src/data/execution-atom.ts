@@ -1,6 +1,13 @@
 import { Effect, Option, Predicate, Stream } from "effect";
 import * as Atom from "effect/unstable/reactivity/Atom";
-import { ExecutedPerfPlan, Executor, Git, Reporter, type ExecuteOptions } from "@neuve/supervisor";
+import {
+  ExecutedPerfPlan,
+  Executor,
+  Git,
+  Reporter,
+  ReportStorage,
+  type ExecuteOptions,
+} from "@neuve/supervisor";
 import { Analytics } from "@neuve/shared/observability";
 import type { AgentBackend } from "@neuve/agent";
 import type { AcpConfigOption, PerfReport, PlanId } from "@neuve/shared/models";
@@ -28,6 +35,7 @@ export const screenshotPathsAtom = Atom.make<readonly string[]>([]);
 const executeCore = (input: ExecuteInput) =>
   Effect.gen(function* () {
     const reporter = yield* Reporter;
+    const reportStorage = yield* ReportStorage;
     const executor = yield* Executor;
     const analytics = yield* Analytics;
     const git = yield* Git;
@@ -84,6 +92,8 @@ const executeCore = (input: ExecuteInput) =>
     const artifacts = extractCloseArtifacts(finalExecuted.events);
 
     const report = yield* reporter.report(finalExecuted);
+
+    yield* reportStorage.saveSafe(report);
 
     const passedCount = report.steps.filter(
       (step) => report.stepStatuses.get(step.id)?.status === "passed",

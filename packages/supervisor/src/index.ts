@@ -31,6 +31,7 @@ export {
   type UpdateContent,
 } from "./git/index";
 export { FlowStorage } from "./flow-storage";
+export { ReportStorage, type PersistedReport } from "./report-storage";
 export type { SavedFlowFileData, SavedFlowEnvironment } from "./types";
 export { checkoutBranch, getLocalBranches } from "./git";
 export { Github, GitHubCommandError } from "./github";
