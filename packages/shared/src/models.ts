@@ -535,7 +535,7 @@ export class PerfPlanDraft extends Schema.Class<PerfPlanDraft>("@supervisor/Perf
   diffPreview: Schema.String,
   fileStats: Schema.Array(FileStat),
   instruction: Schema.String,
-  baseUrl: Schema.Option(Schema.String),
+  baseUrl: Schema.OptionFromUndefinedOr(Schema.String),
   isHeadless: Schema.Boolean,
   cookieBrowserKeys: Schema.Array(Schema.String),
   targetUrls: Schema.Array(Schema.String),
@@ -1140,7 +1140,7 @@ export class ExecutedPerfPlan extends PerfPlan.extend<ExecutedPerfPlan>(
 export class PerfReport extends ExecutedPerfPlan.extend<PerfReport>("@supervisor/PerfReport")({
   summary: Schema.String,
   screenshotPaths: Schema.Array(Schema.String),
-  pullRequest: Schema.Option(Schema.suspend(() => PullRequest)),
+  pullRequest: Schema.OptionFromUndefinedOr(Schema.suspend(() => PullRequest)),
   metrics: Schema.Array(PerfMetricSnapshot),
   regressions: Schema.Array(PerfRegression),
   consoleCaptures: Schema.Array(ConsoleCapture),

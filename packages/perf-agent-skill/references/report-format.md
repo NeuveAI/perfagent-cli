@@ -133,31 +133,22 @@ NetworkCapture  = { url, requests: NetworkRequest[], collectedAt }
 NetworkRequest  = { url, method, status?, statusText?, resourceType?, transferSizeKb?, durationMs?, failed }
 ```
 
-## Option encoding — two shapes depending on the field
+## Option encoding — one shape for all fields
 
-Most `Option<T>` fields on `PerfReport` and its children use the `Schema.OptionFromUndefinedOr(T)` codec, which means:
+Every `Option<T>` field on `PerfReport` and its children uses the `Schema.OptionFromUndefinedOr(T)` codec:
 
 - `Option.some(value)` → the raw `value`
 - `Option.none()` → **the field is simply absent from the JSON** (no property at all, or `undefined` if preserved)
 
-This applies to every `Option<T>` field on `PerfMetricSnapshot` (`lcpMs`, `fcpMs`, `clsScore`, `inpMs`, `ttfbMs`, `totalTransferSizeKb`), `PerfBudget` (same list), `PerfPlanDraft.baseUrl` / `.perfBudget`, and `InsightDetail.insightSetId` / `.estimatedSavings`.
-
-The exception is `PerfReport.pullRequest`, declared with the plain `Schema.Option(...)` codec. That one encodes:
-
-- `Option.some({ ... })` → `{ ... }` (the wrapped value)
-- `Option.none()` → a tagged marker object: `{"_id":"Option","_tag":"None"}`
-
-When reading reports from jq or another agent:
+This covers every optional field: `PerfMetricSnapshot` (`lcpMs`, `fcpMs`, `clsScore`, `inpMs`, `ttfbMs`, `totalTransferSizeKb`), `PerfBudget` (same list), `PerfPlanDraft.baseUrl` / `.perfBudget`, `InsightDetail.insightSetId` / `.estimatedSavings`, and `PerfReport.pullRequest`.
 
 ```jq
-# Most Option fields: just check for presence, or `!= null`
+# Just check for presence, or `!= null`
 jq '.metrics[0].lcpMs // "not captured"' latest.json
-
-# The pullRequest field is the one that uses the tagged form — normalize it:
-jq '.pullRequest | if type == "object" and ._tag == "None" then null else . end' latest.json
+jq '.pullRequest // "no PR linked"' latest.json
 ```
 
-**Round-trip caveat**: the encoded JSON is NOT guaranteed to round-trip through `Schema.decodeSync(PerfReport)` — the `pullRequest` tagged encoding is asymmetric in Effect v4 beta. Parse the JSON with standard `JSON.parse` and read fields directly; do not rely on full schema decode unless you have custom handling for `pullRequest`.
+**Backcompat note**: reports written before the Option-encoding fix may contain `pullRequest: {"_id":"Option","_tag":"None"}` on disk. When reloading such files through `Schema.decodeSync(PerfReport)`, strip the tagged marker first (set the field to `undefined` or delete it). New writes never emit the marker.
 
 ## Example jq queries
 
