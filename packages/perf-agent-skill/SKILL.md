@@ -50,9 +50,25 @@ The perf-agent MCP server must be configured. If the `observe`, `interact`, or `
 }
 ```
 
+## Artifacts
+
+Every successful perf run writes a durable report to `.perf-agent/reports/` at the project's git root:
+
+- `latest.json` — most recent run, schema-encoded `PerfReport` (always up to date).
+- `latest.md` — human-readable rollup of the same run.
+- `{YYYY-MM-DDThh-mm-ssZ}-{slug}.{json,md}` — timestamped history for comparison.
+
+**Before re-running a trace, check if the data you need is already there.** When the user asks "what was the LCP on the last run?", "show me the regressions from this morning", or "what insights fired when we profiled /dashboard?", read `.perf-agent/reports/latest.json` first. A separate harness (Claude Code, Codex, Cursor, …) running the perf-agent MCP can answer these from persisted reports without touching Chrome.
+
+When you DO need to profile (new code, user asked for fresh numbers, fingerprint changed, required data is absent), run the tools below and a new report will be written automatically.
+
+- `references/report-format.md` — on-disk artifact layout, full JSON schema field-by-field, Option encoding caveat, example jq queries.
+- `references/insight-catalog.md` — canonical list of DevTools insights (`LCPBreakdown`, `RenderBlocking`, `INPBreakdown`, …) with one-line purposes and typical fix direction.
+- `references/lcp-debugging.md` — LCP subpart breakdown and optimization playbook.
+
 ## MCP Tools
 
-Perf-agent exposes **three macro tools**. Each one dispatches to multiple underlying Chrome DevTools operations via a `command` discriminator. These are the ONLY tools you should use for browser performance work.
+Perf-agent exposes **three macro tools**. Each one dispatches to multiple underlying Chrome DevTools operations via a `command` discriminator. These are the ONLY tools you should use for browser performance work. See upstream: `chrome-devtools-mcp/docs/tool-reference.md` for the full list of underlying tools and their outputs.
 
 ### `interact` — perform user actions
 
@@ -83,6 +99,8 @@ Real CDP input events (not synthetic JS). These produce genuine INP, focus, and 
 | `pages` | List all open pages |
 | `evaluate` | Run JavaScript in page context (custom metrics, perf APIs) |
 
+Underlying DevTools tools: `take_snapshot`, `take_screenshot`, `list_console_messages`, `get_console_message`, `list_network_requests`, `get_network_request`, `list_pages`, `evaluate_script`. See upstream: `chrome-devtools-mcp/docs/tool-reference.md`.
+
 ### `trace` — profile performance and audit
 
 | Command | Purpose |
@@ -93,6 +111,8 @@ Real CDP input events (not synthetic JS). These produce genuine INP, focus, and 
 | `emulate` | Apply CPU throttling, network conditions, viewport, user agent |
 | `memory` | Capture a heap snapshot (for leak detection) |
 | `lighthouse` | Run Lighthouse audit for accessibility, SEO, best-practices. **Do NOT use for performance — use traces.** |
+
+Underlying DevTools tools: `performance_start_trace`, `performance_stop_trace`, `performance_analyze_insight`, `emulate`, `take_memory_snapshot`, `lighthouse_audit`. The insight set IDs and insight names returned by `trace stop` feed directly into `trace analyze` — see `references/insight-catalog.md`. See upstream: `chrome-devtools-mcp/docs/tool-reference.md`.
 
 ## Core Web Vitals Targets
 
@@ -127,7 +147,7 @@ For each target route:
 5. `trace stop` to get interaction metrics.
 6. `trace analyze` the `InteractionToNextPaint` insight for INP hot spots.
 
-See `references/lcp-debugging.md` for LCP-specific optimization strategies.
+See `references/lcp-debugging.md` for LCP-specific optimization strategies, `references/insight-catalog.md` for the catalog of insight names, and `references/report-format.md` for how past runs are persisted.
 
 ## Snapshot Discipline
 
