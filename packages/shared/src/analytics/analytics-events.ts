@@ -86,6 +86,8 @@ export interface EventMap {
   "results:posted_to_pr": undefined;
   "results:restarted": undefined;
   "results:opened_raw_events": undefined;
+  "results:opened_ask": undefined;
+  "results:ask_submitted": undefined;
 
   // Suggestions
   "suggestion:accepted": undefined;

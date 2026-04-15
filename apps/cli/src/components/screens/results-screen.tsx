@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import figures from "figures";
-import { Option } from "effect";
+import { Exit, Option } from "effect";
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
 import { useAtom } from "@effect/atom-react";
 import type { PerfReport } from "@neuve/supervisor";
@@ -26,6 +26,8 @@ import { usePostPrComment } from "../../data/github-mutations";
 import { useNavigationStore, screenForTestingOrPortPicker } from "../../stores/use-navigation";
 import { usePlanExecutionStore } from "../../stores/use-plan-execution-store";
 import { saveFlowFn } from "../../data/flow-storage-atom";
+import { askReportFn, type AskResult } from "../../data/ask-report-atom";
+import { Input } from "../ui/input";
 import { formatElapsedTime } from "../../utils/format-elapsed-time";
 import { getStepElapsedMs, getTotalElapsedMs } from "../../utils/step-elapsed";
 import { RuledBox } from "../ui/ruled-box";
@@ -54,8 +56,44 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
   const [showConsole, setShowConsole] = useState<boolean>(false);
   const [showNetwork, setShowNetwork] = useState<boolean>(false);
   const [showInsights, setShowInsights] = useState<boolean>(false);
+  const [insightScrollOffset, setInsightScrollOffset] = useState<number>(0);
   const [showRawEvents, setShowRawEvents] = useState<boolean>(false);
   const [rawScrollOffset, setRawScrollOffset] = useState<number>(0);
+
+  const [askOpen, setAskOpen] = useState<boolean>(false);
+  const [askInput, setAskInput] = useState<string>("");
+  const [askHistory, setAskHistory] = useState<readonly AskResult[]>([]);
+  const [askError, setAskError] = useState<string | undefined>(undefined);
+  const [askResult, triggerAsk] = useAtom(askReportFn, { mode: "promiseExit" });
+  const askPending = askResult.waiting;
+
+  const openAsk = () => {
+    setAskOpen(true);
+    setAskInput("");
+    setAskError(undefined);
+    setOverlayOpen(true);
+  };
+
+  const closeAsk = () => {
+    setAskOpen(false);
+    setAskInput("");
+    setAskError(undefined);
+    setOverlayOpen(false);
+  };
+
+  const handleAskSubmit = async (value: string) => {
+    const trimmed = value.trim();
+    if (trimmed.length === 0 || askPending) return;
+    setAskError(undefined);
+    trackEvent("results:ask_submitted");
+    const exit = await triggerAsk({ report, question: trimmed });
+    if (Exit.isSuccess(exit)) {
+      setAskHistory((previous) => [...previous, exit.value]);
+      setAskInput("");
+    } else {
+      setAskError("Couldn't get an answer from the agent. Press a to try again.");
+    }
+  };
 
   const openRawEvents = () => {
     setShowRawEvents(true);
@@ -66,6 +104,18 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
   const closeRawEvents = () => {
     setShowRawEvents(false);
     setRawScrollOffset(0);
+    setOverlayOpen(false);
+  };
+
+  const openInsights = () => {
+    setShowInsights(true);
+    setInsightScrollOffset(0);
+    setOverlayOpen(true);
+  };
+
+  const closeInsights = () => {
+    setShowInsights(false);
+    setInsightScrollOffset(0);
     setOverlayOpen(false);
   };
   const commentMutation = usePostPrComment();
@@ -120,6 +170,14 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
   useInput((input, key) => {
     const normalizedInput = input.toLowerCase();
 
+    if (askOpen) {
+      if (key.escape) {
+        closeAsk();
+        return;
+      }
+      return;
+    }
+
     if (showRawEvents) {
       if (key.escape) {
         closeRawEvents();
@@ -148,6 +206,34 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
       return;
     }
 
+    if (showInsights) {
+      if (key.escape) {
+        closeInsights();
+        return;
+      }
+      if (normalizedInput === "i") {
+        closeInsights();
+        return;
+      }
+      if (key.downArrow || normalizedInput === "j") {
+        setInsightScrollOffset((previous) => previous + 1);
+        return;
+      }
+      if (key.upArrow || normalizedInput === "k") {
+        setInsightScrollOffset((previous) => Math.max(0, previous - 1));
+        return;
+      }
+      if (key.pageDown || (key.ctrl && input === "d")) {
+        setInsightScrollOffset((previous) => previous + INSIGHT_PANEL_PAGE_STEP);
+        return;
+      }
+      if (key.pageUp || (key.ctrl && input === "u")) {
+        setInsightScrollOffset((previous) => Math.max(0, previous - INSIGHT_PANEL_PAGE_STEP));
+        return;
+      }
+      return;
+    }
+
     if (key.ctrl && input === "o") {
       trackEvent("results:opened_raw_events");
       openRawEvents();
@@ -165,6 +251,11 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
     if (normalizedInput === "r") {
       handleRestartFlow();
     }
+    if (normalizedInput === "a") {
+      trackEvent("results:opened_ask");
+      openAsk();
+      return;
+    }
     if (normalizedInput === "c") {
       setShowConsole((previous) => !previous);
     }
@@ -172,7 +263,8 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
       setShowNetwork((previous) => !previous);
     }
     if (normalizedInput === "i") {
-      setShowInsights((previous) => !previous);
+      openInsights();
+      return;
     }
   });
 
@@ -252,7 +344,11 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
         <NetworkCapturesPanel captures={report.networkCaptures} expanded={showNetwork} />
       )}
       {hasInsightDetails && (
-        <InsightDetailsPanel details={report.insightDetails} expanded={showInsights} />
+        <InsightDetailsPanel
+          details={report.insightDetails}
+          expanded={showInsights}
+          scrollOffset={insightScrollOffset}
+        />
       )}
 
       <RuledBox color={COLORS.YELLOW} marginTop={1}>
@@ -391,6 +487,16 @@ export const ResultsScreen = ({ report, videoUrl }: ResultsScreenProps) => {
           </Box>
         </Box>
       )}
+
+      <AskPanel
+        history={askHistory}
+        askOpen={askOpen}
+        askInput={askInput}
+        askPending={askPending}
+        askError={askError}
+        onInputChange={setAskInput}
+        onSubmit={handleAskSubmit}
+      />
 
       {report.screenshotPaths.map((screenshotPath) => (
         <Box key={screenshotPath} marginTop={1}>
@@ -925,15 +1031,49 @@ const NetworkRequestRow = ({ request, urlMaxWidth }: NetworkRequestRowProps) => 
   );
 };
 
+const INSIGHT_PANEL_PAGE_STEP = 10;
+const INSIGHT_PANEL_MIN_VISIBLE_ROWS = 10;
+const INSIGHT_PANEL_MAX_VISIBLE_ROWS = 24;
+const INSIGHT_PANEL_CHROME_ROWS = 4;
+const INSIGHT_PANEL_MIN_CONTENT_WIDTH_COLS = 40;
+const INSIGHT_PANEL_CONTENT_WIDTH_MARGIN_COLS = 4;
+const INSIGHT_CARD_INDENT_COLS = 2;
+
 interface InsightDetailsPanelProps {
   details: readonly InsightDetail[];
   expanded: boolean;
+  scrollOffset: number;
 }
 
-const InsightDetailsPanel = ({ details, expanded }: InsightDetailsPanelProps) => {
+const InsightDetailsPanel = ({ details, expanded, scrollOffset }: InsightDetailsPanelProps) => {
   const COLORS = useColors();
+  const [columns, rows] = useStdoutDimensions();
   const hintLabel = expanded ? "i to collapse" : "i to expand";
   const namePreview = details.map((detail) => detail.insightName).join(", ");
+
+  const safeColumns =
+    Number.isFinite(columns) && columns > 0 ? columns : INSIGHT_PANEL_MIN_CONTENT_WIDTH_COLS;
+  const safeRows = Number.isFinite(rows) && rows > 0 ? rows : INSIGHT_PANEL_MIN_VISIBLE_ROWS;
+  const contentWidth = Math.max(
+    INSIGHT_PANEL_MIN_CONTENT_WIDTH_COLS,
+    safeColumns - INSIGHT_PANEL_CONTENT_WIDTH_MARGIN_COLS,
+  );
+  const visibleRows = Math.min(
+    INSIGHT_PANEL_MAX_VISIBLE_ROWS,
+    Math.max(INSIGHT_PANEL_MIN_VISIBLE_ROWS, safeRows - INSIGHT_PANEL_CHROME_ROWS),
+  );
+  const lines = buildInsightPanelLines({ details, colors: COLORS, maxWidth: contentWidth });
+  const totalLines = lines.length;
+  const maxScroll = Math.max(0, totalLines - visibleRows);
+  const safeScrollOffset = Number.isFinite(scrollOffset)
+    ? Math.max(0, Math.floor(scrollOffset))
+    : 0;
+  const clampedOffset = Math.min(safeScrollOffset, maxScroll);
+  const visibleLines = lines.slice(clampedOffset, clampedOffset + visibleRows);
+  const lastVisibleLine = Math.min(totalLines, clampedOffset + visibleRows);
+  const positionLabel =
+    totalLines === 0 ? "empty" : `${clampedOffset + 1}-${lastVisibleLine} / ${totalLines}`;
+  const showScrollHint = expanded && totalLines > visibleRows;
 
   return (
     <Box flexDirection="column" marginTop={1}>
@@ -947,12 +1087,29 @@ const InsightDetailsPanel = ({ details, expanded }: InsightDetailsPanelProps) =>
       </Text>
       {expanded && (
         <Box flexDirection="column" marginTop={1}>
-          {details.map((detail, detailIndex) => (
-            <InsightDetailBlock
-              key={`${detail.insightName}-${detailIndex}`}
-              detail={detail}
-              isLast={detailIndex === details.length - 1}
-            />
+          {showScrollHint && (
+            <Text color={COLORS.DIM}>
+              {positionLabel}
+              {"  "}[
+              <Text color={COLORS.PRIMARY} bold>
+                {"\u2191\u2193"}
+              </Text>
+              {" scroll  "}
+              <Text color={COLORS.PRIMARY} bold>
+                pgup/pgdn
+              </Text>
+              {" page]"}
+            </Text>
+          )}
+          {visibleLines.map((line, index) => (
+            <Text
+              key={`insight-${clampedOffset + index}`}
+              color={line.color ?? COLORS.TEXT}
+              bold={line.bold === true}
+              wrap="truncate"
+            >
+              {renderRawLineText(line.text)}
+            </Text>
           ))}
         </Box>
       )}
@@ -960,47 +1117,80 @@ const InsightDetailsPanel = ({ details, expanded }: InsightDetailsPanelProps) =>
   );
 };
 
-interface InsightDetailBlockProps {
-  detail: InsightDetail;
-  isLast: boolean;
+interface BuildInsightPanelLinesArgs {
+  details: readonly InsightDetail[];
+  colors: ReturnType<typeof useColors>;
+  maxWidth: number;
 }
 
-const InsightDetailBlock = ({ detail, isLast }: InsightDetailBlockProps) => {
-  const COLORS = useColors();
-  const insightSetId = Option.getOrUndefined(detail.insightSetId);
-  const estimatedSavings = Option.getOrUndefined(detail.estimatedSavings);
-  const hasResources = detail.externalResources.length > 0;
+const buildInsightPanelLines = ({
+  details,
+  colors,
+  maxWidth,
+}: BuildInsightPanelLinesArgs): RawLine[] => {
+  const lines: RawLine[] = [];
+  appendInsightCards(lines, details, colors, maxWidth);
+  return lines;
+};
 
-  return (
-    <Box flexDirection="column" marginBottom={isLast ? 0 : 1}>
-      <Text>
-        <Text color={COLORS.YELLOW}>{"\u25b8 "}</Text>
-        <Text color={COLORS.TEXT} bold>
-          {detail.insightName}
-        </Text>
-        <Text color={COLORS.DIM}> {"\u2014"} {detail.title}</Text>
-        {insightSetId && <Text color={COLORS.DIM}> ({insightSetId})</Text>}
-      </Text>
-      <Box paddingLeft={2} flexDirection="column">
-        <Text color={COLORS.TEXT} wrap="wrap">
-          {detail.summary}
-        </Text>
-        <Box marginTop={1}>
-          <Text color={COLORS.DIM} wrap="wrap">
-            {detail.analysis}
-          </Text>
-        </Box>
-        {estimatedSavings && (
-          <Text color={COLORS.DIM}>Estimated savings: {estimatedSavings}</Text>
-        )}
-        {hasResources && (
-          <Text color={COLORS.DIM} wrap="wrap">
-            Resources: {detail.externalResources.join(" \u00b7 ")}
-          </Text>
-        )}
-      </Box>
-    </Box>
-  );
+const appendInsightCards = (
+  lines: RawLine[],
+  details: readonly InsightDetail[],
+  colors: ReturnType<typeof useColors>,
+  maxWidth: number,
+) => {
+  const bodyWidth = Math.max(1, maxWidth - INSIGHT_CARD_INDENT_COLS);
+  const indent = " ".repeat(INSIGHT_CARD_INDENT_COLS);
+  const separator = "\u2500".repeat(Math.max(1, maxWidth));
+
+  details.forEach((detail, index) => {
+    if (index > 0) {
+      lines.push({ text: "" });
+    }
+    lines.push({ text: separator, color: colors.DIM });
+    const insightSetId = Option.getOrUndefined(detail.insightSetId);
+    const headerSuffix = detail.title.length > 0 ? ` \u2014 ${detail.title}` : "";
+    const headerText = `${detail.insightName}${headerSuffix}`;
+    for (const segment of wrapPlain(headerText, maxWidth)) {
+      lines.push({ text: segment, color: colors.PRIMARY, bold: true });
+    }
+    if (insightSetId) {
+      lines.push({ text: `${indent}(${insightSetId})`, color: colors.DIM });
+    }
+    if (detail.summary.length > 0) {
+      for (const segment of wrapPlain(detail.summary, bodyWidth)) {
+        lines.push({ text: `${indent}${segment}`, color: colors.TEXT });
+      }
+    }
+    if (detail.analysis.length > 0) {
+      lines.push({ text: "" });
+      for (const segment of wrapPlain(detail.analysis, bodyWidth)) {
+        lines.push({ text: `${indent}${segment}`, color: colors.TEXT });
+      }
+    }
+    const estimatedSavings = Option.getOrUndefined(detail.estimatedSavings);
+    if (estimatedSavings) {
+      lines.push({ text: "" });
+      lines.push({
+        text: `${indent}savings: ${estimatedSavings}`,
+        color: colors.DIM,
+      });
+    }
+    if (detail.externalResources.length > 0) {
+      lines.push({ text: "" });
+      lines.push({ text: `${indent}resources:`, color: colors.DIM });
+      for (const resource of detail.externalResources) {
+        const bulletPrefix = `${indent}${figures.bullet} `;
+        const resourceWidth = Math.max(1, maxWidth - bulletPrefix.length);
+        const wrapped = wrapPlain(resource, resourceWidth);
+        wrapped.forEach((segment, segmentIndex) => {
+          const linePrefix =
+            segmentIndex === 0 ? bulletPrefix : " ".repeat(bulletPrefix.length);
+          lines.push({ text: `${linePrefix}${segment}`, color: colors.DIM });
+        });
+      }
+    }
+  });
 };
 
 const RAW_EVENTS_PAGE_STEP = 10;
@@ -1014,8 +1204,6 @@ const RAW_VIEW_CONTENT_WIDTH_MARGIN_COLS = 2;
 const RAW_TOOL_INDENT_MARGIN_COLS = 4;
 const RAW_NETWORK_URL_MIN_WIDTH_COLS = 20;
 const RAW_NETWORK_STATUS_MIN_WIDTH_COLS = 10;
-const RAW_INSIGHT_BODY_INDENT_COLS = 2;
-
 interface RawLine {
   text: string;
   color?: string;
@@ -1348,40 +1536,7 @@ const appendInsightLines = (
     maxWidth,
   );
 
-  for (const detail of details) {
-    lines.push({
-      text: `${figures.pointerSmall} ${detail.insightName} \u2014 ${detail.title}`,
-      color: colors.TEXT,
-      bold: true,
-    });
-    const insightSetId = Option.getOrUndefined(detail.insightSetId);
-    if (insightSetId) {
-      lines.push({ text: `  (${insightSetId})`, color: colors.DIM });
-    }
-    for (const line of wrapPlain(detail.summary, maxWidth - RAW_INSIGHT_BODY_INDENT_COLS)) {
-      lines.push({ text: `  ${line}`, color: colors.TEXT });
-    }
-    lines.push({ text: "" });
-    for (const line of wrapPlain(detail.analysis, maxWidth - RAW_INSIGHT_BODY_INDENT_COLS)) {
-      lines.push({ text: `  ${line}`, color: colors.DIM });
-    }
-    const estimatedSavings = Option.getOrUndefined(detail.estimatedSavings);
-    if (estimatedSavings) {
-      lines.push({
-        text: `  Estimated savings: ${estimatedSavings}`,
-        color: colors.DIM,
-      });
-    }
-    if (detail.externalResources.length > 0) {
-      for (const line of wrapPlain(
-        `Resources: ${detail.externalResources.join(" \u00b7 ")}`,
-        maxWidth - RAW_INSIGHT_BODY_INDENT_COLS,
-      )) {
-        lines.push({ text: `  ${line}`, color: colors.DIM });
-      }
-    }
-    lines.push({ text: "" });
-  }
+  appendInsightCards(lines, details, colors, maxWidth);
 };
 
 const formatToolInput = (input: unknown): string => {
@@ -1422,4 +1577,102 @@ const wrapPlain = (text: string, maxWidth: number): string[] => {
     if (remaining.length > 0) result.push(remaining);
   }
   return result;
+};
+
+const ASK_ANSWER_WRAP_MARGIN_COLS = 4;
+
+interface AskPanelProps {
+  readonly history: readonly AskResult[];
+  readonly askOpen: boolean;
+  readonly askInput: string;
+  readonly askPending: boolean;
+  readonly askError: string | undefined;
+  readonly onInputChange: (value: string) => void;
+  readonly onSubmit: (value: string) => void;
+}
+
+const AskPanel = ({
+  history,
+  askOpen,
+  askInput,
+  askPending,
+  askError,
+  onInputChange,
+  onSubmit,
+}: AskPanelProps) => {
+  const COLORS = useColors();
+  const [columns] = useStdoutDimensions();
+  const safeColumns = Number.isFinite(columns) && columns > 0 ? columns : 80;
+  const answerWrapWidth = Math.max(20, safeColumns - ASK_ANSWER_WRAP_MARGIN_COLS);
+  const hasHistory = history.length > 0;
+
+  if (!askOpen && !hasHistory) return undefined;
+
+  return (
+    <Box flexDirection="column" marginTop={1} paddingX={1}>
+      <Text color={COLORS.TEXT} bold>
+        Ask about this report
+      </Text>
+      {hasHistory && (
+        <Box flexDirection="column" marginTop={1}>
+          {history.map((entry, entryIndex) => (
+            <AskHistoryEntryView
+              key={`ask-${entryIndex}`}
+              entry={entry}
+              answerWrapWidth={answerWrapWidth}
+            />
+          ))}
+        </Box>
+      )}
+      {askOpen && (
+        <Box flexDirection="column" marginTop={hasHistory ? 1 : 0}>
+          <Box>
+            <Text color={COLORS.PRIMARY} bold>
+              {figures.pointer}{" "}
+            </Text>
+            <Input
+              value={askInput}
+              onChange={onInputChange}
+              onSubmit={onSubmit}
+              placeholder="Type a question and press enter (esc to close)"
+              focus={!askPending}
+              multiline={false}
+            />
+          </Box>
+          {askPending && (
+            <Text color={COLORS.DIM}>
+              Asking{figures.ellipsis}
+            </Text>
+          )}
+          {askError && <Text color={COLORS.RED}>{figures.cross} {askError}</Text>}
+        </Box>
+      )}
+    </Box>
+  );
+};
+
+interface AskHistoryEntryViewProps {
+  readonly entry: AskResult;
+  readonly answerWrapWidth: number;
+}
+
+const AskHistoryEntryView = ({ entry, answerWrapWidth }: AskHistoryEntryViewProps) => {
+  const COLORS = useColors();
+  const answerLines = wrapPlain(entry.answer, answerWrapWidth);
+
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Text>
+        <Text color={COLORS.DIM}>Q: </Text>
+        <Text color={COLORS.TEXT}>{entry.question}</Text>
+      </Text>
+      <Box flexDirection="column" paddingLeft={2}>
+        {answerLines.map((line, lineIndex) => (
+          <Text key={`answer-${lineIndex}`} color={COLORS.TEXT}>
+            {line.length === 0 ? " " : line}
+          </Text>
+        ))}
+      </Box>
+    </Box>
+  );
 };

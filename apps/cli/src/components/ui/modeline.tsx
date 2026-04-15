@@ -102,6 +102,7 @@ const useHintSegments = (screen: Screen, gitState: GitState | undefined): HintSe
       }
       hints.push({ key: "s", label: "save flow", cta: true });
       hints.push({ key: "r", label: "restart", cta: true });
+      hints.push({ key: "a", label: "ask", cta: true });
       const hasConsole = screen.report.consoleCaptures.some(
         (capture) => capture.entries.length > 0,
       );
