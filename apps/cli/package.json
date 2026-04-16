@@ -33,6 +33,30 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./data/runtime": {
+      "types": "./src/data/runtime.ts",
+      "import": "./src/data/runtime.ts"
+    },
+    "./data/recent-reports-atom": {
+      "types": "./src/data/recent-reports-atom.ts",
+      "import": "./src/data/recent-reports-atom.ts"
+    },
+    "./data/execution-atom": {
+      "types": "./src/data/execution-atom.ts",
+      "import": "./src/data/execution-atom.ts"
+    },
+    "./data/ask-report-atom": {
+      "types": "./src/data/ask-report-atom.ts",
+      "import": "./src/data/ask-report-atom.ts"
+    },
+    "./data/flow-storage-atom": {
+      "types": "./src/data/flow-storage-atom.ts",
+      "import": "./src/data/flow-storage-atom.ts"
+    },
+    "./data/config-options": {
+      "types": "./src/data/config-options.ts",
+      "import": "./src/data/config-options.ts"
     }
   },
   "scripts": {

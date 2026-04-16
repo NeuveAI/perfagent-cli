@@ -19,8 +19,10 @@
   },
   "devDependencies": {
     "@neuve/agent": "workspace:*",
+    "@neuve/perf-agent-cli": "workspace:*",
     "@neuve/shared": "workspace:*",
     "@neuve/supervisor": "workspace:*",
+    "@neuve/cookies": "workspace:*",
     "bun-types": "^1.2.0",
     "typescript": "^5.7.0"
   },

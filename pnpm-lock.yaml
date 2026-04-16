@@ -189,6 +189,12 @@ importers:
       '@neuve/agent':
         specifier: workspace:*
         version: link:../../packages/agent
+      '@neuve/cookies':
+        specifier: workspace:*
+        version: link:../../packages/cookies
+      '@neuve/perf-agent-cli':
+        specifier: workspace:*
+        version: link:../cli
       '@neuve/shared':
         specifier: workspace:*
         version: link:../../packages/shared
