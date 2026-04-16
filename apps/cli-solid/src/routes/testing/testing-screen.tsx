@@ -11,6 +11,7 @@ import type {
 import type { DevServerHint } from "@neuve/shared/prompts";
 import { executeFn } from "@neuve/perf-agent-cli/data/execution-atom";
 import { agentConfigOptionsAtom } from "@neuve/perf-agent-cli/data/config-options";
+import { saveSession, updateSession } from "../../data/session-history";
 import { useNavigation, Screen } from "../../context/navigation";
 import { useAgent } from "../../context/agent";
 import { atomFnToPromise, atomSet, atomGet } from "../../adapters/effect-atom";
@@ -61,6 +62,7 @@ export const TestingScreen = (props: TestingScreenProps) => {
   const [showCancelConfirmation, setShowCancelConfirmation] = createSignal(false);
   const [isExecuting, setIsExecuting] = createSignal(true);
   const [executionError, setExecutionError] = createSignal<ParsedError | undefined>(undefined);
+  const [sessionId, setSessionId] = createSignal<string | undefined>(undefined);
 
   const elapsedTimeLabel = () => formatElapsedTime(elapsedTimeMs());
   const totalCount = () => executedPlan()?.steps?.length ?? 0;
@@ -73,6 +75,15 @@ export const TestingScreen = (props: TestingScreenProps) => {
       const agentBackend = agent.agentBackend();
       const modelPrefs = agent.modelPreferences();
       const modelPref = modelPrefs[agentBackend];
+
+      try {
+        const session = saveSession({
+          instruction: props.instruction,
+          status: "running",
+          agentBackend,
+        });
+        setSessionId(session.id);
+      } catch {}
 
       const baseUrl =
         props.baseUrls && props.baseUrls.length > 0 ? props.baseUrls.join(", ") : undefined;
@@ -106,15 +117,30 @@ export const TestingScreen = (props: TestingScreenProps) => {
       promise.then((exit) => {
         setIsExecuting(false);
         if (Exit.isSuccess(exit)) {
+          const sid = sessionId();
+          if (sid) {
+            try { updateSession(sid, { status: "completed" }); } catch {}
+          }
           const result = exit.value;
           navigation.setScreen(Screen.Results({ report: result.report, videoUrl: result.videoUrl }));
         } else {
-          setExecutionError(parseExecutionError(exit.cause));
+          const parsed = parseExecutionError(exit.cause);
+          const sid = sessionId();
+          if (sid) {
+            try { updateSession(sid, { status: "failed", error: parsed.title + ": " + parsed.message }); } catch {}
+          }
+          setExecutionError(parsed);
         }
       });
     });
 
     onCleanup(() => {
+      if (isExecuting()) {
+        const sid = sessionId();
+        if (sid) {
+          try { updateSession(sid, { status: "cancelled" }); } catch {}
+        }
+      }
       atomSet(executeFn, Atom.Interrupt);
     });
   });
