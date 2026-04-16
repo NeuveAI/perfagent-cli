@@ -20,11 +20,13 @@ import { MainScreen } from "./routes/main/main-screen";
 import { CookieSyncConfirmScreen } from "./routes/cookie-sync-confirm/cookie-sync-confirm-screen";
 import { PortPickerScreen } from "./routes/port-picker/port-picker-screen";
 import { TestingScreen } from "./routes/testing/testing-screen";
+import { ResultsScreen, clearResultsActions } from "./routes/results/results-screen";
 import { createGlobalCommands } from "./commands/register-global";
 import { createMainCommands } from "./commands/register-main";
 import { createCookieSyncCommands } from "./commands/register-cookie-sync";
 import { createPortPickerCommands } from "./commands/register-port-picker";
 import { createTestingCommands } from "./commands/register-testing";
+import { createResultsCommands } from "./commands/register-results";
 
 const screenOfTag = <T extends Screen["_tag"]>(
   accessor: () => Screen,
@@ -44,7 +46,9 @@ const validateAgent = (input: string | undefined): AgentBackend => {
 
 const goBack = (screen: Screen, setScreen: (screen: Screen) => void) => {
   if (screen._tag === "Testing" || screen._tag === "Watch") return;
-  // HACK: HP-4 must add plan execution cleanup here when Results screen is built
+  if (screen._tag === "Results") {
+    clearResultsActions();
+  }
   setScreen(Screen.Main());
 };
 
@@ -107,6 +111,12 @@ const AppInner = () => {
     }),
   );
 
+  registry.register(() =>
+    createResultsCommands({
+      currentScreen: navigation.currentScreen,
+    }),
+  );
+
   useKeyboard((event) => {
     if (event.name === "escape" && !dialog.isEmpty()) {
       dialog.pop();
@@ -131,6 +141,9 @@ const AppInner = () => {
           </Match>
           <Match when={screenOfTag(navigation.currentScreen, "Testing")}>
             {(screen) => <TestingScreen {...screen()} />}
+          </Match>
+          <Match when={screenOfTag(navigation.currentScreen, "Results")}>
+            {(screen) => <ResultsScreen {...screen()} />}
           </Match>
         </Switch>
       </box>
