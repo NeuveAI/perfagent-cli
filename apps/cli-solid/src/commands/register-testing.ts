@@ -22,6 +22,17 @@ export const createTestingCommands = (options: RegisterTestingOptions): readonly
     },
   },
   {
+    title: "retry",
+    value: "testing.retry",
+    keybind: "r",
+    category: "Testing",
+    hidden: true,
+    enabled: isTestingScreen(options.currentScreen),
+    onSelect: () => {
+      // HACK: actual retry handled in-screen via useKeyboard
+    },
+  },
+  {
     title: "expand",
     value: "testing.expand",
     keybind: "ctrl+o",

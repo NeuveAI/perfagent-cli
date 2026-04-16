@@ -17,6 +17,8 @@ import { atomFnToPromise, atomSet, atomGet } from "../../adapters/effect-atom";
 import { Logo } from "../../renderables/logo";
 import { Spinner } from "../../renderables/spinner";
 import { formatElapsedTime } from "../../utils/format-elapsed-time";
+import { parseExecutionError, type ParsedError } from "../../utils/parse-execution-error";
+import { ErrorDisplay } from "../../renderables/error-display";
 import { COLORS, TESTING_TIMER_UPDATE_INTERVAL_MS } from "../../constants";
 import {
   type ToolCallDisplay,
@@ -58,7 +60,7 @@ export const TestingScreen = (props: TestingScreenProps) => {
   const [elapsedTimeMs, setElapsedTimeMs] = createSignal(0);
   const [showCancelConfirmation, setShowCancelConfirmation] = createSignal(false);
   const [isExecuting, setIsExecuting] = createSignal(true);
-  const [executionError, setExecutionError] = createSignal<string | undefined>(undefined);
+  const [executionError, setExecutionError] = createSignal<ParsedError | undefined>(undefined);
 
   const elapsedTimeLabel = () => formatElapsedTime(elapsedTimeMs());
   const totalCount = () => executedPlan()?.steps?.length ?? 0;
@@ -107,8 +109,7 @@ export const TestingScreen = (props: TestingScreenProps) => {
           const result = exit.value;
           navigation.setScreen(Screen.Results({ report: result.report, videoUrl: result.videoUrl }));
         } else {
-          const prettyError = String(exit.cause);
-          setExecutionError(prettyError);
+          setExecutionError(parseExecutionError(exit.cause));
         }
       });
     });
@@ -145,6 +146,23 @@ export const TestingScreen = (props: TestingScreenProps) => {
         setShowCancelConfirmation(false);
         return;
       }
+      return;
+    }
+
+    if (event.name === "r" && executionError()) {
+      setExecutionError(undefined);
+      setExecutedPlan(undefined);
+      setIsExecuting(true);
+      setRunStartedAt(undefined);
+      setElapsedTimeMs(0);
+      navigation.setScreen(Screen.Testing({
+        changesFor: props.changesFor,
+        instruction: props.instruction,
+        savedFlow: props.savedFlow,
+        cookieBrowserKeys: props.cookieBrowserKeys ? [...props.cookieBrowserKeys] : undefined,
+        baseUrls: props.baseUrls ? [...props.baseUrls] : undefined,
+        devServerHints: props.devServerHints ? [...props.devServerHints] : undefined,
+      }));
       return;
     }
 
@@ -229,17 +247,20 @@ export const TestingScreen = (props: TestingScreenProps) => {
 
       {/* Error display */}
       <Show when={executionError()}>
-        <box flexDirection="column" marginTop={1}>
-          <text style={{ fg: COLORS.RED }}>
-            {`${CROSS} Execution failed`}
-          </text>
-          <text style={{ fg: COLORS.DIM }}>
-            {executionError()}
-          </text>
-          <text style={{ fg: COLORS.DIM }}>
-            {"Press esc to go back"}
-          </text>
-        </box>
+        {(error) => (
+          <box flexDirection="column" marginTop={1}>
+            <ErrorDisplay error={error()} />
+            <box marginTop={1}>
+              <text style={{ fg: COLORS.DIM }}>
+                {"  Press "}
+                <span style={{ fg: COLORS.PRIMARY }}>r</span>
+                {" to retry, "}
+                <span style={{ fg: COLORS.PRIMARY }}>esc</span>
+                {" to go back"}
+              </text>
+            </box>
+          </box>
+        )}
       </Show>
     </box>
   );
