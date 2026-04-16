@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, onCleanup, For, Show } from "solid-js";
 import { Exit } from "effect";
 import type { PerfReport } from "@neuve/supervisor";
 import type { AnalysisStep } from "@neuve/shared/models";
@@ -86,6 +86,7 @@ export const ResultsScreen = (props: ResultsScreenProps) => {
   };
 
   setResultsActions({ onCopy: handleCopy, onSave: handleSave, onRestart: handleRestart });
+  onCleanup(clearResultsActions);
 
   return (
     <box flexDirection="column" width="100%" paddingTop={1} paddingBottom={1} paddingLeft={1} paddingRight={1}>
@@ -260,7 +261,7 @@ const StepRow = (props: StepRowProps) => {
         </Show>
       </text>
       <Show when={(isFailed() || isSkipped()) && stepStatus()?.summary}>
-        <text style={{ fg: COLORS.DIM }}>{`     ${stepStatus()!.summary}`}</text>
+        {(summary) => <text style={{ fg: COLORS.DIM }}>{`     ${summary()}`}</text>}
       </Show>
     </box>
   );
