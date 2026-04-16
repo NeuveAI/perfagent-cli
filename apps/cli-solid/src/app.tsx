@@ -17,8 +17,21 @@ import type { AgentBackend } from "@neuve/agent";
 import { Modeline } from "./renderables/modeline";
 import { ToastDisplay } from "./renderables/toast-display";
 import { MainScreen } from "./routes/main/main-screen";
+import { CookieSyncConfirmScreen } from "./routes/cookie-sync-confirm/cookie-sync-confirm-screen";
+import { PortPickerScreen } from "./routes/port-picker/port-picker-screen";
 import { createGlobalCommands } from "./commands/register-global";
 import { createMainCommands } from "./commands/register-main";
+import { createCookieSyncCommands } from "./commands/register-cookie-sync";
+import { createPortPickerCommands } from "./commands/register-port-picker";
+
+const screenOfTag = <T extends Screen["_tag"]>(
+  accessor: () => Screen,
+  tag: T,
+): Extract<Screen, { _tag: T }> | undefined => {
+  const screen = accessor();
+  if (screen._tag === tag) return screen as Extract<Screen, { _tag: T }>;
+  return undefined;
+};
 
 const VALID_AGENTS = new Set(Object.keys(AGENT_PROVIDER_DISPLAY_NAMES));
 
@@ -74,6 +87,18 @@ const AppInner = () => {
     }),
   );
 
+  registry.register(() =>
+    createCookieSyncCommands({
+      currentScreen: navigation.currentScreen,
+    }),
+  );
+
+  registry.register(() =>
+    createPortPickerCommands({
+      currentScreen: navigation.currentScreen,
+    }),
+  );
+
   useKeyboard((event) => {
     if (event.name === "escape" && !dialog.isEmpty()) {
       dialog.pop();
@@ -89,6 +114,12 @@ const AppInner = () => {
         <Switch fallback={<text>Screen: {navigation.currentScreen()._tag}</text>}>
           <Match when={navigation.currentScreen()._tag === "Main"}>
             <MainScreen />
+          </Match>
+          <Match when={screenOfTag(navigation.currentScreen, "CookieSyncConfirm")}>
+            {(screen) => <CookieSyncConfirmScreen {...screen()} />}
+          </Match>
+          <Match when={screenOfTag(navigation.currentScreen, "PortPicker")}>
+            {(screen) => <PortPickerScreen {...screen()} />}
           </Match>
         </Switch>
       </box>
