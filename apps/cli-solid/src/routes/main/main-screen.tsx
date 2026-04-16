@@ -5,26 +5,106 @@ import { ChangesBanner } from "./changes-banner";
 import { LastRunBanner } from "./last-run-banner";
 import { ContextPicker } from "./context-picker";
 import { useToast } from "../../context/toast";
+import { useProject } from "../../context/project";
+import { useAgent } from "../../context/agent";
+import { atomToAccessor } from "../../adapters/effect-atom";
+import { buildAsyncResult } from "../../adapters/async-result";
+import { recentReportsAtom } from "@neuve/perf-agent-cli/data/recent-reports-atom";
 import { COLORS } from "../../constants";
 
 const POINTER = "\u25B8";
 const BULLET = "\u2022";
 
+const formatHostPath = (url: string): string => {
+  try {
+    const parsed = new URL(url);
+    return parsed.host + (parsed.pathname !== "/" ? parsed.pathname : "");
+  } catch {
+    return url;
+  }
+};
+
+const formatRelativeTime = (date: Date): string => {
+  const now = Date.now();
+  const diffMs = now - date.getTime();
+  const diffMinutes = Math.floor(diffMs / 60_000);
+
+  if (diffMinutes < 1) return "just now";
+  if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
+};
+
 export const MainScreen = () => {
   const toast = useToast();
+  const project = useProject();
+  const agent = useAgent();
+
   const [value, setValue] = createSignal("");
   const [pickerOpen, setPickerOpen] = createSignal(false);
   const [selectedContext, setSelectedContext] = createSignal<string | undefined>(undefined);
 
-  const hasChanges = () => true;
-  const fileCount = () => 3;
-  const totalAdded = () => 42;
-  const totalRemoved = () => 7;
+  const recentReportsResult = atomToAccessor(recentReportsAtom);
 
-  const hasLastRun = () => true;
-  const lastRunHost = () => "localhost:3000";
-  const lastRunTime = () => "2 minutes ago";
-  const lastRunPassed = () => true;
+  const gitState = () => project.gitState();
+
+  const hasChanges = () => {
+    const state = gitState();
+    if (!state) return false;
+    return state.workingTreeFileStats.length > 0 || state.fileStats.length > 0;
+  };
+
+  const fileCount = () => {
+    const state = gitState();
+    if (!state) return 0;
+    const stats = state.workingTreeFileStats.length > 0 ? state.workingTreeFileStats : state.fileStats;
+    return stats.length;
+  };
+
+  const totalAdded = () => {
+    const state = gitState();
+    if (!state) return 0;
+    const stats = state.workingTreeFileStats.length > 0 ? state.workingTreeFileStats : state.fileStats;
+    return stats.reduce((sum, fileStat) => sum + fileStat.added, 0);
+  };
+
+  const totalRemoved = () => {
+    const state = gitState();
+    if (!state) return 0;
+    const stats = state.workingTreeFileStats.length > 0 ? state.workingTreeFileStats : state.fileStats;
+    return stats.reduce((sum, fileStat) => sum + fileStat.removed, 0);
+  };
+
+  const latestManifest = () => {
+    const result = recentReportsResult();
+    if (result._tag !== "Success") return undefined;
+    if (result.value.length === 0) return undefined;
+    return result.value[0];
+  };
+
+  const hasLastRun = () => latestManifest() !== undefined;
+
+  const lastRunHost = () => {
+    const manifest = latestManifest();
+    if (!manifest) return "";
+    return manifest.url ? formatHostPath(manifest.url) : manifest.title;
+  };
+
+  const lastRunTime = () => {
+    const manifest = latestManifest();
+    if (!manifest) return "";
+    return formatRelativeTime(manifest.collectedAt);
+  };
+
+  const lastRunPassed = () => {
+    const manifest = latestManifest();
+    if (!manifest) return false;
+    return manifest.status === "passed";
+  };
 
   const handleSubmit = (submittedValue: string) => {
     const trimmed = submittedValue.trim();
@@ -32,6 +112,7 @@ export const MainScreen = () => {
       toast.show("Describe what you want the browser agent to test.");
       return;
     }
+    agent.rememberInstruction(trimmed);
     toast.show("not yet wired");
   };
 
