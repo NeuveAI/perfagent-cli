@@ -16,6 +16,7 @@ import { AGENT_PROVIDER_DISPLAY_NAMES } from "@neuve/shared/models";
 import type { AgentBackend } from "@neuve/agent";
 import { Modeline } from "./renderables/modeline";
 import { ToastDisplay } from "./renderables/toast-display";
+import { StartupScreen } from "./routes/startup/startup-screen";
 import { MainScreen } from "./routes/main/main-screen";
 import { CookieSyncConfirmScreen } from "./routes/cookie-sync-confirm/cookie-sync-confirm-screen";
 import { PortPickerScreen } from "./routes/port-picker/port-picker-screen";
@@ -45,7 +46,7 @@ const validateAgent = (input: string | undefined): AgentBackend => {
 };
 
 const goBack = (screen: Screen, setScreen: (screen: Screen) => void) => {
-  if (screen._tag === "Testing" || screen._tag === "Watch") return;
+  if (screen._tag === "Startup" || screen._tag === "Testing" || screen._tag === "Watch") return;
   if (screen._tag === "Results") {
     clearResultsActions();
   }
@@ -130,6 +131,9 @@ const AppInner = () => {
     <box flexDirection="column" width="100%" height="100%">
       <box flexGrow={1}>
         <Switch fallback={<text>Screen: {navigation.currentScreen()._tag}</text>}>
+          <Match when={navigation.currentScreen()._tag === "Startup"}>
+            <StartupScreen />
+          </Match>
           <Match when={navigation.currentScreen()._tag === "Main"}>
             <MainScreen />
           </Match>

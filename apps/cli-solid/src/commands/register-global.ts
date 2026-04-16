@@ -49,7 +49,8 @@ export const createGlobalCommands = (options: RegisterGlobalOptions): readonly C
     value: "global.quit",
     keybind: "ctrl+q",
     category: "Global",
-    enabled: options.currentScreen()._tag === "Main",
+    enabled:
+      options.currentScreen()._tag === "Main" || options.currentScreen()._tag === "Startup",
     onSelect: () => {
       void initiateShutdown();
     },

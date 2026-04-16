@@ -5,6 +5,7 @@ import type { DevServerHint } from "@neuve/shared/prompts";
 import { containsUrl } from "../utils/detect-url";
 
 export type Screen = Data.TaggedEnum<{
+  Startup: {};
   Main: {};
   SelectPr: {};
   CookieSyncConfirm: { changesFor?: ChangesFor; instruction?: string; savedFlow?: SavedFlow };
@@ -73,8 +74,8 @@ interface NavigationProviderProps {
 }
 
 export const NavigationProvider = (props: NavigationProviderProps) => {
-  const [currentScreen, setCurrentScreen] = createSignal<Screen>(Screen.Main());
-  const [previousScreen, setPreviousScreen] = createSignal<Screen>(Screen.Main());
+  const [currentScreen, setCurrentScreen] = createSignal<Screen>(Screen.Startup());
+  const [previousScreen, setPreviousScreen] = createSignal<Screen>(Screen.Startup());
   const [overlay, setOverlay] = createSignal<ResultsOverlay | undefined>(undefined);
 
   const navigateTo = (screen: Screen) => {
