@@ -2,45 +2,17 @@ import { createSignal, Show } from "solid-js";
 import { Logo } from "../../renderables/logo";
 import { Input } from "../../renderables/input";
 import { ChangesBanner } from "./changes-banner";
-import { LastRunBanner } from "./last-run-banner";
 import { ContextPicker } from "./context-picker";
 import { useToast } from "../../context/toast";
 import { useProject } from "../../context/project";
 import { useAgent } from "../../context/agent";
 import { useNavigation, Screen, screenForTestingOrPortPicker } from "../../context/navigation";
-import { atomToAccessor } from "../../adapters/effect-atom";
-import { buildAsyncResult } from "../../adapters/async-result";
-import { recentReportsAtom } from "@neuve/perf-agent-cli/data/recent-reports-atom";
 import { ChangesFor } from "@neuve/shared/models";
 import { containsUrl } from "../../utils/detect-url";
 import { COLORS } from "../../constants";
 
 const POINTER = "\u25B8";
 const BULLET = "\u2022";
-
-const formatHostPath = (url: string): string => {
-  try {
-    const parsed = new URL(url);
-    return parsed.host + (parsed.pathname !== "/" ? parsed.pathname : "");
-  } catch {
-    return url;
-  }
-};
-
-const formatRelativeTime = (date: Date): string => {
-  const now = Date.now();
-  const diffMs = now - date.getTime();
-  const diffMinutes = Math.floor(diffMs / 60_000);
-
-  if (diffMinutes < 1) return "just now";
-  if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
-
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
-
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
-};
 
 export const MainScreen = () => {
   const toast = useToast();
@@ -51,8 +23,8 @@ export const MainScreen = () => {
   const [value, setValue] = createSignal("");
   const [pickerOpen, setPickerOpen] = createSignal(false);
   const [selectedContext, setSelectedContext] = createSignal<string | undefined>(undefined);
-
-  const recentReportsResult = atomToAccessor(recentReportsAtom);
+  const [historyIndex, setHistoryIndex] = createSignal(-1);
+  const [savedCurrentInput, setSavedCurrentInput] = createSignal("");
 
   const gitState = () => project.gitState();
 
@@ -83,31 +55,35 @@ export const MainScreen = () => {
     return stats.reduce((sum, fileStat) => sum + fileStat.removed, 0);
   };
 
-  const latestManifest = () => {
-    const result = recentReportsResult();
-    if (result._tag !== "Success") return undefined;
-    if (result.value.length === 0) return undefined;
-    return result.value[0];
+  const navigateHistoryBack = () => {
+    const history = agent.instructionHistory();
+    if (history.length === 0) return;
+    const nextIndex = historyIndex() + 1;
+    if (nextIndex >= history.length) return;
+    if (historyIndex() === -1) {
+      setSavedCurrentInput(value());
+    }
+    setHistoryIndex(nextIndex);
+    setValue(history[nextIndex]!);
   };
 
-  const hasLastRun = () => latestManifest() !== undefined;
-
-  const lastRunHost = () => {
-    const manifest = latestManifest();
-    if (!manifest) return "";
-    return manifest.url ? formatHostPath(manifest.url) : manifest.title;
+  const navigateHistoryForward = () => {
+    if (historyIndex() <= -1) return;
+    const nextIndex = historyIndex() - 1;
+    setHistoryIndex(nextIndex);
+    if (nextIndex === -1) {
+      setValue(savedCurrentInput());
+    } else {
+      setValue(agent.instructionHistory()[nextIndex]!);
+    }
   };
 
-  const lastRunTime = () => {
-    const manifest = latestManifest();
-    if (!manifest) return "";
-    return formatRelativeTime(manifest.collectedAt);
-  };
-
-  const lastRunPassed = () => {
-    const manifest = latestManifest();
-    if (!manifest) return false;
-    return manifest.status === "passed";
+  const handleChange = (newValue: string) => {
+    setValue(newValue);
+    if (historyIndex() !== -1) {
+      setHistoryIndex(-1);
+      setSavedCurrentInput("");
+    }
   };
 
   const handleSubmit = (submittedValue: string) => {
@@ -132,6 +108,8 @@ export const MainScreen = () => {
     }
 
     agent.rememberInstruction(trimmed);
+    setHistoryIndex(-1);
+    setSavedCurrentInput("");
 
     const cookieKeys = project.cookieBrowserKeys();
     const cliUrls = project.cliBaseUrls();
@@ -177,13 +155,6 @@ export const MainScreen = () => {
         <Logo />
       </box>
 
-      <LastRunBanner
-        visible={hasLastRun()}
-        host={lastRunHost()}
-        relativeTime={lastRunTime()}
-        passed={lastRunPassed()}
-      />
-
       <ChangesBanner
         hasChanges={hasChanges()}
         fileCount={fileCount()}
@@ -215,12 +186,14 @@ export const MainScreen = () => {
             <text style={{ fg: COLORS.PRIMARY }}>{`${POINTER} `}</text>
             <Input
               value={value()}
-              onChange={setValue}
+              onChange={handleChange}
               onSubmit={handleSubmit}
               focus={!pickerOpen()}
               multiline
-              placeholder="Describe what to test..."
+              placeholder="Describe what to analyze and hit enter to check performance."
               onAtTrigger={handleAtTrigger}
+              onUpArrowAtTop={navigateHistoryBack}
+              onDownArrowAtBottom={navigateHistoryForward}
             />
           </box>
         </box>
