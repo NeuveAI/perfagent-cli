@@ -1,0 +1,8 @@
+# Preload the Solid JSX transform plugin so .tsx files compile via Babel
+# with babel-preset-solid (required — Bun's built-in JSX transform targets React).
+preload = ["@opentui/solid/preload"]
+
+[install]
+# Trust @opentui/core to run its postinstall script, which extracts
+# the platform-specific Zig native addon binary (e.g. @opentui/core-darwin-arm64).
+trustedDependencies = ["@opentui/core"]

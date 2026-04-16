@@ -1,0 +1,28 @@
+{
+  "name": "cli-solid",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build.ts",
+    "dev": "bun --watch src/tui.ts",
+    "typecheck": "tsgo --noEmit"
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.0.0-beta.35",
+    "@opentui/core": "0.1.99",
+    "@opentui/solid": "0.1.99",
+    "commander": "^13.1.0",
+    "effect": "4.0.0-beta.35",
+    "solid-js": "1.9.11"
+  },
+  "devDependencies": {
+    "@neuve/agent": "workspace:*",
+    "@neuve/shared": "workspace:*",
+    "@neuve/supervisor": "workspace:*",
+    "typescript": "^5.7.0"
+  },
+  "trustedDependencies": [
+    "@opentui/core"
+  ]
+}

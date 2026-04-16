@@ -14,6 +14,8 @@
     "format:check": "turbo format -- --check",
     "check": "turbo check",
     "test": "turbo test",
+    "dev:solid": "pnpm --filter cli-solid dev",
+    "build:solid": "pnpm --filter cli-solid build",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm build && changeset publish"
