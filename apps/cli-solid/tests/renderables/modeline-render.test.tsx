@@ -29,7 +29,7 @@ const makeCommand = (overrides: Partial<CommandDef> & { title: string; value: st
 });
 
 describe("Modeline rendering", () => {
-  test("renders visible commands with keybinds", async () => {
+  test("renders visible commands as /slash-commands", async () => {
     const { renderer, captureCharFrame, renderOnce } = await renderModeline([
       makeCommand({ title: "cookies", value: "main.cookies", keybind: "ctrl+k" }),
       makeCommand({ title: "agent", value: "main.agent", keybind: "ctrl+a" }),
@@ -39,10 +39,8 @@ describe("Modeline rendering", () => {
     const frame = captureCharFrame();
     renderer.destroy();
 
-    expect(frame).toContain("cookies");
-    expect(frame).toContain("agent");
-    expect(frame).toContain("^K");
-    expect(frame).toContain("^A");
+    expect(frame).toContain("/cookies");
+    expect(frame).toContain("/agent");
   });
 
   test("does not render hidden commands", async () => {
@@ -85,15 +83,15 @@ describe("Modeline rendering", () => {
     expect(frame).toContain("\u2500");
   });
 
-  test("renders commands without keybinds (just title)", async () => {
+  test("renders commands without keybinds as /slash-commands", async () => {
     const { renderer, captureCharFrame, renderOnce } = await renderModeline([
-      makeCommand({ title: "no-keybind", value: "test.no-keybind" }),
+      makeCommand({ title: "no keybind", value: "test.no-keybind" }),
     ]);
 
     await renderOnce();
     const frame = captureCharFrame();
     renderer.destroy();
 
-    expect(frame).toContain("no-keybind");
+    expect(frame).toContain("/no-keybind");
   });
 });
