@@ -12,12 +12,13 @@ export const createTestingCommands = (options: RegisterTestingOptions): readonly
   {
     title: "cancel",
     value: "testing.cancel",
-    keybind: "esc",
     category: "Testing",
     hidden: true,
     enabled: isTestingScreen(options.currentScreen),
     onSelect: () => {
-      // HACK: actual cancel handled in-screen via useKeyboard
+      // HACK: actual cancel handled in-screen via useKeyboard — no keybind
+      // registered here because esc is already bound to global.back and the
+      // Testing screen handles esc directly via useKeyboard
     },
   },
   {
