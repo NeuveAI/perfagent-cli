@@ -12,7 +12,13 @@ import { ChangesFor } from "@neuve/shared/models";
 const EXPECTED_COMMAND_SETS = [
   {
     name: "global",
-    values: ["global.clear", "global.update", "global.back"],
+    values: [
+      "global.clear",
+      "global.update",
+      "global.back",
+      "global.quit",
+      "global.force-quit",
+    ],
   },
   {
     name: "main",
@@ -36,7 +42,7 @@ const EXPECTED_COMMAND_SETS = [
   },
   {
     name: "testing",
-    values: ["testing.cancel", "testing.expand"],
+    values: ["testing.cancel", "testing.expand", "testing.retry"],
   },
   {
     name: "results",

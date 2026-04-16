@@ -28,9 +28,13 @@ describe("register-global commands", () => {
     expect(values).toContain("global.back");
   });
 
-  test("all global commands are hidden", () => {
+  test("all global commands except quit are hidden", () => {
     const commands = createGlobalCommands(makeGlobalOptions());
     for (const cmd of commands) {
+      if (cmd.value === "global.quit") {
+        expect(cmd.hidden).not.toBe(true);
+        continue;
+      }
       expect(cmd.hidden).toBe(true);
     }
   });

@@ -231,7 +231,7 @@ describe("screen command isolation", () => {
     });
   });
 
-  describe("y/s/r keys only fire on Results screen", () => {
+  describe("y/s keys only fire on Results screen", () => {
     test("y dispatches results.copy on Results", () => {
       const registry = buildFullRegistry(resultsScreen);
       const commands = registry.getCommands();
@@ -257,7 +257,15 @@ describe("screen command isolation", () => {
       });
     }
 
-    for (const screenFactory of ALL_SCREENS.filter((s) => s.name !== "Results")) {
+    test("r dispatches testing.retry on Testing", () => {
+      const registry = buildFullRegistry(testingScreen);
+      const handled = registry.handleKeyEvent(charKey("r"));
+      expect(handled).toBe(true);
+    });
+
+    for (const screenFactory of ALL_SCREENS.filter(
+      (s) => s.name !== "Results" && s.name !== "Testing",
+    )) {
       test(`r does not dispatch on ${screenFactory.name}`, () => {
         const registry = buildFullRegistry(() => screenFactory.make());
         const handled = registry.handleKeyEvent(charKey("r"));
