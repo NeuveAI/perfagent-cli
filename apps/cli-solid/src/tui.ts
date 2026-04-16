@@ -10,11 +10,15 @@ const program = new Command()
     "agent provider to use (claude, codex, copilot, gemini, cursor, opencode, droid, pi, or local)",
     "claude",
   )
+  .option(
+    "-u, --url <urls...>",
+    "base URL(s) for the dev server — skips port picker",
+  )
   .parse();
 
-const options = program.opts<{ agent: string }>();
+const options = program.opts<{ agent: string; url?: string[] }>();
 
-await render(() => App({ agent: options.agent }), {
+await render(() => App({ agent: options.agent, urls: options.url }), {
   targetFps: TARGET_FPS,
   screenMode: "alternate-screen",
   exitOnCtrlC: true,

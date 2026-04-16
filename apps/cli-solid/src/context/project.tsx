@@ -1,4 +1,4 @@
-import { createContext, useContext, type JSX, type Accessor, createResource } from "solid-js";
+import { createSignal, createContext, useContext, type JSX, type Accessor, createResource } from "solid-js";
 import { Effect, Exit } from "effect";
 import { Git, GitState } from "@neuve/supervisor";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -50,6 +50,8 @@ interface ProjectContextValue {
   readonly clearCookieBrowserKeys: () => void;
   readonly lastBaseUrl: Accessor<string | undefined>;
   readonly setLastBaseUrl: (url: string | undefined) => void;
+  readonly cliBaseUrls: Accessor<readonly string[] | undefined>;
+  readonly clearCliBaseUrls: () => void;
 }
 
 const ProjectContext = createContext<ProjectContextValue>();
@@ -64,10 +66,13 @@ export const useProject = (): ProjectContextValue => {
 
 interface ProjectProviderProps {
   readonly children: JSX.Element;
+  readonly cliBaseUrls?: readonly string[];
 }
 
 export const ProjectProvider = (props: ProjectProviderProps) => {
   const kv = useKv();
+  const [cliBaseUrls, setCliBaseUrls] = createSignal<readonly string[] | undefined>(props.cliBaseUrls);
+  const clearCliBaseUrls = () => setCliBaseUrls(undefined);
 
   // Git state — one-shot fetch with manual refetch
   const [gitState, { refetch: refetchGitState }] = createResource(fetchGitState);
@@ -97,6 +102,8 @@ export const ProjectProvider = (props: ProjectProviderProps) => {
     clearCookieBrowserKeys,
     lastBaseUrl,
     setLastBaseUrl,
+    cliBaseUrls,
+    clearCliBaseUrls,
   };
 
   return <ProjectContext.Provider value={value}>{props.children}</ProjectContext.Provider>;

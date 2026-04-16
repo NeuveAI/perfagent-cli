@@ -131,6 +131,7 @@ const AppInner = () => {
 
 interface AppProps {
   readonly agent?: string;
+  readonly urls?: readonly string[];
 }
 
 const App = (props: AppProps) => {
@@ -140,7 +141,7 @@ const App = (props: AppProps) => {
     <RuntimeProvider agent={agent}>
       <KvProvider>
         <AgentProvider initialAgent={agent}>
-          <ProjectProvider>
+          <ProjectProvider cliBaseUrls={props.urls}>
             <SyncProvider>
               <NavigationProvider>
                 <ToastProvider>

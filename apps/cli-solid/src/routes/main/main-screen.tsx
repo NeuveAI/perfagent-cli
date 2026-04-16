@@ -134,12 +134,16 @@ export const MainScreen = () => {
     agent.rememberInstruction(trimmed);
 
     const cookieKeys = project.cookieBrowserKeys();
-    if (cookieKeys.length > 0 || containsUrl(trimmed)) {
+    const cliUrls = project.cliBaseUrls();
+    if (cliUrls) project.clearCliBaseUrls();
+
+    if (cookieKeys.length > 0 || containsUrl(trimmed) || cliUrls) {
       navigation.navigateTo(
         screenForTestingOrPortPicker({
           changesFor,
           instruction: trimmed,
           cookieBrowserKeys: cookieKeys,
+          baseUrls: cliUrls ? [...cliUrls] : undefined,
         }),
       );
     } else {
