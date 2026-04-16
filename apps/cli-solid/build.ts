@@ -3,7 +3,7 @@ import * as path from "node:path";
 import solidPlugin from "@opentui/solid/bun-plugin";
 
 const result = await Bun.build({
-  entrypoints: ["src/tui.ts"],
+  entrypoints: ["src/tui.ts", "src/browser-mcp.ts"],
   outdir: "dist",
   target: "bun",
   format: "esm",
