@@ -1,4 +1,9 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+
 const FORCE_EXIT_TIMEOUT_MS = 3000;
+
+const LOCKFILE_PATH = path.join(process.cwd(), ".perf-agent", "tui.lock");
 
 let shuttingDown = false;
 let shutdownPromise: Promise<void> | undefined;
@@ -6,6 +11,29 @@ let signalHandlersInstalled = false;
 
 const cleanupHandlers: Array<() => void | Promise<void>> = [];
 const trackedPids = new Set<number>();
+
+export const writeLockfile = (): void => {
+  try {
+    fs.mkdirSync(path.dirname(LOCKFILE_PATH), { recursive: true });
+    fs.writeFileSync(LOCKFILE_PATH, String(process.pid));
+  } catch {}
+};
+
+export const deleteLockfile = (): void => {
+  try {
+    fs.unlinkSync(LOCKFILE_PATH);
+  } catch {}
+};
+
+export const readLockfile = (): number | undefined => {
+  try {
+    const content = fs.readFileSync(LOCKFILE_PATH, "utf-8").trim();
+    const pid = parseInt(content, 10);
+    return isNaN(pid) ? undefined : pid;
+  } catch {
+    return undefined;
+  }
+};
 
 export const registerCleanupHandler = (handler: () => void | Promise<void>): (() => void) => {
   cleanupHandlers.push(handler);
@@ -63,6 +91,7 @@ export const initiateShutdown = (): Promise<void> => {
 
     killTrackedProcesses();
     await runCleanupHandlers();
+    deleteLockfile();
 
     clearTimeout(forceExitTimer);
     process.exit(0);
@@ -83,6 +112,7 @@ export const installSignalHandlers = (): void => {
   signalHandlersInstalled = true;
   process.on("SIGINT", onSignal);
   process.on("SIGTERM", onSignal);
+  writeLockfile();
 };
 
 export const _resetForTesting = (): void => {
@@ -93,4 +123,7 @@ export const _resetForTesting = (): void => {
   trackedPids.clear();
   process.removeListener("SIGINT", onSignal);
   process.removeListener("SIGTERM", onSignal);
+  try {
+    deleteLockfile();
+  } catch {}
 };

@@ -1,4 +1,6 @@
-import { describe, test, expect, beforeEach, mock, spyOn } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach, mock, spyOn } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import {
   registerCleanupHandler,
   trackChildProcess,
@@ -6,11 +8,22 @@ import {
   initiateShutdown,
   installSignalHandlers,
   isShuttingDown,
+  writeLockfile,
+  readLockfile,
+  deleteLockfile,
   _resetForTesting,
 } from "../../src/lifecycle/shutdown";
 
+const LOCKFILE_PATH = path.join(process.cwd(), ".perf-agent", "tui.lock");
+
 beforeEach(() => {
   _resetForTesting();
+});
+
+afterEach(() => {
+  try {
+    fs.unlinkSync(LOCKFILE_PATH);
+  } catch {}
 });
 
 describe("registerCleanupHandler", () => {
@@ -194,5 +207,78 @@ describe("installSignalHandlers", () => {
 
     expect(process.listenerCount("SIGINT")).toBe(initialListenerCount + 1);
     expect(process.listenerCount("SIGTERM")).toBeGreaterThanOrEqual(1);
+  });
+
+  test("writes the lockfile after installing handlers", () => {
+    installSignalHandlers();
+
+    expect(fs.existsSync(LOCKFILE_PATH)).toBe(true);
+    const content = fs.readFileSync(LOCKFILE_PATH, "utf-8").trim();
+    expect(parseInt(content, 10)).toBe(process.pid);
+  });
+});
+
+describe("writeLockfile", () => {
+  test("creates a file with the current process PID", () => {
+    writeLockfile();
+
+    expect(fs.existsSync(LOCKFILE_PATH)).toBe(true);
+    const content = fs.readFileSync(LOCKFILE_PATH, "utf-8").trim();
+    expect(parseInt(content, 10)).toBe(process.pid);
+  });
+});
+
+describe("readLockfile", () => {
+  test("returns the PID stored in the lockfile", () => {
+    writeLockfile();
+
+    expect(readLockfile()).toBe(process.pid);
+  });
+
+  test("returns undefined when the lockfile does not exist", () => {
+    try {
+      fs.unlinkSync(LOCKFILE_PATH);
+    } catch {}
+
+    expect(readLockfile()).toBeUndefined();
+  });
+
+  test("returns undefined when the lockfile contains invalid content", () => {
+    fs.mkdirSync(path.dirname(LOCKFILE_PATH), { recursive: true });
+    fs.writeFileSync(LOCKFILE_PATH, "not-a-number");
+
+    expect(readLockfile()).toBeUndefined();
+  });
+});
+
+describe("deleteLockfile", () => {
+  test("removes the lockfile if it exists", () => {
+    writeLockfile();
+    expect(fs.existsSync(LOCKFILE_PATH)).toBe(true);
+
+    deleteLockfile();
+
+    expect(fs.existsSync(LOCKFILE_PATH)).toBe(false);
+  });
+
+  test("does not throw when the lockfile is missing", () => {
+    try {
+      fs.unlinkSync(LOCKFILE_PATH);
+    } catch {}
+
+    expect(() => deleteLockfile()).not.toThrow();
+  });
+});
+
+describe("initiateShutdown with lockfile", () => {
+  test("deletes the lockfile during shutdown", async () => {
+    writeLockfile();
+    expect(fs.existsSync(LOCKFILE_PATH)).toBe(true);
+
+    const exitSpy = spyOn(process, "exit").mockImplementation(() => undefined as never);
+    await initiateShutdown();
+
+    expect(fs.existsSync(LOCKFILE_PATH)).toBe(false);
+    exitSpy.mockRestore();
   });
 });

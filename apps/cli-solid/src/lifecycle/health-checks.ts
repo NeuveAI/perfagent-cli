@@ -1,4 +1,5 @@
 import type { AgentBackend } from "@neuve/agent";
+import { readLockfile, deleteLockfile } from "./shutdown";
 
 const OLLAMA_TIMEOUT_MS = 3000;
 const MCP_RESOLVE_TIMEOUT_MS = 5000;
@@ -101,9 +102,41 @@ export const killStaleMcpProcesses = async (): Promise<{ killed: number }> => {
   }
 };
 
+export const cleanupStaleLockfile = async (): Promise<{
+  cleaned: boolean;
+  killedPid?: number;
+}> => {
+  const previousPid = readLockfile();
+  if (previousPid === undefined) {
+    return { cleaned: false };
+  }
+
+  if (previousPid === process.pid) {
+    return { cleaned: false };
+  }
+
+  let alive = false;
+  try {
+    process.kill(previousPid, 0);
+    alive = true;
+  } catch {
+    alive = false;
+  }
+
+  if (alive) {
+    try {
+      process.kill(previousPid, "SIGTERM");
+    } catch {}
+  }
+
+  deleteLockfile();
+  return { cleaned: true, killedPid: alive ? previousPid : undefined };
+};
+
 export const runHealthChecks = async (
   agent: AgentBackend,
 ): Promise<readonly HealthCheckResult[]> => {
+  await cleanupStaleLockfile();
   await killStaleMcpProcesses();
 
   const checks = [checkDevToolsMcpResolvable()];
