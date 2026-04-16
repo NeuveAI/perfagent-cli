@@ -20,6 +20,7 @@ export class DevToolsClient extends ServiceMap.Service<DevToolsClient>()(
       const transport = new StdioClientTransport({
         command: "npx",
         args: ["chrome-devtools-mcp@0.21.0", "--headless", "--isolated"],
+        stderr: "pipe",
       });
 
       const client = new Client({
