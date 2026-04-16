@@ -5,6 +5,7 @@ import type { AgentBackend } from "@neuve/agent";
 import { agentProviderAtom, verboseAtom } from "@neuve/perf-agent-cli/data/runtime";
 import { setAtomRegistry, atomMount } from "../adapters/effect-atom";
 import { recentReportsAtom } from "@neuve/perf-agent-cli/data/recent-reports-atom";
+import { registerCleanupHandler, isShuttingDown } from "../lifecycle/shutdown";
 
 /**
  * RuntimeProvider initializes the shared AtomRegistry and seeds it with
@@ -47,7 +48,14 @@ export const RuntimeProvider = (props: RuntimeProviderProps) => {
   // Mount key atoms so they stay alive
   const unmountReports = atomMount(recentReportsAtom);
 
+  const unregisterShutdown = registerCleanupHandler(() => {
+    unmountReports();
+    registry.dispose();
+  });
+
   onCleanup(() => {
+    unregisterShutdown();
+    if (isShuttingDown()) return;
     unmountReports();
     registry.dispose();
   });

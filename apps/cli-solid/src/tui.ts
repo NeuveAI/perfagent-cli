@@ -1,14 +1,17 @@
 import { render } from "@opentui/solid";
 import { Command } from "commander";
 import App from "./app";
+import { installSignalHandlers } from "./lifecycle/shutdown";
 
 const TARGET_FPS = 60;
 
 const launch = async (options: { agent: string; url?: string[] }) => {
+  installSignalHandlers();
+
   await render(() => App({ agent: options.agent, urls: options.url }), {
     targetFps: TARGET_FPS,
     screenMode: "alternate-screen",
-    exitOnCtrlC: true,
+    exitOnCtrlC: false,
     useKittyKeyboard: {
       disambiguate: true,
       alternateKeys: true,

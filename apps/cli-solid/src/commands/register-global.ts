@@ -1,5 +1,6 @@
 import type { CommandDef } from "../context/command";
 import type { Screen, ResultsOverlay } from "../context/navigation";
+import { initiateShutdown } from "../lifecycle/shutdown";
 
 interface RegisterGlobalOptions {
   readonly clearScreen: () => void;
@@ -41,6 +42,27 @@ export const createGlobalCommands = (options: RegisterGlobalOptions): readonly C
     enabled: options.currentScreen()._tag !== "Main" && options.overlay() === undefined,
     onSelect: () => {
       options.goBack();
+    },
+  },
+  {
+    title: "quit",
+    value: "global.quit",
+    keybind: "ctrl+q",
+    category: "Global",
+    enabled: options.currentScreen()._tag === "Main",
+    onSelect: () => {
+      void initiateShutdown();
+    },
+  },
+  {
+    title: "force quit",
+    value: "global.force-quit",
+    keybind: "ctrl+c",
+    category: "Global",
+    hidden: true,
+    enabled: true,
+    onSelect: () => {
+      void initiateShutdown();
     },
   },
 ];
