@@ -1,3 +1,4 @@
+import { Switch, Match } from "solid-js";
 import { useKeyboard, useRenderer } from "@opentui/solid";
 import { CommandProvider, useCommandRegistry } from "./context/command";
 import { DialogProvider, useDialogStack } from "./context/dialog";
@@ -8,6 +9,7 @@ import { RuntimeProvider } from "./context/runtime";
 import { ProjectProvider, useProject } from "./context/project";
 import { AgentProvider } from "./context/agent";
 import { SyncProvider } from "./context/sync";
+import { NavigationProvider, useNavigation, Screen } from "./context/navigation";
 import { atomToAccessor } from "./adapters/effect-atom";
 import { recentReportsAtom } from "@neuve/perf-agent-cli/data/recent-reports-atom";
 import { AGENT_PROVIDER_DISPLAY_NAMES } from "@neuve/shared/models";
@@ -25,12 +27,18 @@ const validateAgent = (input: string | undefined): AgentBackend => {
   return "claude";
 };
 
+const goBack = (screen: Screen, setScreen: (screen: Screen) => void) => {
+  if (screen._tag === "Testing" || screen._tag === "Watch") return;
+  setScreen(Screen.Main());
+};
+
 const AppInner = () => {
   const registry = useCommandRegistry();
   const dialog = useDialogStack();
   const toast = useToast();
   const renderer = useRenderer();
   const project = useProject();
+  const navigation = useNavigation();
 
   const recentReportsResult = atomToAccessor(recentReportsAtom);
 
@@ -52,6 +60,9 @@ const AppInner = () => {
       popDialog: () => dialog.pop(),
       isDialogEmpty: () => dialog.isEmpty(),
       showToast: (message: string) => toast.show(message),
+      goBack: () => goBack(navigation.currentScreen(), navigation.setScreen),
+      currentScreen: navigation.currentScreen,
+      overlay: navigation.overlay,
     }),
   );
 
@@ -60,6 +71,7 @@ const AppInner = () => {
       showToast: (message: string) => toast.show(message),
       isGitRepo,
       hasRecentReports,
+      currentScreen: navigation.currentScreen,
     }),
   );
 
@@ -75,7 +87,11 @@ const AppInner = () => {
   return (
     <box flexDirection="column" width="100%" height="100%">
       <box flexGrow={1}>
-        <MainScreen />
+        <Switch fallback={<text>Screen: {navigation.currentScreen()._tag}</text>}>
+          <Match when={navigation.currentScreen()._tag === "Main"}>
+            <MainScreen />
+          </Match>
+        </Switch>
       </box>
       <ToastDisplay />
       <Modeline />
@@ -96,13 +112,15 @@ const App = (props: AppProps) => {
         <AgentProvider initialAgent={agent}>
           <ProjectProvider>
             <SyncProvider>
-              <ToastProvider>
-                <DialogProvider>
-                  <InputFocusProvider>
-                    <AppInnerWithFocus />
-                  </InputFocusProvider>
-                </DialogProvider>
-              </ToastProvider>
+              <NavigationProvider>
+                <ToastProvider>
+                  <DialogProvider>
+                    <InputFocusProvider>
+                      <AppInnerWithFocus />
+                    </InputFocusProvider>
+                  </DialogProvider>
+                </ToastProvider>
+              </NavigationProvider>
             </SyncProvider>
           </ProjectProvider>
         </AgentProvider>

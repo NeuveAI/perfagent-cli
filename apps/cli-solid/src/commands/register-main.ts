@@ -1,10 +1,15 @@
 import type { CommandDef } from "../context/command";
+import type { Screen } from "../context/navigation";
 
 interface RegisterMainOptions {
   readonly showToast: (message: string) => void;
   readonly isGitRepo: () => boolean;
   readonly hasRecentReports: () => boolean;
+  readonly currentScreen: () => Screen;
 }
+
+const isMainScreen = (currentScreen: () => Screen): boolean =>
+  currentScreen()._tag === "Main";
 
 export const createMainCommands = (options: RegisterMainOptions): readonly CommandDef[] => [
   {
@@ -12,7 +17,7 @@ export const createMainCommands = (options: RegisterMainOptions): readonly Comma
     value: "main.cookie-sync",
     keybind: "ctrl+k",
     category: "Main",
-    enabled: true,
+    enabled: isMainScreen(options.currentScreen),
     onSelect: () => {
       options.showToast("not yet wired");
     },
@@ -22,7 +27,7 @@ export const createMainCommands = (options: RegisterMainOptions): readonly Comma
     value: "main.agent-picker",
     keybind: "ctrl+a",
     category: "Main",
-    enabled: true,
+    enabled: isMainScreen(options.currentScreen),
     onSelect: () => {
       options.showToast("not yet wired");
     },
@@ -32,7 +37,7 @@ export const createMainCommands = (options: RegisterMainOptions): readonly Comma
     value: "main.pr-picker",
     keybind: "ctrl+p",
     category: "Main",
-    enabled: options.isGitRepo(),
+    enabled: isMainScreen(options.currentScreen) && options.isGitRepo(),
     onSelect: () => {
       options.showToast("not yet wired");
     },
@@ -42,7 +47,7 @@ export const createMainCommands = (options: RegisterMainOptions): readonly Comma
     value: "main.saved-flows",
     keybind: "ctrl+r",
     category: "Main",
-    enabled: true,
+    enabled: isMainScreen(options.currentScreen),
     onSelect: () => {
       options.showToast("not yet wired");
     },
@@ -52,7 +57,7 @@ export const createMainCommands = (options: RegisterMainOptions): readonly Comma
     value: "main.past-runs",
     keybind: "ctrl+f",
     category: "Main",
-    enabled: options.hasRecentReports(),
+    enabled: isMainScreen(options.currentScreen) && options.hasRecentReports(),
     onSelect: () => {
       options.showToast("not yet wired");
     },
@@ -62,7 +67,7 @@ export const createMainCommands = (options: RegisterMainOptions): readonly Comma
     value: "main.watch",
     keybind: "ctrl+w",
     category: "Main",
-    enabled: options.isGitRepo(),
+    enabled: isMainScreen(options.currentScreen) && options.isGitRepo(),
     onSelect: () => {
       options.showToast("not yet wired");
     },
@@ -73,7 +78,7 @@ export const createMainCommands = (options: RegisterMainOptions): readonly Comma
     keybind: "enter",
     category: "Main",
     hidden: true,
-    enabled: true,
+    enabled: isMainScreen(options.currentScreen),
     onSelect: () => {
       options.showToast("not yet wired");
     },

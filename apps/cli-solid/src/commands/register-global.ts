@@ -1,10 +1,14 @@
 import type { CommandDef } from "../context/command";
+import type { Screen, ResultsOverlay } from "../context/navigation";
 
 interface RegisterGlobalOptions {
   readonly clearScreen: () => void;
   readonly popDialog: () => void;
   readonly isDialogEmpty: () => boolean;
   readonly showToast: (message: string) => void;
+  readonly goBack: () => void;
+  readonly currentScreen: () => Screen;
+  readonly overlay: () => ResultsOverlay | undefined;
 }
 
 export const createGlobalCommands = (options: RegisterGlobalOptions): readonly CommandDef[] => [
@@ -36,10 +40,15 @@ export const createGlobalCommands = (options: RegisterGlobalOptions): readonly C
     keybind: "esc",
     category: "Global",
     hidden: true,
-    enabled: !options.isDialogEmpty(),
+    enabled: !options.isDialogEmpty() ||
+      (options.currentScreen()._tag !== "Main" && options.overlay() === undefined),
     onSelect: () => {
       if (!options.isDialogEmpty()) {
         options.popDialog();
+        return;
+      }
+      if (options.currentScreen()._tag !== "Main" && options.overlay() === undefined) {
+        options.goBack();
       }
     },
   },
