@@ -80,7 +80,7 @@ export const createMainCommands = (options: RegisterMainOptions): readonly Comma
     hidden: true,
     enabled: isMainScreen(options.currentScreen),
     onSelect: () => {
-      options.showToast("not yet wired");
+      // HACK: actual submit is handled by Input.onSubmit in main-screen.tsx
     },
   },
 ];

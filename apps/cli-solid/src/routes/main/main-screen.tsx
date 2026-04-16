@@ -7,9 +7,12 @@ import { ContextPicker } from "./context-picker";
 import { useToast } from "../../context/toast";
 import { useProject } from "../../context/project";
 import { useAgent } from "../../context/agent";
+import { useNavigation, Screen, screenForTestingOrPortPicker } from "../../context/navigation";
 import { atomToAccessor } from "../../adapters/effect-atom";
 import { buildAsyncResult } from "../../adapters/async-result";
 import { recentReportsAtom } from "@neuve/perf-agent-cli/data/recent-reports-atom";
+import { ChangesFor } from "@neuve/shared/models";
+import { containsUrl } from "../../utils/detect-url";
 import { COLORS } from "../../constants";
 
 const POINTER = "\u25B8";
@@ -43,6 +46,7 @@ export const MainScreen = () => {
   const toast = useToast();
   const project = useProject();
   const agent = useAgent();
+  const navigation = useNavigation();
 
   const [value, setValue] = createSignal("");
   const [pickerOpen, setPickerOpen] = createSignal(false);
@@ -112,8 +116,35 @@ export const MainScreen = () => {
       toast.show("Describe what you want the browser agent to test.");
       return;
     }
+
+    const state = gitState();
+    const mainBranch = state?.mainBranch ?? "main";
+
+    const ctx = selectedContext();
+    let changesFor: ChangesFor;
+
+    if (ctx?.startsWith("commit:")) {
+      changesFor = ChangesFor.makeUnsafe({ _tag: "Commit", hash: ctx.slice(7) });
+    } else if (ctx?.startsWith("branch:") || ctx?.startsWith("pr:")) {
+      changesFor = ChangesFor.makeUnsafe({ _tag: "Branch", mainBranch });
+    } else {
+      changesFor = ChangesFor.makeUnsafe({ _tag: "Changes", mainBranch });
+    }
+
     agent.rememberInstruction(trimmed);
-    toast.show("not yet wired");
+
+    const cookieKeys = project.cookieBrowserKeys();
+    if (cookieKeys.length > 0 || containsUrl(trimmed)) {
+      navigation.navigateTo(
+        screenForTestingOrPortPicker({
+          changesFor,
+          instruction: trimmed,
+          cookieBrowserKeys: cookieKeys,
+        }),
+      );
+    } else {
+      navigation.navigateTo(Screen.CookieSyncConfirm({ changesFor, instruction: trimmed }));
+    }
   };
 
   const handleAtTrigger = () => {
