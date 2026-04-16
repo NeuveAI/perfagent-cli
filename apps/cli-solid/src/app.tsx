@@ -19,10 +19,12 @@ import { ToastDisplay } from "./renderables/toast-display";
 import { MainScreen } from "./routes/main/main-screen";
 import { CookieSyncConfirmScreen } from "./routes/cookie-sync-confirm/cookie-sync-confirm-screen";
 import { PortPickerScreen } from "./routes/port-picker/port-picker-screen";
+import { TestingScreen } from "./routes/testing/testing-screen";
 import { createGlobalCommands } from "./commands/register-global";
 import { createMainCommands } from "./commands/register-main";
 import { createCookieSyncCommands } from "./commands/register-cookie-sync";
 import { createPortPickerCommands } from "./commands/register-port-picker";
+import { createTestingCommands } from "./commands/register-testing";
 
 const screenOfTag = <T extends Screen["_tag"]>(
   accessor: () => Screen,
@@ -99,6 +101,12 @@ const AppInner = () => {
     }),
   );
 
+  registry.register(() =>
+    createTestingCommands({
+      currentScreen: navigation.currentScreen,
+    }),
+  );
+
   useKeyboard((event) => {
     if (event.name === "escape" && !dialog.isEmpty()) {
       dialog.pop();
@@ -120,6 +128,9 @@ const AppInner = () => {
           </Match>
           <Match when={screenOfTag(navigation.currentScreen, "PortPicker")}>
             {(screen) => <PortPickerScreen {...screen()} />}
+          </Match>
+          <Match when={screenOfTag(navigation.currentScreen, "Testing")}>
+            {(screen) => <TestingScreen {...screen()} />}
           </Match>
         </Switch>
       </box>
