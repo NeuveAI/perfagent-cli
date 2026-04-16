@@ -147,6 +147,7 @@ describe("register-main commands", () => {
       isGitRepo: () => true,
       hasRecentReports: () => true,
       currentScreen: () => Screen.Main(),
+      navigateToSessionPicker: () => {},
     });
 
     const keybinds = commands
@@ -176,6 +177,7 @@ describe("register-main commands", () => {
           isGitRepo: () => true,
           hasRecentReports: () => true,
           currentScreen: () => Screen.Main(),
+          navigateToSessionPicker: () => {},
         }),
       );
     }).not.toThrow();
@@ -187,6 +189,7 @@ describe("register-main commands", () => {
       isGitRepo: () => false,
       hasRecentReports: () => true,
       currentScreen: () => Screen.Main(),
+      navigateToSessionPicker: () => {},
     });
 
     const prPicker = commands.find((cmd) => cmd.value === "main.pr-picker");
@@ -199,6 +202,7 @@ describe("register-main commands", () => {
       isGitRepo: () => true,
       hasRecentReports: () => false,
       currentScreen: () => Screen.Main(),
+      navigateToSessionPicker: () => {},
     });
 
     const pastRuns = commands.find((cmd) => cmd.value === "main.past-runs");
@@ -211,6 +215,7 @@ describe("register-main commands", () => {
       isGitRepo: () => false,
       hasRecentReports: () => true,
       currentScreen: () => Screen.Main(),
+      navigateToSessionPicker: () => {},
     });
 
     const watchCmd = commands.find((cmd) => cmd.value === "main.watch");
@@ -224,6 +229,7 @@ describe("register-main commands", () => {
       isGitRepo: () => true,
       hasRecentReports: () => true,
       currentScreen: () => Screen.Main(),
+      navigateToSessionPicker: () => {},
     });
 
     for (const command of commands) {

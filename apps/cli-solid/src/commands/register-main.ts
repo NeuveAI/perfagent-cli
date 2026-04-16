@@ -6,6 +6,7 @@ interface RegisterMainOptions {
   readonly isGitRepo: () => boolean;
   readonly hasRecentReports: () => boolean;
   readonly currentScreen: () => Screen;
+  readonly navigateToSessionPicker: () => void;
 }
 
 const isMainScreen = (currentScreen: () => Screen): boolean =>
@@ -43,13 +44,13 @@ export const createMainCommands = (options: RegisterMainOptions): readonly Comma
     },
   },
   {
-    title: "saved flows",
-    value: "main.saved-flows",
+    title: "resume",
+    value: "main.resume",
     keybind: "ctrl+r",
     category: "Main",
     enabled: isMainScreen(options.currentScreen),
     onSelect: () => {
-      options.showToast("not yet wired");
+      options.navigateToSessionPicker();
     },
   },
   {

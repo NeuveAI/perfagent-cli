@@ -20,6 +20,7 @@ describe("modeline derivation from registry", () => {
         isGitRepo: () => true,
         hasRecentReports: () => true,
         currentScreen: () => Screen.Main(),
+        navigateToSessionPicker: () => {},
       }),
     ];
 
@@ -50,6 +51,7 @@ describe("modeline derivation from registry", () => {
         isGitRepo: () => true,
         hasRecentReports: () => true,
         currentScreen: () => Screen.Main(),
+        navigateToSessionPicker: () => {},
       }),
     ];
 
@@ -71,6 +73,7 @@ describe("modeline derivation from registry", () => {
       isGitRepo: () => false,
       hasRecentReports: () => false,
       currentScreen: () => Screen.Main(),
+      navigateToSessionPicker: () => {},
     });
 
     const visible = commands.filter((cmd) => cmd.hidden !== true && cmd.enabled !== false);
@@ -97,6 +100,7 @@ describe("modeline derivation from registry", () => {
         isGitRepo: () => true,
         hasRecentReports: () => true,
         currentScreen: () => Screen.Main(),
+        navigateToSessionPicker: () => {},
       }),
     ];
 
@@ -118,6 +122,7 @@ describe("modeline derivation from registry", () => {
       isGitRepo: () => true,
       hasRecentReports: () => true,
       currentScreen: () => Screen.Main(),
+      navigateToSessionPicker: () => {},
     });
 
     const expectedPrints: Record<string, string> = {

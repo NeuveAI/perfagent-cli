@@ -22,12 +22,14 @@ import { CookieSyncConfirmScreen } from "./routes/cookie-sync-confirm/cookie-syn
 import { PortPickerScreen } from "./routes/port-picker/port-picker-screen";
 import { TestingScreen } from "./routes/testing/testing-screen";
 import { ResultsScreen, clearResultsActions } from "./routes/results/results-screen";
+import { SessionPickerScreen } from "./routes/session-picker/session-picker-screen";
 import { createGlobalCommands } from "./commands/register-global";
 import { createMainCommands } from "./commands/register-main";
 import { createCookieSyncCommands } from "./commands/register-cookie-sync";
 import { createPortPickerCommands } from "./commands/register-port-picker";
 import { createTestingCommands } from "./commands/register-testing";
 import { createResultsCommands } from "./commands/register-results";
+import { createSessionPickerCommands } from "./commands/register-session-picker";
 
 const screenOfTag = <T extends Screen["_tag"]>(
   accessor: () => Screen,
@@ -91,6 +93,7 @@ const AppInner = () => {
       isGitRepo,
       hasRecentReports,
       currentScreen: navigation.currentScreen,
+      navigateToSessionPicker: () => navigation.setScreen(Screen.SessionPicker()),
     }),
   );
 
@@ -114,6 +117,12 @@ const AppInner = () => {
 
   registry.register(() =>
     createResultsCommands({
+      currentScreen: navigation.currentScreen,
+    }),
+  );
+
+  registry.register(() =>
+    createSessionPickerCommands({
       currentScreen: navigation.currentScreen,
     }),
   );
@@ -148,6 +157,9 @@ const AppInner = () => {
           </Match>
           <Match when={screenOfTag(navigation.currentScreen, "Results")}>
             {(screen) => <ResultsScreen {...screen()} />}
+          </Match>
+          <Match when={navigation.currentScreen()._tag === "SessionPicker"}>
+            <SessionPickerScreen />
           </Match>
         </Switch>
       </box>

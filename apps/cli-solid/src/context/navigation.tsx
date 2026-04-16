@@ -26,6 +26,7 @@ export type Screen = Data.TaggedEnum<{
   Results: { report: PerfReport; videoUrl?: string };
   SavedFlowPicker: {};
   RecentReportsPicker: {};
+  SessionPicker: {};
   Watch: {
     changesFor: ChangesFor;
     instruction: string;

@@ -6,6 +6,7 @@ import { createCookieSyncCommands } from "../../src/commands/register-cookie-syn
 import { createPortPickerCommands } from "../../src/commands/register-port-picker";
 import { createTestingCommands } from "../../src/commands/register-testing";
 import { createResultsCommands } from "../../src/commands/register-results";
+import { createSessionPickerCommands } from "../../src/commands/register-session-picker";
 import { Screen } from "../../src/context/navigation";
 import { charKey, ctrlKey, enterKey, escKey } from "../helpers/make-key-event";
 import { ChangesFor } from "@neuve/shared/models";
@@ -59,6 +60,7 @@ const buildFullRegistry = (currentScreen: () => Screen) => {
       isGitRepo: () => true,
       hasRecentReports: () => true,
       currentScreen,
+      navigateToSessionPicker: () => {},
     }),
   );
 
@@ -76,6 +78,10 @@ const buildFullRegistry = (currentScreen: () => Screen) => {
 
   registry.register(() =>
     createResultsCommands({ currentScreen }),
+  );
+
+  registry.register(() =>
+    createSessionPickerCommands({ currentScreen }),
   );
 
   return registry;
@@ -97,7 +103,7 @@ describe("screen command isolation", () => {
       "main.cookie-sync",
       "main.agent-picker",
       "main.pr-picker",
-      "main.saved-flows",
+      "main.resume",
       "main.past-runs",
       "main.watch",
       "main.submit",

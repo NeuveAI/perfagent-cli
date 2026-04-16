@@ -108,6 +108,7 @@ describe("register-testing commands", () => {
           isGitRepo: () => true,
           hasRecentReports: () => true,
           currentScreen: () => Screen.Main(),
+          navigateToSessionPicker: () => {},
         }),
       );
 

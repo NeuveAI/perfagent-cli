@@ -6,6 +6,7 @@ import { createCookieSyncCommands } from "../../src/commands/register-cookie-syn
 import { createPortPickerCommands } from "../../src/commands/register-port-picker";
 import { createTestingCommands } from "../../src/commands/register-testing";
 import { createResultsCommands } from "../../src/commands/register-results";
+import { createSessionPickerCommands } from "../../src/commands/register-session-picker";
 import { Screen } from "../../src/context/navigation";
 import { ChangesFor } from "@neuve/shared/models";
 
@@ -26,7 +27,7 @@ const EXPECTED_COMMAND_SETS = [
       "main.cookie-sync",
       "main.agent-picker",
       "main.pr-picker",
-      "main.saved-flows",
+      "main.resume",
       "main.past-runs",
       "main.watch",
       "main.submit",
@@ -55,10 +56,14 @@ const EXPECTED_COMMAND_SETS = [
       "results.raw-events",
     ],
   },
+  {
+    name: "session-picker",
+    values: ["session-picker.resume"],
+  },
 ];
 
 describe("app wiring — all command sets registered", () => {
-  test("all 6 command sets produce expected command values", () => {
+  test("all command sets produce expected command values", () => {
     const currentScreen = () => Screen.Main();
 
     const allCommands = [
@@ -74,11 +79,13 @@ describe("app wiring — all command sets registered", () => {
         isGitRepo: () => true,
         hasRecentReports: () => true,
         currentScreen,
+        navigateToSessionPicker: () => {},
       }),
       ...createCookieSyncCommands({ currentScreen }),
       ...createPortPickerCommands({ currentScreen }),
       ...createTestingCommands({ currentScreen }),
       ...createResultsCommands({ currentScreen }),
+      ...createSessionPickerCommands({ currentScreen }),
     ];
 
     const allValues = allCommands.map((cmd) => cmd.value);
@@ -110,11 +117,13 @@ describe("app wiring — all command sets registered", () => {
         isGitRepo: () => true,
         hasRecentReports: () => true,
         currentScreen,
+        navigateToSessionPicker: () => {},
       }),
       ...createCookieSyncCommands({ currentScreen }),
       ...createPortPickerCommands({ currentScreen }),
       ...createTestingCommands({ currentScreen }),
       ...createResultsCommands({ currentScreen }),
+      ...createSessionPickerCommands({ currentScreen }),
     ];
 
     expect(allCommands.length).toBe(expectedTotal);
@@ -135,11 +144,13 @@ describe("app wiring — all command sets registered", () => {
         isGitRepo: () => true,
         hasRecentReports: () => true,
         currentScreen,
+        navigateToSessionPicker: () => {},
       }),
       ...createCookieSyncCommands({ currentScreen }),
       ...createPortPickerCommands({ currentScreen }),
       ...createTestingCommands({ currentScreen }),
       ...createResultsCommands({ currentScreen }),
+      ...createSessionPickerCommands({ currentScreen }),
     ];
 
     const values = allCommands.map((cmd) => cmd.value);
@@ -162,11 +173,13 @@ describe("app wiring — all command sets registered", () => {
         isGitRepo: () => true,
         hasRecentReports: () => true,
         currentScreen,
+        navigateToSessionPicker: () => {},
       }),
       ...createCookieSyncCommands({ currentScreen }),
       ...createPortPickerCommands({ currentScreen }),
       ...createTestingCommands({ currentScreen }),
       ...createResultsCommands({ currentScreen }),
+      ...createSessionPickerCommands({ currentScreen }),
     ];
 
     for (const command of allCommands) {
@@ -191,11 +204,13 @@ describe("app wiring — all command sets registered", () => {
         isGitRepo: () => true,
         hasRecentReports: () => true,
         currentScreen,
+        navigateToSessionPicker: () => {},
       }),
       ...createCookieSyncCommands({ currentScreen }),
       ...createPortPickerCommands({ currentScreen }),
       ...createTestingCommands({ currentScreen }),
       ...createResultsCommands({ currentScreen }),
+      ...createSessionPickerCommands({ currentScreen }),
     ];
 
     for (const command of allCommands) {
@@ -218,11 +233,13 @@ describe("app wiring — all command sets registered", () => {
         isGitRepo: () => true,
         hasRecentReports: () => true,
         currentScreen,
+        navigateToSessionPicker: () => {},
       }),
       ...createCookieSyncCommands({ currentScreen }),
       ...createPortPickerCommands({ currentScreen }),
       ...createTestingCommands({ currentScreen }),
       ...createResultsCommands({ currentScreen }),
+      ...createSessionPickerCommands({ currentScreen }),
     ];
 
     for (const command of allCommands) {
@@ -292,19 +309,21 @@ describe("app wiring — modeline shows correct visible commands per screen", ()
         isGitRepo: () => true,
         hasRecentReports: () => true,
         currentScreen,
+        navigateToSessionPicker: () => {},
       }),
     );
     registry.register(() => createCookieSyncCommands({ currentScreen }));
     registry.register(() => createPortPickerCommands({ currentScreen }));
     registry.register(() => createTestingCommands({ currentScreen }));
     registry.register(() => createResultsCommands({ currentScreen }));
+    registry.register(() => createSessionPickerCommands({ currentScreen }));
 
     const visible = registry.getVisibleCommands();
     const visibleValues = visible.map((cmd) => cmd.value);
 
     expect(visibleValues).toContain("main.cookie-sync");
     expect(visibleValues).toContain("main.agent-picker");
-    expect(visibleValues).toContain("main.saved-flows");
+    expect(visibleValues).toContain("main.resume");
     expect(visibleValues).toContain("main.watch");
 
     expect(visibleValues).not.toContain("global.clear");
@@ -337,12 +356,14 @@ describe("app wiring — modeline shows correct visible commands per screen", ()
         isGitRepo: () => true,
         hasRecentReports: () => true,
         currentScreen,
+        navigateToSessionPicker: () => {},
       }),
     );
     registry.register(() => createCookieSyncCommands({ currentScreen }));
     registry.register(() => createPortPickerCommands({ currentScreen }));
     registry.register(() => createTestingCommands({ currentScreen }));
     registry.register(() => createResultsCommands({ currentScreen }));
+    registry.register(() => createSessionPickerCommands({ currentScreen }));
 
     const visible = registry.getVisibleCommands();
     const visibleValues = visible.map((cmd) => cmd.value);
@@ -382,12 +403,14 @@ describe("app wiring — modeline shows correct visible commands per screen", ()
         isGitRepo: () => true,
         hasRecentReports: () => true,
         currentScreen,
+        navigateToSessionPicker: () => {},
       }),
     );
     registry.register(() => createCookieSyncCommands({ currentScreen }));
     registry.register(() => createPortPickerCommands({ currentScreen }));
     registry.register(() => createTestingCommands({ currentScreen }));
     registry.register(() => createResultsCommands({ currentScreen }));
+    registry.register(() => createSessionPickerCommands({ currentScreen }));
 
     const visible = registry.getVisibleCommands();
     expect(visible.length).toBe(0);
@@ -412,12 +435,14 @@ describe("app wiring — modeline shows correct visible commands per screen", ()
         isGitRepo: () => true,
         hasRecentReports: () => true,
         currentScreen,
+        navigateToSessionPicker: () => {},
       }),
     );
     registry.register(() => createCookieSyncCommands({ currentScreen }));
     registry.register(() => createPortPickerCommands({ currentScreen }));
     registry.register(() => createTestingCommands({ currentScreen }));
     registry.register(() => createResultsCommands({ currentScreen }));
+    registry.register(() => createSessionPickerCommands({ currentScreen }));
 
     const visible = registry.getVisibleCommands();
     expect(visible.length).toBe(0);
@@ -446,12 +471,14 @@ describe("app wiring — modeline shows correct visible commands per screen", ()
         isGitRepo: () => true,
         hasRecentReports: () => true,
         currentScreen,
+        navigateToSessionPicker: () => {},
       }),
     );
     registry.register(() => createCookieSyncCommands({ currentScreen }));
     registry.register(() => createPortPickerCommands({ currentScreen }));
     registry.register(() => createTestingCommands({ currentScreen }));
     registry.register(() => createResultsCommands({ currentScreen }));
+    registry.register(() => createSessionPickerCommands({ currentScreen }));
 
     const visible = registry.getVisibleCommands();
     expect(visible.length).toBe(0);

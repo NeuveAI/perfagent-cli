@@ -150,6 +150,7 @@ describe("register-results commands", () => {
           isGitRepo: () => true,
           hasRecentReports: () => true,
           currentScreen: () => Screen.Main(),
+          navigateToSessionPicker: () => {},
         }),
       );
 
