@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "perf-agent": "./dist/tui.js"
+  },
   "scripts": {
     "build": "bun build.ts",
     "dev": "bun --watch src/tui.ts",
