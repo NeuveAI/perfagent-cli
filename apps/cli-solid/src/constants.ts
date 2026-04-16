@@ -18,3 +18,11 @@ export const SPINNER_FRAMES = ["\u280B", "\u2819", "\u2839", "\u2838", "\u283C",
 export const SPINNER_INTERVAL_MS = 80;
 export const TOAST_DURATION_MS = 3000;
 export const MIN_COLUMNS_FOR_CYCLE_HINT = 80;
+
+export const PORT_PICKER_VISIBLE_COUNT = 10;
+export const MIN_USER_PORT = 1024;
+export const MAX_PORT = 65535;
+export const EPHEMERAL_PORT_START = 32768;
+export const LISTENING_PORTS_REFETCH_INTERVAL_MS = 5000;
+export const TLS_PROBE_TIMEOUT_MS = 300;
+export const PROJECT_SCAN_MAX_DEPTH = 3;
