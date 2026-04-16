@@ -16,7 +16,7 @@ import { useNavigation, Screen } from "../../context/navigation";
 import { useAgent } from "../../context/agent";
 import { atomFnToPromise, atomSet, atomGet } from "../../adapters/effect-atom";
 import { Logo } from "../../renderables/logo";
-import { Spinner } from "../../renderables/spinner";
+import { Spinner, SpinnerSpan } from "../../renderables/spinner";
 import { formatElapsedTime } from "../../utils/format-elapsed-time";
 import { parseExecutionError, type ParsedError } from "../../utils/parse-execution-error";
 import { ErrorDisplay } from "../../renderables/error-display";
@@ -385,7 +385,7 @@ const ToolCallRow = (props: ToolCallRowProps) => {
       <text>
         <span style={{ fg: COLORS.DIM }}>{`${props.indent}${PIPE} `}</span>
         <Show when={props.display.isRunning}>
-          <Spinner />
+          <SpinnerSpan />
         </Show>
         <Show when={hasResult()}>
           <span style={{ fg: statusColor() }}>{statusGlyph()}</span>

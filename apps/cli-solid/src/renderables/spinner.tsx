@@ -5,17 +5,17 @@ interface SpinnerProps {
   readonly message?: string;
 }
 
-export const Spinner = (props: SpinnerProps) => {
+const useSpinnerFrame = () => {
   const [frameIndex, setFrameIndex] = createSignal(0);
-
   const interval = setInterval(() => {
     setFrameIndex((previous) => (previous + 1) % SPINNER_FRAMES.length);
   }, SPINNER_INTERVAL_MS);
-
   onCleanup(() => clearInterval(interval));
+  return () => SPINNER_FRAMES[frameIndex()];
+};
 
-  const frame = () => SPINNER_FRAMES[frameIndex()];
-
+export const Spinner = (props: SpinnerProps) => {
+  const frame = useSpinnerFrame();
   return (
     <text style={{ fg: COLORS.DIM }}>
       <span style={{ fg: COLORS.SELECTION }}>{frame()}</span>
@@ -24,4 +24,9 @@ export const Spinner = (props: SpinnerProps) => {
       </Show>
     </text>
   );
+};
+
+export const SpinnerSpan = () => {
+  const frame = useSpinnerFrame();
+  return <span style={{ fg: COLORS.SELECTION }}>{frame()}</span>;
 };
