@@ -88,8 +88,6 @@ export const atomFnToPromise = <In, Out, E>(
 
   return (input: In): Promise<Exit.Exit<Out, E>> =>
     new Promise<Exit.Exit<Out, E>>((resolve) => {
-      registry.set(atomFn, input);
-
       const unsubscribe = registry.subscribe(
         atomFn,
         (result: AsyncResult.AsyncResult<Out, E>) => {
@@ -104,6 +102,8 @@ export const atomFnToPromise = <In, Out, E>(
           }
         },
       );
+
+      registry.set(atomFn, input);
     });
 };
 
