@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { createGlobalCommands } from "../../src/commands/register-global";
 import { createCommandRegistry } from "../../src/context/command-registry";
+import { Screen } from "../../src/context/navigation";
 import { ctrlKey, escKey } from "../helpers/make-key-event";
 
 const makeGlobalOptions = (overrides?: {
@@ -8,11 +9,17 @@ const makeGlobalOptions = (overrides?: {
   popDialog?: () => void;
   isDialogEmpty?: () => boolean;
   showToast?: (message: string) => void;
+  goBack?: () => void;
+  currentScreen?: () => ReturnType<typeof Screen.Main>;
+  overlay?: () => undefined;
 }) => ({
   clearScreen: overrides?.clearScreen ?? (() => {}),
   popDialog: overrides?.popDialog ?? (() => {}),
   isDialogEmpty: overrides?.isDialogEmpty ?? (() => true),
   showToast: overrides?.showToast ?? (() => {}),
+  goBack: overrides?.goBack ?? (() => {}),
+  currentScreen: overrides?.currentScreen ?? (() => Screen.Main()),
+  overlay: overrides?.overlay ?? (() => undefined),
 });
 
 describe("register-global commands", () => {

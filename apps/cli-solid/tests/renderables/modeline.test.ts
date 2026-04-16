@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { createMainCommands } from "../../src/commands/register-main";
 import { createGlobalCommands } from "../../src/commands/register-global";
+import { Screen } from "../../src/context/navigation";
 import type { CommandDef } from "../../src/context/command-registry";
 import * as keybindPrinter from "../../src/context/keybind";
 
@@ -12,11 +13,15 @@ describe("modeline derivation from registry", () => {
         popDialog: () => {},
         isDialogEmpty: () => true,
         showToast: () => {},
+        goBack: () => {},
+        currentScreen: () => Screen.Main(),
+        overlay: () => undefined,
       }),
       ...createMainCommands({
         showToast: () => {},
         isGitRepo: () => true,
         hasRecentReports: () => true,
+        currentScreen: () => Screen.Main(),
       }),
     ];
 
@@ -40,11 +45,15 @@ describe("modeline derivation from registry", () => {
         popDialog: () => {},
         isDialogEmpty: () => true,
         showToast: () => {},
+        goBack: () => {},
+        currentScreen: () => Screen.Main(),
+        overlay: () => undefined,
       }),
       ...createMainCommands({
         showToast: () => {},
         isGitRepo: () => true,
         hasRecentReports: () => true,
+        currentScreen: () => Screen.Main(),
       }),
     ];
 
@@ -65,6 +74,7 @@ describe("modeline derivation from registry", () => {
       showToast: () => {},
       isGitRepo: () => false,
       hasRecentReports: () => false,
+      currentScreen: () => Screen.Main(),
     });
 
     const visible = commands.filter((cmd) => cmd.hidden !== true && cmd.enabled !== false);
@@ -84,11 +94,15 @@ describe("modeline derivation from registry", () => {
         popDialog: () => {},
         isDialogEmpty: () => true,
         showToast: () => {},
+        goBack: () => {},
+        currentScreen: () => Screen.Main(),
+        overlay: () => undefined,
       }),
       ...createMainCommands({
         showToast: () => {},
         isGitRepo: () => true,
         hasRecentReports: () => true,
+        currentScreen: () => Screen.Main(),
       }),
     ];
 
@@ -109,6 +123,7 @@ describe("modeline derivation from registry", () => {
       showToast: () => {},
       isGitRepo: () => true,
       hasRecentReports: () => true,
+      currentScreen: () => Screen.Main(),
     });
 
     const expectedPrints: Record<string, string> = {

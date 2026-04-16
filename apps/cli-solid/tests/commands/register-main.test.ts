@@ -2,6 +2,7 @@ import { describe, test, expect } from "bun:test";
 import { KeyEvent } from "@opentui/core";
 import { createMainCommands } from "../../src/commands/register-main";
 import { createGlobalCommands } from "../../src/commands/register-global";
+import { Screen } from "../../src/context/navigation";
 import { match, print } from "../../src/context/keybind";
 import { createCommandRegistry, type CommandDef } from "../../src/context/command-registry";
 
@@ -145,6 +146,7 @@ describe("register-main commands", () => {
       showToast: () => {},
       isGitRepo: () => true,
       hasRecentReports: () => true,
+      currentScreen: () => Screen.Main(),
     });
 
     const keybinds = commands
@@ -164,6 +166,9 @@ describe("register-main commands", () => {
           popDialog: () => {},
           isDialogEmpty: () => true,
           showToast: () => {},
+          goBack: () => {},
+          currentScreen: () => Screen.Main(),
+          overlay: () => undefined,
         }),
       );
 
@@ -172,6 +177,7 @@ describe("register-main commands", () => {
           showToast: () => {},
           isGitRepo: () => true,
           hasRecentReports: () => true,
+          currentScreen: () => Screen.Main(),
         }),
       );
     }).not.toThrow();
@@ -182,6 +188,7 @@ describe("register-main commands", () => {
       showToast: () => {},
       isGitRepo: () => false,
       hasRecentReports: () => true,
+      currentScreen: () => Screen.Main(),
     });
 
     const prPicker = commands.find((cmd) => cmd.value === "main.pr-picker");
@@ -193,6 +200,7 @@ describe("register-main commands", () => {
       showToast: () => {},
       isGitRepo: () => true,
       hasRecentReports: () => false,
+      currentScreen: () => Screen.Main(),
     });
 
     const pastRuns = commands.find((cmd) => cmd.value === "main.past-runs");
@@ -204,6 +212,7 @@ describe("register-main commands", () => {
       showToast: () => {},
       isGitRepo: () => false,
       hasRecentReports: () => true,
+      currentScreen: () => Screen.Main(),
     });
 
     const watchCmd = commands.find((cmd) => cmd.value === "main.watch");
@@ -216,6 +225,7 @@ describe("register-main commands", () => {
       showToast: (message) => toasts.push(message),
       isGitRepo: () => true,
       hasRecentReports: () => true,
+      currentScreen: () => Screen.Main(),
     });
 
     for (const command of commands) {
@@ -332,6 +342,9 @@ describe("hidden commands and key dispatch", () => {
         popDialog: () => {},
         isDialogEmpty: () => true,
         showToast: () => {},
+        goBack: () => {},
+        currentScreen: () => Screen.Main(),
+        overlay: () => undefined,
       }),
     );
 
