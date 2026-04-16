@@ -29,6 +29,7 @@ const validateAgent = (input: string | undefined): AgentBackend => {
 
 const goBack = (screen: Screen, setScreen: (screen: Screen) => void) => {
   if (screen._tag === "Testing" || screen._tag === "Watch") return;
+  // HACK: HP-4 must add plan execution cleanup here when Results screen is built
   setScreen(Screen.Main());
 };
 
@@ -57,8 +58,6 @@ const AppInner = () => {
       clearScreen: () => {
         renderer.requestRender();
       },
-      popDialog: () => dialog.pop(),
-      isDialogEmpty: () => dialog.isEmpty(),
       showToast: (message: string) => toast.show(message),
       goBack: () => goBack(navigation.currentScreen(), navigation.setScreen),
       currentScreen: navigation.currentScreen,

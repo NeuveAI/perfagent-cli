@@ -163,8 +163,6 @@ describe("register-main commands", () => {
       registry.register(() =>
         createGlobalCommands({
           clearScreen: () => {},
-          popDialog: () => {},
-          isDialogEmpty: () => true,
           showToast: () => {},
           goBack: () => {},
           currentScreen: () => Screen.Main(),
@@ -339,8 +337,6 @@ describe("hidden commands and key dispatch", () => {
         clearScreen: () => {
           cleared = true;
         },
-        popDialog: () => {},
-        isDialogEmpty: () => true,
         showToast: () => {},
         goBack: () => {},
         currentScreen: () => Screen.Main(),

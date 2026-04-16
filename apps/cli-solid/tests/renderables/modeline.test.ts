@@ -10,8 +10,6 @@ describe("modeline derivation from registry", () => {
     const allCommands: CommandDef[] = [
       ...createGlobalCommands({
         clearScreen: () => {},
-        popDialog: () => {},
-        isDialogEmpty: () => true,
         showToast: () => {},
         goBack: () => {},
         currentScreen: () => Screen.Main(),
@@ -42,8 +40,6 @@ describe("modeline derivation from registry", () => {
     const allCommands: CommandDef[] = [
       ...createGlobalCommands({
         clearScreen: () => {},
-        popDialog: () => {},
-        isDialogEmpty: () => true,
         showToast: () => {},
         goBack: () => {},
         currentScreen: () => Screen.Main(),
@@ -91,8 +87,6 @@ describe("modeline derivation from registry", () => {
     const allCommands: CommandDef[] = [
       ...createGlobalCommands({
         clearScreen: () => {},
-        popDialog: () => {},
-        isDialogEmpty: () => true,
         showToast: () => {},
         goBack: () => {},
         currentScreen: () => Screen.Main(),

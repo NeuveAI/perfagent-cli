@@ -6,16 +6,12 @@ import { ctrlKey, escKey } from "../helpers/make-key-event";
 
 const makeGlobalOptions = (overrides?: {
   clearScreen?: () => void;
-  popDialog?: () => void;
-  isDialogEmpty?: () => boolean;
   showToast?: (message: string) => void;
   goBack?: () => void;
-  currentScreen?: () => ReturnType<typeof Screen.Main>;
+  currentScreen?: () => Screen;
   overlay?: () => undefined;
 }) => ({
   clearScreen: overrides?.clearScreen ?? (() => {}),
-  popDialog: overrides?.popDialog ?? (() => {}),
-  isDialogEmpty: overrides?.isDialogEmpty ?? (() => true),
   showToast: overrides?.showToast ?? (() => {}),
   goBack: overrides?.goBack ?? (() => {}),
   currentScreen: overrides?.currentScreen ?? (() => Screen.Main()),
@@ -65,38 +61,26 @@ describe("register-global commands", () => {
     expect(toasts).toEqual(["not yet wired"]);
   });
 
-  test("esc triggers popDialog when dialog stack is not empty", () => {
-    let popped = false;
+  test("esc is enabled and calls goBack on non-Main screen", () => {
+    let wentBack = false;
     const commands = createGlobalCommands(makeGlobalOptions({
-      isDialogEmpty: () => false,
-      popDialog: () => { popped = true; },
+      currentScreen: () => Screen.SelectPr(),
+      goBack: () => { wentBack = true; },
     }));
 
     const backCmd = commands.find((cmd) => cmd.value === "global.back");
     expect(backCmd?.enabled).toBe(true);
     backCmd?.onSelect();
-    expect(popped).toBe(true);
+    expect(wentBack).toBe(true);
   });
 
-  test("esc is disabled when dialog stack is empty", () => {
+  test("esc is disabled on Main screen", () => {
     const commands = createGlobalCommands(makeGlobalOptions({
-      isDialogEmpty: () => true,
+      currentScreen: () => Screen.Main(),
     }));
 
     const backCmd = commands.find((cmd) => cmd.value === "global.back");
     expect(backCmd?.enabled).toBe(false);
-  });
-
-  test("esc popDialog is a no-op when isDialogEmpty", () => {
-    let popped = false;
-    const commands = createGlobalCommands(makeGlobalOptions({
-      isDialogEmpty: () => true,
-      popDialog: () => { popped = true; },
-    }));
-
-    const backCmd = commands.find((cmd) => cmd.value === "global.back");
-    backCmd?.onSelect();
-    expect(popped).toBe(false);
   });
 
   test("no keybind collisions among global commands", () => {
