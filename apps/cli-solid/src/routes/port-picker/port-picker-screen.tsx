@@ -206,7 +206,14 @@ export const PortPickerScreen = (props: PortPickerScreenProps) => {
   };
 
   useKeyboard((event) => {
-    if (isEnteringCustomUrl()) return;
+    if (isEnteringCustomUrl()) {
+      if (event.name === "escape") {
+        setIsEnteringCustomUrl(false);
+        setCustomUrlValue("");
+        event.preventDefault();
+      }
+      return;
+    }
 
     if (event.name === "down" || event.name === "j") {
       setHighlightedIndex((previous) => Math.min(itemCount() - 1, previous + 1));
