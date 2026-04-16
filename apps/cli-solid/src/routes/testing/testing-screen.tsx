@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onCleanup, For, Show } from "solid-js";
+import { createSignal, createEffect, onCleanup, untrack, For, Show } from "solid-js";
 import { useKeyboard } from "@opentui/solid";
 import { Exit, Option } from "effect";
 import * as Atom from "effect/unstable/reactivity/Atom";
@@ -10,7 +10,6 @@ import type {
 } from "@neuve/shared/models";
 import type { DevServerHint } from "@neuve/shared/prompts";
 import { executeFn } from "@neuve/perf-agent-cli/data/execution-atom";
-import type { ExecutionResult } from "@neuve/perf-agent-cli/data/execution-atom";
 import { agentConfigOptionsAtom } from "@neuve/perf-agent-cli/data/config-options";
 import { useNavigation, Screen } from "../../context/navigation";
 import { useAgent } from "../../context/agent";
@@ -65,51 +64,53 @@ export const TestingScreen = (props: TestingScreenProps) => {
   const totalCount = () => executedPlan()?.steps?.length ?? 0;
 
   createEffect(() => {
-    const startTime = Date.now();
-    setRunStartedAt(startTime);
+    untrack(() => {
+      const startTime = Date.now();
+      setRunStartedAt(startTime);
 
-    const agentBackend = agent.agentBackend();
-    const modelPrefs = agent.modelPreferences();
-    const modelPref = modelPrefs[agentBackend];
+      const agentBackend = agent.agentBackend();
+      const modelPrefs = agent.modelPreferences();
+      const modelPref = modelPrefs[agentBackend];
 
-    const baseUrl =
-      props.baseUrls && props.baseUrls.length > 0 ? props.baseUrls.join(", ") : undefined;
+      const baseUrl =
+        props.baseUrls && props.baseUrls.length > 0 ? props.baseUrls.join(", ") : undefined;
 
-    const trigger = atomFnToPromise(executeFn);
-    const promise = trigger({
-      options: {
-        changesFor: props.changesFor,
-        instruction: props.instruction,
-        isHeadless: true,
-        cdpUrl: undefined,
-        profileName: undefined,
-        cookieBrowserKeys: props.cookieBrowserKeys ? [...props.cookieBrowserKeys] : [],
-        savedFlow: props.savedFlow,
-        baseUrl,
-        devServerHints: props.devServerHints ? [...props.devServerHints] : undefined,
-        modelPreference:
-          modelPref ? { configId: modelPref.configId, value: modelPref.value } : undefined,
-      },
-      agentBackend,
-      onUpdate: setExecutedPlan,
-      onConfigOptions: (configOptions) => {
-        const previous = atomGet(agentConfigOptionsAtom);
-        atomSet(agentConfigOptionsAtom, {
-          ...previous,
-          [agentBackend]: [...configOptions],
-        });
-      },
-    });
+      const trigger = atomFnToPromise(executeFn);
+      const promise = trigger({
+        options: {
+          changesFor: props.changesFor,
+          instruction: props.instruction,
+          isHeadless: true,
+          cdpUrl: undefined,
+          profileName: undefined,
+          cookieBrowserKeys: props.cookieBrowserKeys ? [...props.cookieBrowserKeys] : [],
+          savedFlow: props.savedFlow,
+          baseUrl,
+          devServerHints: props.devServerHints ? [...props.devServerHints] : undefined,
+          modelPreference:
+            modelPref ? { configId: modelPref.configId, value: modelPref.value } : undefined,
+        },
+        agentBackend,
+        onUpdate: setExecutedPlan,
+        onConfigOptions: (configOptions) => {
+          const previous = atomGet(agentConfigOptionsAtom);
+          atomSet(agentConfigOptionsAtom, {
+            ...previous,
+            [agentBackend]: [...configOptions],
+          });
+        },
+      });
 
-    promise.then((exit) => {
-      setIsExecuting(false);
-      if (Exit.isSuccess(exit)) {
-        const result = exit.value as ExecutionResult;
-        navigation.setScreen(Screen.Results({ report: result.report, videoUrl: result.videoUrl }));
-      } else {
-        const prettyError = String(exit.cause);
-        setExecutionError(prettyError);
-      }
+      promise.then((exit) => {
+        setIsExecuting(false);
+        if (Exit.isSuccess(exit)) {
+          const result = exit.value;
+          navigation.setScreen(Screen.Results({ report: result.report, videoUrl: result.videoUrl }));
+        } else {
+          const prettyError = String(exit.cause);
+          setExecutionError(prettyError);
+        }
+      });
     });
 
     onCleanup(() => {
@@ -366,6 +367,17 @@ const ToolCallRow = (props: ToolCallRowProps) => {
           </span>
         </Show>
       </text>
+
+      <Show when={props.display.tool.multilineArgs}>
+        <For each={props.display.tool.multilineArgs!.split("\n")}>
+          {(line) => (
+            <text style={{ fg: COLORS.DIM }}>
+              {`${props.indent}${PIPE}     `}
+              <span style={{ fg: COLORS.TEXT }}>{line}</span>
+            </text>
+          )}
+        </For>
+      </Show>
 
       <Show when={hasResult() && props.display.resultText}>
         {(_resultText) => {
