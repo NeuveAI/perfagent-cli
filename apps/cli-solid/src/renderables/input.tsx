@@ -1,5 +1,6 @@
 import { createSignal, createEffect, Show } from "solid-js";
-import { useKeyboard } from "@opentui/solid";
+import { useKeyboard, usePaste } from "@opentui/solid";
+import { decodePasteBytes, stripAnsiSequences } from "@opentui/core";
 import { useInputFocus } from "../context/input-focus";
 import { COLORS } from "../constants";
 
@@ -165,13 +166,13 @@ export const Input = (props: InputProps) => {
     }
 
     if (!handled && !event.ctrl && !event.meta && event.name.length === 1) {
-      const character = event.name;
-      if (character === "@" && value === "" && props.onAtTrigger) {
+      const text = event.name;
+      if (text === "@" && value === "" && props.onAtTrigger) {
         props.onAtTrigger();
         return;
       }
-      nextValue = value.slice(0, nextOffset) + character + value.slice(nextOffset);
-      nextOffset += character.length;
+      nextValue = value.slice(0, nextOffset) + text + value.slice(nextOffset);
+      nextOffset += text.length;
       handled = true;
     }
 
@@ -181,6 +182,32 @@ export const Input = (props: InputProps) => {
     setCursorOffset(nextOffset);
 
     if (nextValue !== value) {
+      props.onChange(nextValue);
+    }
+  });
+
+  usePaste((event: unknown) => {
+    // HACK: debug paste — remove after confirming it works
+    const asRecord = event as Record<string, unknown>;
+    const bytes = asRecord?.bytes;
+    if (bytes instanceof Uint8Array) {
+      const text = stripAnsiSequences(decodePasteBytes(bytes));
+      if (!focus() || !text) return;
+      const sanitized = props.multiline ? text : text.replace(/[\n\r]/g, " ");
+      const value = props.value;
+      const offset = cursorOffset();
+      const nextValue = value.slice(0, offset) + sanitized + value.slice(offset);
+      const nextOffset = offset + sanitized.length;
+      setCursorOffset(nextOffset);
+      props.onChange(nextValue);
+    } else if (typeof event === "string") {
+      if (!focus() || !event) return;
+      const sanitized = props.multiline ? event : event.replace(/[\n\r]/g, " ");
+      const value = props.value;
+      const offset = cursorOffset();
+      const nextValue = value.slice(0, offset) + sanitized + value.slice(offset);
+      const nextOffset = offset + sanitized.length;
+      setCursorOffset(nextOffset);
       props.onChange(nextValue);
     }
   });
