@@ -1,12 +1,38 @@
 import type { AgentSideConnection } from "@agentclientprotocol/sdk";
 import type { ChatCompletionMessageParam, ChatCompletionTool } from "openai/resources/chat/completions";
 import type { OllamaClient } from "./ollama-client.js";
-import type { McpBridge } from "./mcp-bridge.js";
+import type { McpBridge, McpToolCallResult } from "./mcp-bridge.js";
+
+import { parseTraceOutput } from "@neuve/shared/parse-trace-output";
 
 import { log } from "./log.js";
 
 const MAX_TOOL_ROUNDS = 15;
 const DOOM_LOOP_THRESHOLD = 3;
+const TRACE_STOPPED_SENTINEL = "The performance trace has been stopped.";
+
+interface AutoDrillTarget {
+  readonly insightSetId: string;
+  readonly insightName: string;
+}
+
+const collectAutoDrillTargets = (traceResultText: string): AutoDrillTarget[] => {
+  const snapshots = parseTraceOutput(traceResultText);
+  const seen = new Set<string>();
+  const targets: AutoDrillTarget[] = [];
+  for (const snapshot of snapshots) {
+    for (const insight of snapshot.insights) {
+      const key = `${insight.insightSetId}::${insight.insightName}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      targets.push({
+        insightSetId: insight.insightSetId,
+        insightName: insight.insightName,
+      });
+    }
+  }
+  return targets;
+};
 
 export interface ToolLoopOptions {
   sessionId: string;
@@ -159,7 +185,7 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
       if (isError) {
         lastToolError = text;
       }
-      const messageText = isError
+      const baseMessageText = isError
         ? `${text}\n\nHint: Check the tool's call shape in its description. Wrap your arguments under the wrapper key shown in the example.`
         : text;
 
@@ -170,15 +196,105 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
           toolCallId: toolCall.id,
           title: functionName,
           status: isError ? "failed" : "completed",
-          content: [{ type: "content", content: { type: "text", text: messageText } }],
-          rawOutput: messageText,
+          content: [{ type: "content", content: { type: "text", text: baseMessageText } }],
+          rawOutput: baseMessageText,
         },
       });
+
+      let combinedLlmText = baseMessageText;
+      if (
+        !isError &&
+        functionName === "trace" &&
+        baseMessageText.includes(TRACE_STOPPED_SENTINEL)
+      ) {
+        const targets = collectAutoDrillTargets(baseMessageText);
+        log("auto-drill-in planned", {
+          tool: "trace",
+          targetCount: targets.length,
+          insightNames: targets.map((target) => target.insightName),
+        });
+
+        const analyses: string[] = [];
+        for (const target of targets) {
+          if (signal.aborted) return;
+
+          const analyzeArgs = {
+            action: {
+              command: "analyze" as const,
+              insightSetId: target.insightSetId,
+              insightName: target.insightName,
+            },
+          };
+          const analyzeCallId = `auto-drill-${target.insightSetId}-${target.insightName}-${crypto.randomUUID()}`;
+
+          log("auto-drill-in start", {
+            tool: "trace",
+            auto: true,
+            insightSetId: target.insightSetId,
+            insightName: target.insightName,
+          });
+
+          await connection.sessionUpdate({
+            sessionId,
+            update: {
+              sessionUpdate: "tool_call",
+              toolCallId: analyzeCallId,
+              title: "trace",
+              kind: "read",
+              status: "pending",
+              rawInput: analyzeArgs,
+            },
+          });
+
+          let analyzeResult: McpToolCallResult;
+          try {
+            analyzeResult = await mcpBridge.callTool("trace", analyzeArgs);
+          } catch (cause) {
+            const errorText = cause instanceof Error ? cause.message : String(cause);
+            analyzeResult = { text: errorText, isError: true };
+          }
+
+          await connection.sessionUpdate({
+            sessionId,
+            update: {
+              sessionUpdate: "tool_call_update",
+              toolCallId: analyzeCallId,
+              title: "trace",
+              status: analyzeResult.isError ? "failed" : "completed",
+              content: [
+                {
+                  type: "content",
+                  content: { type: "text", text: analyzeResult.text },
+                },
+              ],
+              rawOutput: analyzeResult.text,
+            },
+          });
+
+          log("auto-drill-in complete", {
+            tool: "trace",
+            auto: true,
+            insightName: target.insightName,
+            isError: analyzeResult.isError,
+            textLength: analyzeResult.text.length,
+          });
+
+          if (analyzeResult.isError) {
+            analyses.push(`### ${target.insightName}: error — ${analyzeResult.text}`);
+          } else {
+            analyses.push(analyzeResult.text);
+          }
+        }
+
+        if (analyses.length > 0) {
+          combinedLlmText = `${baseMessageText}\n\n${analyses.join("\n\n---\n\n")}`;
+        }
+      }
 
       messages.push({
         role: "tool" as const,
         tool_call_id: toolCall.id,
-        content: messageText,
+        content: combinedLlmText,
       });
     }
 
