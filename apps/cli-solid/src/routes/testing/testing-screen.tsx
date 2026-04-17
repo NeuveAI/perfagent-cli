@@ -117,11 +117,11 @@ export const TestingScreen = (props: TestingScreenProps) => {
       promise.then((exit) => {
         setIsExecuting(false);
         if (Exit.isSuccess(exit)) {
+          const result = exit.value;
           const sid = sessionId();
           if (sid) {
-            try { updateSession(sid, { status: "completed" }); } catch {}
+            try { updateSession(sid, { status: "completed", reportPath: result.reportPath }); } catch {}
           }
-          const result = exit.value;
           navigation.setScreen(Screen.Results({ report: result.report, videoUrl: result.videoUrl }));
         } else {
           const parsed = parseExecutionError(exit.cause);
