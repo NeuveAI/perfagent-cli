@@ -173,16 +173,16 @@ export const InsightsOverlay = (props: InsightsOverlayProps) => {
   const detailFooter = () => "\u2191\u2193 scroll \u00b7 esc back";
 
   const renderRow = (label: string, index: number) => {
-    const isSelected = index === selectedIndex();
+    const isSelected = () => index === selectedIndex();
     const numberLabel = `${index + 1}.`.padEnd(4, " ");
     return (
       <box>
         <text>
-          <span style={{ fg: isSelected ? COLORS.PRIMARY : COLORS.DIM }}>
-            {isSelected ? "\u25B8 " : "  "}
+          <span style={{ fg: isSelected() ? COLORS.PRIMARY : COLORS.DIM }}>
+            {isSelected() ? "\u25B8 " : "  "}
           </span>
           <span style={{ fg: COLORS.DIM }}>{numberLabel}</span>
-          <span style={{ fg: isSelected ? COLORS.TEXT : COLORS.DIM }}>{label}</span>
+          <span style={{ fg: isSelected() ? COLORS.TEXT : COLORS.DIM }}>{label}</span>
         </text>
       </box>
     );
