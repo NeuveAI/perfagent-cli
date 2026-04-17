@@ -371,10 +371,9 @@ describe("app wiring — modeline shows correct visible commands per screen", ()
     expect(visibleValues).toContain("results.copy");
     expect(visibleValues).toContain("results.save");
     expect(visibleValues).toContain("results.restart");
+    expect(visibleValues).toContain("results.ask");
     expect(visibleValues).toContain("results.insights");
     expect(visibleValues).toContain("results.raw-events");
-
-    expect(visibleValues).not.toContain("results.ask");
 
     expect(visibleValues).not.toContain("main.cookie-sync");
     expect(visibleValues).not.toContain("main.agent-picker");

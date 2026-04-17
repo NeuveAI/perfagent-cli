@@ -3,6 +3,7 @@ import { Exit } from "effect";
 import type { PerfReport } from "@neuve/supervisor";
 import type { AnalysisStep } from "@neuve/shared/models";
 import { saveFlowFn } from "@neuve/perf-agent-cli/data/flow-storage-atom";
+import { askReportFn, type AskResult } from "@neuve/perf-agent-cli/data/ask-report-atom";
 import { useNavigation, screenForTestingOrPortPicker } from "../../context/navigation";
 import { useToast } from "../../context/toast";
 import { atomFnToPromise } from "../../adapters/effect-atom";
@@ -11,6 +12,7 @@ import { RuledBox } from "../../renderables/ruled-box";
 import { MetricsTable } from "./metrics-table";
 import { RawEventsOverlay } from "./raw-events-overlay";
 import { InsightsOverlay } from "./insights-overlay";
+import { AskPanel } from "./ask-panel";
 import { copyToClipboard } from "../../utils/copy-to-clipboard";
 import { getStepElapsedMs, getTotalElapsedMs } from "../../utils/step-elapsed";
 import { formatElapsedTime } from "../../utils/format-elapsed-time";
@@ -36,6 +38,9 @@ export const ResultsScreen = (props: ResultsScreenProps) => {
   const [savePending, setSavePending] = createSignal(false);
   const [saveSucceeded, setSaveSucceeded] = createSignal(false);
   const [saveFailed, setSaveFailed] = createSignal(false);
+  const [askHistory, setAskHistory] = createSignal<readonly AskResult[]>([]);
+  const [askPending, setAskPending] = createSignal(false);
+  const [askError, setAskError] = createSignal<string | undefined>(undefined);
 
   const isPassed = () => props.report.status === "passed";
   const statusColor = () => (isPassed() ? COLORS.GREEN : COLORS.RED);
@@ -85,6 +90,20 @@ export const ResultsScreen = (props: ResultsScreenProps) => {
         instruction: props.report.instruction,
       }),
     );
+  };
+
+  const handleAskSubmit = async (question: string) => {
+    if (askPending()) return;
+    setAskPending(true);
+    setAskError(undefined);
+    const trigger = atomFnToPromise(askReportFn);
+    const exit = await trigger({ report: props.report, question });
+    setAskPending(false);
+    if (Exit.isSuccess(exit)) {
+      setAskHistory((prev) => [...prev, exit.value]);
+    } else {
+      setAskError("Couldn\u2019t answer that. Press enter to retry.");
+    }
   };
 
   setResultsActions({ onCopy: handleCopy, onSave: handleSave, onRestart: handleRestart });
@@ -214,6 +233,16 @@ export const ResultsScreen = (props: ResultsScreenProps) => {
 
       <Show when={navigation.overlay() === "insights"}>
         <InsightsOverlay report={props.report} onClose={() => navigation.setOverlay(undefined)} />
+      </Show>
+
+      <Show when={navigation.overlay() === "ask"}>
+        <AskPanel
+          history={askHistory()}
+          pending={askPending()}
+          error={askError()}
+          onSubmit={handleAskSubmit}
+          onClose={() => navigation.setOverlay(undefined)}
+        />
       </Show>
     </box>
   );

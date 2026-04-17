@@ -50,10 +50,9 @@ export const createResultsCommands = (options: RegisterResultsOptions): readonly
     value: "results.ask",
     keybind: "a",
     category: "Results",
-    hidden: true,
     enabled: isEnabled(options),
     onSelect: () => {
-      // HACK: stub — follow-up questions are future work
+      options.setOverlay("ask");
     },
   },
   {
