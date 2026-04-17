@@ -1,4 +1,4 @@
-import { Switch, Match } from "solid-js";
+import { Switch, Match, onCleanup } from "solid-js";
 import { useKeyboard, useRenderer } from "@opentui/solid";
 import { CommandProvider, useCommandRegistry } from "./context/command";
 import { DialogProvider, useDialogStack } from "./context/dialog";
@@ -10,6 +10,7 @@ import { ProjectProvider, useProject } from "./context/project";
 import { AgentProvider } from "./context/agent";
 import { SyncProvider } from "./context/sync";
 import { NavigationProvider, useNavigation, Screen } from "./context/navigation";
+import { registerCleanupHandler, isShuttingDown } from "./lifecycle/shutdown";
 import { atomToAccessor } from "./adapters/effect-atom";
 import { recentReportsAtom } from "@neuve/perf-agent-cli/data/recent-reports-atom";
 import { AGENT_PROVIDER_DISPLAY_NAMES } from "@neuve/shared/models";
@@ -62,6 +63,16 @@ const AppInner = () => {
   const renderer = useRenderer();
   const project = useProject();
   const navigation = useNavigation();
+
+  const unregisterRendererCleanup = registerCleanupHandler(() => {
+    renderer.destroy();
+  });
+
+  onCleanup(() => {
+    unregisterRendererCleanup();
+    if (isShuttingDown()) return;
+    renderer.destroy();
+  });
 
   const recentReportsResult = atomToAccessor(recentReportsAtom);
 
