@@ -82,13 +82,26 @@ const extractNavigationUrl = (input: unknown): string | undefined => {
   return undefined;
 };
 
+const matchInsightSetId = (
+  candidate: Record<string, unknown>,
+  insightName: string,
+): string | undefined => {
+  const candidateName = candidate["insightName"];
+  if (typeof candidateName !== "string" || candidateName !== insightName) return undefined;
+  const insightSetId = candidate["insightSetId"];
+  return typeof insightSetId === "string" && insightSetId.length > 0 ? insightSetId : undefined;
+};
+
 const extractInsightSetId = (input: unknown, insightName: string): string | undefined => {
   const decoded = decodeToolCallInput(input);
   if (!decoded) return undefined;
-  const candidateName = decoded["insightName"];
-  if (typeof candidateName !== "string" || candidateName !== insightName) return undefined;
-  const insightSetId = decoded["insightSetId"];
-  return typeof insightSetId === "string" && insightSetId.length > 0 ? insightSetId : undefined;
+  const topLevel = matchInsightSetId(decoded, insightName);
+  if (topLevel) return topLevel;
+  const action = decoded["action"];
+  if (Predicate.isObject(action)) {
+    return matchInsightSetId(action as Record<string, unknown>, insightName);
+  }
+  return undefined;
 };
 
 const findPrecedingInsightSetId = (

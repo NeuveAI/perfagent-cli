@@ -166,6 +166,118 @@ describe("Reporter", () => {
     expect(Option.getOrUndefined(report.insightDetails[0].insightSetId)).toBe("NAVIGATION_0");
   });
 
+  it("resolves insightSetId when auto-drill wraps input under 'action'", async () => {
+    const insightCall = new ToolCall({
+      toolName: "trace",
+      input: JSON.stringify({
+        action: {
+          command: "analyze",
+          insightSetId: "NAVIGATION_0",
+          insightName: "LCPBreakdown",
+        },
+      }),
+    });
+    const insightResult = new ToolResult({
+      toolName: "trace",
+      result: INSIGHT_PAYLOAD,
+      isError: false,
+    });
+
+    const report = await Effect.runPromise(
+      Effect.gen(function* () {
+        const reporter = yield* Reporter;
+        return yield* reporter.report(makeExecutedPlan([insightCall, insightResult]));
+      }).pipe(Effect.provide(Reporter.layer)),
+    );
+
+    expect(report.insightDetails.length).toBe(1);
+    expect(report.insightDetails[0].insightName).toBe("LCPBreakdown");
+    expect(Option.getOrUndefined(report.insightDetails[0].insightSetId)).toBe("NAVIGATION_0");
+  });
+
+  it("falls back to none when no preceding ToolCall carries insightSetId", async () => {
+    const insightCall = new ToolCall({
+      toolName: "trace",
+      input: JSON.stringify({
+        action: {
+          command: "analyze",
+          insightName: "LCPBreakdown",
+        },
+      }),
+    });
+    const insightResult = new ToolResult({
+      toolName: "trace",
+      result: INSIGHT_PAYLOAD,
+      isError: false,
+    });
+
+    const report = await Effect.runPromise(
+      Effect.gen(function* () {
+        const reporter = yield* Reporter;
+        return yield* reporter.report(makeExecutedPlan([insightCall, insightResult]));
+      }).pipe(Effect.provide(Reporter.layer)),
+    );
+
+    expect(report.insightDetails.length).toBe(1);
+    expect(Option.isNone(report.insightDetails[0].insightSetId)).toBe(true);
+  });
+
+  it("populates insightSetId for every entry across multi-trace auto-drill", async () => {
+    const nav0Call = new ToolCall({
+      toolName: "interact",
+      input: JSON.stringify({ command: "navigate", url: "https://a.com/" }),
+    });
+    const nav1Call = new ToolCall({
+      toolName: "interact",
+      input: JSON.stringify({ command: "navigate", url: "https://b.com/" }),
+    });
+    const drillNav0 = new ToolCall({
+      toolName: "trace",
+      input: JSON.stringify({
+        action: {
+          command: "analyze",
+          insightSetId: "NAVIGATION_0",
+          insightName: "LCPBreakdown",
+        },
+      }),
+    });
+    const drillNav1 = new ToolCall({
+      toolName: "trace",
+      input: JSON.stringify({
+        action: {
+          command: "analyze",
+          insightSetId: "NAVIGATION_1",
+          insightName: "LCPBreakdown",
+        },
+      }),
+    });
+    const insightResult = new ToolResult({
+      toolName: "trace",
+      result: INSIGHT_PAYLOAD,
+      isError: false,
+    });
+
+    const report = await Effect.runPromise(
+      Effect.gen(function* () {
+        const reporter = yield* Reporter;
+        return yield* reporter.report(
+          makeExecutedPlan([
+            nav0Call,
+            drillNav0,
+            insightResult,
+            nav1Call,
+            drillNav1,
+            insightResult,
+          ]),
+        );
+      }).pipe(Effect.provide(Reporter.layer)),
+    );
+
+    expect(report.insightDetails.length).toBe(2);
+    expect(Option.getOrUndefined(report.insightDetails[0].insightSetId)).toBe("NAVIGATION_0");
+    expect(Option.getOrUndefined(report.insightDetails[1].insightSetId)).toBe("NAVIGATION_1");
+  });
+
   it("encodes and decodes PerfReport through Schema.encodeSync", async () => {
     const navigateCall = new ToolCall({
       toolName: "interact",
