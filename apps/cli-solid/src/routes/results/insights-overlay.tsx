@@ -13,13 +13,48 @@ interface InsightsOverlayProps {
 const OVERLAY_CHROME_ROWS = 10;
 const MIN_VISIBLE_ROWS = 4;
 
+const MISSING_ANALYSIS_NOTICE =
+  "No detailed analysis captured. Re-run with `trace analyze` to get the full breakdown.";
+
 const getInsightLabel = (detail: InsightDetail): string =>
   detail.title.length > 0 ? detail.title : detail.insightName;
+
+type DisplayList =
+  | { readonly kind: "details"; readonly items: readonly InsightDetail[] }
+  | { readonly kind: "references"; readonly items: readonly string[] }
+  | { readonly kind: "empty" };
 
 export const InsightsOverlay = (props: InsightsOverlayProps) => {
   const dimensions = useTerminalDimensions();
 
-  const details = createMemo<readonly InsightDetail[]>(() => props.report.insightDetails);
+  const displayList = createMemo<DisplayList>(() => {
+    if (props.report.insightDetails.length > 0) {
+      return { kind: "details", items: props.report.insightDetails };
+    }
+    if (props.report.uniqueInsightNames.length > 0) {
+      return { kind: "references", items: props.report.uniqueInsightNames };
+    }
+    return { kind: "empty" };
+  });
+
+  const itemCount = () => {
+    const list = displayList();
+    if (list.kind === "empty") return 0;
+    return list.items.length;
+  };
+
+  const detailItems = (): readonly InsightDetail[] | undefined => {
+    const list = displayList();
+    return list.kind === "details" ? list.items : undefined;
+  };
+
+  const referenceItems = (): readonly string[] | undefined => {
+    const list = displayList();
+    return list.kind === "references" ? list.items : undefined;
+  };
+
+  const isEmpty = () => displayList().kind === "empty";
+
   const [mode, setMode] = createSignal<"list" | "detail">("list");
   const [selectedIndex, setSelectedIndex] = createSignal(0);
   const [analysisScroll, setAnalysisScroll] = createSignal(0);
@@ -31,7 +66,7 @@ export const InsightsOverlay = (props: InsightsOverlayProps) => {
     );
 
   const clampSelection = (index: number): number => {
-    const total = details().length;
+    const total = itemCount();
     if (total === 0) return 0;
     if (index < 0) return 0;
     if (index >= total) return total - 1;
@@ -42,7 +77,17 @@ export const InsightsOverlay = (props: InsightsOverlayProps) => {
     setSelectedIndex((previous) => clampSelection(previous + delta));
   };
 
-  const selectedDetail = () => details()[selectedIndex()];
+  const selectedDetail = () => {
+    const list = displayList();
+    if (list.kind !== "details") return undefined;
+    return list.items[selectedIndex()];
+  };
+
+  const selectedReferenceName = () => {
+    const list = displayList();
+    if (list.kind !== "references") return undefined;
+    return list.items[selectedIndex()];
+  };
 
   const analysisLines = createMemo<readonly string[]>(() => {
     const detail = selectedDetail();
@@ -65,7 +110,7 @@ export const InsightsOverlay = (props: InsightsOverlayProps) => {
   };
 
   const openDetail = (): void => {
-    if (details().length === 0) return;
+    if (itemCount() === 0) return;
     setAnalysisScroll(0);
     setMode("detail");
   };
@@ -127,33 +172,44 @@ export const InsightsOverlay = (props: InsightsOverlayProps) => {
   const listFooter = () => "\u2191\u2193 navigate \u00b7 enter open \u00b7 esc dismiss";
   const detailFooter = () => "\u2191\u2193 scroll \u00b7 esc back";
 
+  const renderRow = (label: string, index: number) => {
+    const isSelected = index === selectedIndex();
+    const numberLabel = `${index + 1}.`.padEnd(4, " ");
+    return (
+      <box>
+        <text>
+          <span style={{ fg: isSelected ? COLORS.PRIMARY : COLORS.DIM }}>
+            {isSelected ? "\u25B8 " : "  "}
+          </span>
+          <span style={{ fg: COLORS.DIM }}>{numberLabel}</span>
+          <span style={{ fg: isSelected ? COLORS.TEXT : COLORS.DIM }}>{label}</span>
+        </text>
+      </box>
+    );
+  };
+
   return (
     <OverlayContainer title="Insights" footerHint={mode() === "list" ? listFooter() : detailFooter()}>
-      <Show when={details().length === 0}>
+      <Show when={isEmpty()}>
         <text style={{ fg: COLORS.DIM }}>No insights available.</text>
       </Show>
-      <Show when={details().length > 0}>
+      <Show when={!isEmpty()}>
         <Switch>
           <Match when={mode() === "list"}>
-            <For each={details()}>
-              {(detail, index) => {
-                const isSelected = () => index() === selectedIndex();
-                const numberLabel = () => `${index() + 1}.`.padEnd(4, " ");
-                return (
-                  <box>
-                    <text>
-                      <span style={{ fg: isSelected() ? COLORS.PRIMARY : COLORS.DIM }}>
-                        {isSelected() ? "\u25B8 " : "  "}
-                      </span>
-                      <span style={{ fg: COLORS.DIM }}>{numberLabel()}</span>
-                      <span style={{ fg: isSelected() ? COLORS.TEXT : COLORS.DIM }}>
-                        {getInsightLabel(detail)}
-                      </span>
-                    </text>
-                  </box>
-                );
-              }}
-            </For>
+            <Show when={detailItems()}>
+              {(items) => (
+                <For each={items()}>
+                  {(detail, index) => renderRow(getInsightLabel(detail), index())}
+                </For>
+              )}
+            </Show>
+            <Show when={referenceItems()}>
+              {(items) => (
+                <For each={items()}>
+                  {(name, index) => renderRow(name, index())}
+                </For>
+              )}
+            </Show>
           </Match>
           <Match when={mode() === "detail"}>
             <Show when={selectedDetail()}>
@@ -215,6 +271,20 @@ export const InsightsOverlay = (props: InsightsOverlayProps) => {
                   </box>
                 );
               }}
+            </Show>
+            <Show when={selectedReferenceName()}>
+              {(name) => (
+                <box flexDirection="column">
+                  <box>
+                    <text>
+                      <span style={{ fg: COLORS.SELECTION, bold: true }}>{name()}</span>
+                    </text>
+                  </box>
+                  <box marginTop={1}>
+                    <text style={{ fg: COLORS.DIM }}>{MISSING_ANALYSIS_NOTICE}</text>
+                  </box>
+                </box>
+              )}
             </Show>
           </Match>
         </Switch>
