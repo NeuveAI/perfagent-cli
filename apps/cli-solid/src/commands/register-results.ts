@@ -1,13 +1,18 @@
 import type { CommandDef } from "../context/command";
-import type { Screen } from "../context/navigation";
+import type { Screen, ResultsOverlay } from "../context/navigation";
 import { getResultsActions } from "../routes/results/results-screen";
 
 interface RegisterResultsOptions {
   readonly currentScreen: () => Screen;
+  readonly overlay: () => ResultsOverlay | undefined;
+  readonly isDialogEmpty: () => boolean;
+  readonly setOverlay: (overlay: ResultsOverlay | undefined) => void;
 }
 
-const isResultsScreen = (currentScreen: () => Screen): boolean =>
-  currentScreen()._tag === "Results";
+const isEnabled = (options: RegisterResultsOptions): boolean =>
+  options.currentScreen()._tag === "Results" &&
+  options.overlay() === undefined &&
+  options.isDialogEmpty();
 
 export const createResultsCommands = (options: RegisterResultsOptions): readonly CommandDef[] => [
   {
@@ -15,7 +20,7 @@ export const createResultsCommands = (options: RegisterResultsOptions): readonly
     value: "results.copy",
     keybind: "y",
     category: "Results",
-    enabled: isResultsScreen(options.currentScreen),
+    enabled: isEnabled(options),
     onSelect: () => {
       getResultsActions()?.onCopy();
     },
@@ -25,7 +30,7 @@ export const createResultsCommands = (options: RegisterResultsOptions): readonly
     value: "results.save",
     keybind: "s",
     category: "Results",
-    enabled: isResultsScreen(options.currentScreen),
+    enabled: isEnabled(options),
     onSelect: () => {
       getResultsActions()?.onSave();
     },
@@ -35,7 +40,7 @@ export const createResultsCommands = (options: RegisterResultsOptions): readonly
     value: "results.restart",
     keybind: "r",
     category: "Results",
-    enabled: isResultsScreen(options.currentScreen),
+    enabled: isEnabled(options),
     onSelect: () => {
       getResultsActions()?.onRestart();
     },
@@ -46,7 +51,7 @@ export const createResultsCommands = (options: RegisterResultsOptions): readonly
     keybind: "a",
     category: "Results",
     hidden: true,
-    enabled: isResultsScreen(options.currentScreen),
+    enabled: isEnabled(options),
     onSelect: () => {
       // HACK: stub — follow-up questions are future work
     },
@@ -57,20 +62,19 @@ export const createResultsCommands = (options: RegisterResultsOptions): readonly
     keybind: "i",
     category: "Results",
     hidden: true,
-    enabled: isResultsScreen(options.currentScreen),
+    enabled: isEnabled(options),
     onSelect: () => {
       // HACK: stub — insight panel is future work
     },
   },
   {
-    title: "raw events",
+    title: "events",
     value: "results.raw-events",
-    keybind: "ctrl+o",
+    keybind: "e",
     category: "Results",
-    hidden: true,
-    enabled: isResultsScreen(options.currentScreen),
+    enabled: isEnabled(options),
     onSelect: () => {
-      // HACK: stub — raw events panel is future work
+      options.setOverlay("rawEvents");
     },
   },
 ];

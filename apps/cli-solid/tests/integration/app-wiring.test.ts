@@ -84,7 +84,7 @@ describe("app wiring — all command sets registered", () => {
       ...createCookieSyncCommands({ currentScreen }),
       ...createPortPickerCommands({ currentScreen }),
       ...createTestingCommands({ currentScreen }),
-      ...createResultsCommands({ currentScreen }),
+      ...createResultsCommands({ currentScreen, overlay: () => undefined, isDialogEmpty: () => true, setOverlay: () => {} }),
       ...createSessionPickerCommands({ currentScreen }),
     ];
 
@@ -122,7 +122,7 @@ describe("app wiring — all command sets registered", () => {
       ...createCookieSyncCommands({ currentScreen }),
       ...createPortPickerCommands({ currentScreen }),
       ...createTestingCommands({ currentScreen }),
-      ...createResultsCommands({ currentScreen }),
+      ...createResultsCommands({ currentScreen, overlay: () => undefined, isDialogEmpty: () => true, setOverlay: () => {} }),
       ...createSessionPickerCommands({ currentScreen }),
     ];
 
@@ -149,7 +149,7 @@ describe("app wiring — all command sets registered", () => {
       ...createCookieSyncCommands({ currentScreen }),
       ...createPortPickerCommands({ currentScreen }),
       ...createTestingCommands({ currentScreen }),
-      ...createResultsCommands({ currentScreen }),
+      ...createResultsCommands({ currentScreen, overlay: () => undefined, isDialogEmpty: () => true, setOverlay: () => {} }),
       ...createSessionPickerCommands({ currentScreen }),
     ];
 
@@ -178,7 +178,7 @@ describe("app wiring — all command sets registered", () => {
       ...createCookieSyncCommands({ currentScreen }),
       ...createPortPickerCommands({ currentScreen }),
       ...createTestingCommands({ currentScreen }),
-      ...createResultsCommands({ currentScreen }),
+      ...createResultsCommands({ currentScreen, overlay: () => undefined, isDialogEmpty: () => true, setOverlay: () => {} }),
       ...createSessionPickerCommands({ currentScreen }),
     ];
 
@@ -209,7 +209,7 @@ describe("app wiring — all command sets registered", () => {
       ...createCookieSyncCommands({ currentScreen }),
       ...createPortPickerCommands({ currentScreen }),
       ...createTestingCommands({ currentScreen }),
-      ...createResultsCommands({ currentScreen }),
+      ...createResultsCommands({ currentScreen, overlay: () => undefined, isDialogEmpty: () => true, setOverlay: () => {} }),
       ...createSessionPickerCommands({ currentScreen }),
     ];
 
@@ -238,7 +238,7 @@ describe("app wiring — all command sets registered", () => {
       ...createCookieSyncCommands({ currentScreen }),
       ...createPortPickerCommands({ currentScreen }),
       ...createTestingCommands({ currentScreen }),
-      ...createResultsCommands({ currentScreen }),
+      ...createResultsCommands({ currentScreen, overlay: () => undefined, isDialogEmpty: () => true, setOverlay: () => {} }),
       ...createSessionPickerCommands({ currentScreen }),
     ];
 
@@ -315,7 +315,7 @@ describe("app wiring — modeline shows correct visible commands per screen", ()
     registry.register(() => createCookieSyncCommands({ currentScreen }));
     registry.register(() => createPortPickerCommands({ currentScreen }));
     registry.register(() => createTestingCommands({ currentScreen }));
-    registry.register(() => createResultsCommands({ currentScreen }));
+    registry.register(() => createResultsCommands({ currentScreen, overlay: () => undefined, isDialogEmpty: () => true, setOverlay: () => {} }));
     registry.register(() => createSessionPickerCommands({ currentScreen }));
 
     const visible = registry.getVisibleCommands();
@@ -362,7 +362,7 @@ describe("app wiring — modeline shows correct visible commands per screen", ()
     registry.register(() => createCookieSyncCommands({ currentScreen }));
     registry.register(() => createPortPickerCommands({ currentScreen }));
     registry.register(() => createTestingCommands({ currentScreen }));
-    registry.register(() => createResultsCommands({ currentScreen }));
+    registry.register(() => createResultsCommands({ currentScreen, overlay: () => undefined, isDialogEmpty: () => true, setOverlay: () => {} }));
     registry.register(() => createSessionPickerCommands({ currentScreen }));
 
     const visible = registry.getVisibleCommands();
@@ -371,10 +371,10 @@ describe("app wiring — modeline shows correct visible commands per screen", ()
     expect(visibleValues).toContain("results.copy");
     expect(visibleValues).toContain("results.save");
     expect(visibleValues).toContain("results.restart");
+    expect(visibleValues).toContain("results.raw-events");
 
     expect(visibleValues).not.toContain("results.ask");
     expect(visibleValues).not.toContain("results.insights");
-    expect(visibleValues).not.toContain("results.raw-events");
 
     expect(visibleValues).not.toContain("main.cookie-sync");
     expect(visibleValues).not.toContain("main.agent-picker");
@@ -409,7 +409,7 @@ describe("app wiring — modeline shows correct visible commands per screen", ()
     registry.register(() => createCookieSyncCommands({ currentScreen }));
     registry.register(() => createPortPickerCommands({ currentScreen }));
     registry.register(() => createTestingCommands({ currentScreen }));
-    registry.register(() => createResultsCommands({ currentScreen }));
+    registry.register(() => createResultsCommands({ currentScreen, overlay: () => undefined, isDialogEmpty: () => true, setOverlay: () => {} }));
     registry.register(() => createSessionPickerCommands({ currentScreen }));
 
     const visible = registry.getVisibleCommands();
@@ -441,7 +441,7 @@ describe("app wiring — modeline shows correct visible commands per screen", ()
     registry.register(() => createCookieSyncCommands({ currentScreen }));
     registry.register(() => createPortPickerCommands({ currentScreen }));
     registry.register(() => createTestingCommands({ currentScreen }));
-    registry.register(() => createResultsCommands({ currentScreen }));
+    registry.register(() => createResultsCommands({ currentScreen, overlay: () => undefined, isDialogEmpty: () => true, setOverlay: () => {} }));
     registry.register(() => createSessionPickerCommands({ currentScreen }));
 
     const visible = registry.getVisibleCommands();
@@ -477,7 +477,7 @@ describe("app wiring — modeline shows correct visible commands per screen", ()
     registry.register(() => createCookieSyncCommands({ currentScreen }));
     registry.register(() => createPortPickerCommands({ currentScreen }));
     registry.register(() => createTestingCommands({ currentScreen }));
-    registry.register(() => createResultsCommands({ currentScreen }));
+    registry.register(() => createResultsCommands({ currentScreen, overlay: () => undefined, isDialogEmpty: () => true, setOverlay: () => {} }));
     registry.register(() => createSessionPickerCommands({ currentScreen }));
 
     const visible = registry.getVisibleCommands();

@@ -129,6 +129,9 @@ const AppInner = () => {
   registry.register(() =>
     createResultsCommands({
       currentScreen: navigation.currentScreen,
+      overlay: navigation.overlay,
+      isDialogEmpty: dialog.isEmpty,
+      setOverlay: navigation.setOverlay,
     }),
   );
 

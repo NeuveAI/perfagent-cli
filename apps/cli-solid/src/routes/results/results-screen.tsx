@@ -9,6 +9,7 @@ import { atomFnToPromise } from "../../adapters/effect-atom";
 import { Logo } from "../../renderables/logo";
 import { RuledBox } from "../../renderables/ruled-box";
 import { MetricsTable } from "./metrics-table";
+import { RawEventsOverlay } from "./raw-events-overlay";
 import { copyToClipboard } from "../../utils/copy-to-clipboard";
 import { getStepElapsedMs, getTotalElapsedMs } from "../../utils/step-elapsed";
 import { formatElapsedTime } from "../../utils/format-elapsed-time";
@@ -201,6 +202,13 @@ export const ResultsScreen = (props: ResultsScreenProps) => {
             <text style={{ fg: COLORS.DIM }}>{props.report.summary}</text>
           </box>
         </box>
+      </Show>
+
+      <Show when={navigation.overlay() === "rawEvents"}>
+        <RawEventsOverlay
+          executedPlan={props.report}
+          onClose={() => navigation.setOverlay(undefined)}
+        />
       </Show>
     </box>
   );

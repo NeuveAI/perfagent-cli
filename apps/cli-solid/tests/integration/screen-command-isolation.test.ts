@@ -77,7 +77,12 @@ const buildFullRegistry = (currentScreen: () => Screen) => {
   );
 
   registry.register(() =>
-    createResultsCommands({ currentScreen }),
+    createResultsCommands({
+      currentScreen,
+      overlay: () => undefined,
+      isDialogEmpty: () => true,
+      setOverlay: () => {},
+    }),
   );
 
   registry.register(() =>

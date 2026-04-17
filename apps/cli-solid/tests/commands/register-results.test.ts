@@ -19,10 +19,18 @@ const testingScreen = () =>
     instruction: "test something",
   });
 
+const noopSetOverlay = () => {};
+const noOverlay = () => undefined;
+const emptyDialog = () => true;
+const openDialog = () => false;
+
 describe("register-results commands", () => {
   test("creates expected command set", () => {
     const commands = createResultsCommands({
       currentScreen: resultsScreen,
+      overlay: noOverlay,
+      isDialogEmpty: emptyDialog,
+      setOverlay: noopSetOverlay,
     });
     const values = commands.map((cmd) => cmd.value);
 
@@ -34,9 +42,12 @@ describe("register-results commands", () => {
     expect(values).toContain("results.raw-events");
   });
 
-  test("copy, save, restart are visible; ask, insights, raw-events are hidden", () => {
+  test("copy, save, restart, raw-events are visible; ask, insights are hidden", () => {
     const commands = createResultsCommands({
       currentScreen: resultsScreen,
+      overlay: noOverlay,
+      isDialogEmpty: emptyDialog,
+      setOverlay: noopSetOverlay,
     });
 
     const copy = commands.find((cmd) => cmd.value === "results.copy");
@@ -49,14 +60,17 @@ describe("register-results commands", () => {
     expect(copy?.hidden).toBeUndefined();
     expect(save?.hidden).toBeUndefined();
     expect(restart?.hidden).toBeUndefined();
+    expect(rawEvents?.hidden).toBeUndefined();
     expect(ask?.hidden).toBe(true);
     expect(insights?.hidden).toBe(true);
-    expect(rawEvents?.hidden).toBe(true);
   });
 
   test("commands are enabled on Results screen", () => {
     const commands = createResultsCommands({
       currentScreen: resultsScreen,
+      overlay: noOverlay,
+      isDialogEmpty: emptyDialog,
+      setOverlay: noopSetOverlay,
     });
 
     for (const cmd of commands) {
@@ -67,6 +81,9 @@ describe("register-results commands", () => {
   test("commands are disabled on Main screen", () => {
     const commands = createResultsCommands({
       currentScreen: () => Screen.Main(),
+      overlay: noOverlay,
+      isDialogEmpty: emptyDialog,
+      setOverlay: noopSetOverlay,
     });
 
     for (const cmd of commands) {
@@ -77,6 +94,9 @@ describe("register-results commands", () => {
   test("commands are disabled on Testing screen", () => {
     const commands = createResultsCommands({
       currentScreen: testingScreen,
+      overlay: noOverlay,
+      isDialogEmpty: emptyDialog,
+      setOverlay: noopSetOverlay,
     });
 
     for (const cmd of commands) {
@@ -91,6 +111,35 @@ describe("register-results commands", () => {
           changesFor: ChangesFor.makeUnsafe({ _tag: "Changes", mainBranch: "main" }),
           instruction: "test",
         }),
+      overlay: noOverlay,
+      isDialogEmpty: emptyDialog,
+      setOverlay: noopSetOverlay,
+    });
+
+    for (const cmd of commands) {
+      expect(cmd.enabled).toBe(false);
+    }
+  });
+
+  test("commands are disabled when overlay is active", () => {
+    const commands = createResultsCommands({
+      currentScreen: resultsScreen,
+      overlay: () => "rawEvents",
+      isDialogEmpty: emptyDialog,
+      setOverlay: noopSetOverlay,
+    });
+
+    for (const cmd of commands) {
+      expect(cmd.enabled).toBe(false);
+    }
+  });
+
+  test("commands are disabled when a dialog is open", () => {
+    const commands = createResultsCommands({
+      currentScreen: resultsScreen,
+      overlay: noOverlay,
+      isDialogEmpty: openDialog,
+      setOverlay: noopSetOverlay,
     });
 
     for (const cmd of commands) {
@@ -101,6 +150,9 @@ describe("register-results commands", () => {
   test("keybinds are correct", () => {
     const commands = createResultsCommands({
       currentScreen: resultsScreen,
+      overlay: noOverlay,
+      isDialogEmpty: emptyDialog,
+      setOverlay: noopSetOverlay,
     });
 
     const copy = commands.find((cmd) => cmd.value === "results.copy");
@@ -115,7 +167,24 @@ describe("register-results commands", () => {
     expect(restart?.keybind).toBe("r");
     expect(ask?.keybind).toBe("a");
     expect(insights?.keybind).toBe("i");
-    expect(rawEvents?.keybind).toBe("ctrl+o");
+    expect(rawEvents?.keybind).toBe("e");
+  });
+
+  test("raw-events command calls setOverlay with rawEvents", () => {
+    let overlayValue: string | undefined | "unset" = "unset";
+    const commands = createResultsCommands({
+      currentScreen: resultsScreen,
+      overlay: noOverlay,
+      isDialogEmpty: emptyDialog,
+      setOverlay: (overlay) => {
+        overlayValue = overlay;
+      },
+    });
+
+    const rawEvents = commands.find((cmd) => cmd.value === "results.raw-events");
+    rawEvents?.onSelect();
+
+    expect(overlayValue).toBe("rawEvents");
   });
 
   test("no keybind collisions with global commands", () => {
@@ -135,6 +204,9 @@ describe("register-results commands", () => {
       registry.register(() =>
         createResultsCommands({
           currentScreen: resultsScreen,
+          overlay: noOverlay,
+          isDialogEmpty: emptyDialog,
+          setOverlay: noopSetOverlay,
         }),
       );
     }).not.toThrow();
@@ -157,6 +229,9 @@ describe("register-results commands", () => {
       registry.register(() =>
         createResultsCommands({
           currentScreen: resultsScreen,
+          overlay: noOverlay,
+          isDialogEmpty: emptyDialog,
+          setOverlay: noopSetOverlay,
         }),
       );
     }).not.toThrow();
@@ -175,6 +250,9 @@ describe("register-results commands", () => {
       registry.register(() =>
         createResultsCommands({
           currentScreen: resultsScreen,
+          overlay: noOverlay,
+          isDialogEmpty: emptyDialog,
+          setOverlay: noopSetOverlay,
         }),
       );
     }).not.toThrow();
@@ -183,6 +261,9 @@ describe("register-results commands", () => {
   test("all commands belong to Results category", () => {
     const commands = createResultsCommands({
       currentScreen: resultsScreen,
+      overlay: noOverlay,
+      isDialogEmpty: emptyDialog,
+      setOverlay: noopSetOverlay,
     });
 
     for (const cmd of commands) {
