@@ -100,7 +100,11 @@ export const AskPanel = (props: AskPanelProps) => {
   };
 
   return (
-    <OverlayContainer title="Ask follow-up" footerHint={"enter submit \u00b7 esc close"}>
+    <OverlayContainer
+      title="Ask follow-up"
+      footerHint={"enter submit \u00b7 esc close"}
+      size="large"
+    >
       <box flexGrow={1} flexDirection="column">
         <Show when={lines().length === 0}>
           <text style={{ fg: COLORS.DIM }}>

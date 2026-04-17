@@ -4,21 +4,29 @@ import { useTerminalDimensions } from "@opentui/solid";
 import { RGBA } from "@opentui/core";
 import { COLORS } from "../constants";
 
+type OverlaySize = "medium" | "large" | "xlarge";
+
 interface OverlayContainerProps {
   readonly title: string;
   readonly children: JSX.Element;
   readonly footerHint?: string;
+  readonly size?: OverlaySize;
 }
 
-const OVERLAY_WIDTH_RATIO = 0.8;
-const OVERLAY_MIN_WIDTH = 40;
+const OVERLAY_WIDTH_MEDIUM = 60;
+const OVERLAY_WIDTH_LARGE = 88;
+const OVERLAY_WIDTH_XLARGE = 116;
 const OVERLAY_BACKDROP_ALPHA = 150;
 const OVERLAY_Z_INDEX = 3000;
 
 export const OverlayContainer = (props: OverlayContainerProps) => {
   const dimensions = useTerminalDimensions();
-  const panelWidth = () =>
-    Math.max(OVERLAY_MIN_WIDTH, Math.floor(dimensions().width * OVERLAY_WIDTH_RATIO));
+  const panelWidth = () => {
+    const size = props.size ?? "large";
+    if (size === "xlarge") return OVERLAY_WIDTH_XLARGE;
+    if (size === "medium") return OVERLAY_WIDTH_MEDIUM;
+    return OVERLAY_WIDTH_LARGE;
+  };
 
   return (
     <box

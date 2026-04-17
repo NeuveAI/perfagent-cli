@@ -218,7 +218,11 @@ export const RawEventsOverlay = (props: RawEventsOverlayProps) => {
   const totalCount = () => rows().length;
 
   return (
-    <OverlayContainer title="Events Timeline" footerHint={"\u2191\u2193 scroll \u00b7 esc dismiss"}>
+    <OverlayContainer
+      title="Events Timeline"
+      footerHint={"\u2191\u2193 scroll \u00b7 esc dismiss"}
+      size="medium"
+    >
       <Show when={totalCount() === 0}>
         <text style={{ fg: COLORS.DIM }}>No events recorded.</text>
       </Show>

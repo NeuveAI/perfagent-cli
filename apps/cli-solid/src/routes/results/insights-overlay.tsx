@@ -189,7 +189,11 @@ export const InsightsOverlay = (props: InsightsOverlayProps) => {
   };
 
   return (
-    <OverlayContainer title="Insights" footerHint={mode() === "list" ? listFooter() : detailFooter()}>
+    <OverlayContainer
+      title="Insights"
+      footerHint={mode() === "list" ? listFooter() : detailFooter()}
+      size="xlarge"
+    >
       <Show when={isEmpty()}>
         <text style={{ fg: COLORS.DIM }}>No insights available.</text>
       </Show>
