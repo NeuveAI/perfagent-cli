@@ -11,11 +11,9 @@ const launch = async (options: { agent: string; url?: string[] }) => {
   await render(() => App({ agent: options.agent, urls: options.url }), {
     targetFps: TARGET_FPS,
     screenMode: "alternate-screen",
+    externalOutputMode: "passthrough",
     exitOnCtrlC: false,
-    useKittyKeyboard: {
-      disambiguate: true,
-      alternateKeys: true,
-    },
+    useKittyKeyboard: {},
     useMouse: false,
   });
 };

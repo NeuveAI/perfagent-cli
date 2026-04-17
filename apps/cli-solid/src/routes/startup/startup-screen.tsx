@@ -4,6 +4,7 @@ import type { HealthCheckResult } from "../../lifecycle/health-checks";
 import { runHealthChecks } from "../../lifecycle/health-checks";
 import { useNavigation, Screen } from "../../context/navigation";
 import { useAgent } from "../../context/agent";
+import { useToast } from "../../context/toast";
 import { Logo } from "../../renderables/logo";
 import { Spinner } from "../../renderables/spinner";
 import { COLORS } from "../../constants";
@@ -14,6 +15,7 @@ const CROSS = "\u2718";
 export const StartupScreen = () => {
   const navigation = useNavigation();
   const agent = useAgent();
+  const toast = useToast();
 
   const [results, setResults] = createSignal<readonly HealthCheckResult[] | undefined>(undefined);
   const [running, setRunning] = createSignal(true);
@@ -29,7 +31,7 @@ export const StartupScreen = () => {
         navigation.setScreen(Screen.Main());
       }
     } catch (error) {
-      console.error("Startup health check failed:", error);
+      toast.show(`Startup health check failed: ${String(error)}`);
       setResults([
         {
           name: "Health check",
