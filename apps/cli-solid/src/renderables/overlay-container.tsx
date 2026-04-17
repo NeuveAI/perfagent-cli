@@ -1,6 +1,7 @@
 import type { JSX } from "solid-js";
 import { Show } from "solid-js";
 import { useTerminalDimensions } from "@opentui/solid";
+import { RGBA } from "@opentui/core";
 import { COLORS } from "../constants";
 
 interface OverlayContainerProps {
@@ -10,29 +11,30 @@ interface OverlayContainerProps {
 }
 
 const OVERLAY_WIDTH_RATIO = 0.8;
-const OVERLAY_HEIGHT_RATIO = 0.7;
 const OVERLAY_MIN_WIDTH = 40;
-const OVERLAY_MIN_HEIGHT = 10;
+const OVERLAY_BACKDROP_ALPHA = 150;
+const OVERLAY_Z_INDEX = 3000;
 
 export const OverlayContainer = (props: OverlayContainerProps) => {
   const dimensions = useTerminalDimensions();
   const panelWidth = () =>
     Math.max(OVERLAY_MIN_WIDTH, Math.floor(dimensions().width * OVERLAY_WIDTH_RATIO));
-  const panelHeight = () =>
-    Math.max(OVERLAY_MIN_HEIGHT, Math.floor(dimensions().height * OVERLAY_HEIGHT_RATIO));
 
   return (
     <box
-      width="100%"
-      height="100%"
-      flexDirection="column"
+      width={dimensions().width}
+      height={dimensions().height}
+      position="absolute"
+      left={0}
+      top={0}
+      zIndex={OVERLAY_Z_INDEX}
       alignItems="center"
-      justifyContent="center"
-      backgroundColor={COLORS.BANNER_BG}
+      paddingTop={dimensions().height / 4}
+      backgroundColor={RGBA.fromInts(0, 0, 0, OVERLAY_BACKDROP_ALPHA)}
     >
       <box
         width={panelWidth()}
-        height={panelHeight()}
+        maxWidth={dimensions().width - 2}
         flexDirection="column"
         border
         borderStyle="single"
@@ -46,7 +48,7 @@ export const OverlayContainer = (props: OverlayContainerProps) => {
             <span style={{ fg: COLORS.SELECTION, bold: true }}>{props.title}</span>
           </text>
         </box>
-        <box flexGrow={1} flexDirection="column" marginTop={1}>
+        <box flexDirection="column" marginTop={1}>
           {props.children}
         </box>
         <Show when={props.footerHint}>
