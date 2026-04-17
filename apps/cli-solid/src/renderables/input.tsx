@@ -165,6 +165,12 @@ export const Input = (props: InputProps) => {
       handled = true;
     }
 
+    if (!handled && !event.ctrl && !event.meta && event.name === "space") {
+      nextValue = value.slice(0, nextOffset) + " " + value.slice(nextOffset);
+      nextOffset++;
+      handled = true;
+    }
+
     if (!handled && !event.ctrl && !event.meta && event.name.length === 1) {
       const text = event.name;
       if (text === "@" && value === "" && props.onAtTrigger) {
