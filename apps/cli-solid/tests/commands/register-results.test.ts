@@ -42,7 +42,7 @@ describe("register-results commands", () => {
     expect(values).toContain("results.raw-events");
   });
 
-  test("copy, save, restart, raw-events are visible; ask, insights are hidden", () => {
+  test("copy, save, restart, insights, raw-events are visible; ask is hidden", () => {
     const commands = createResultsCommands({
       currentScreen: resultsScreen,
       overlay: noOverlay,
@@ -61,8 +61,8 @@ describe("register-results commands", () => {
     expect(save?.hidden).toBeUndefined();
     expect(restart?.hidden).toBeUndefined();
     expect(rawEvents?.hidden).toBeUndefined();
+    expect(insights?.hidden).toBeUndefined();
     expect(ask?.hidden).toBe(true);
-    expect(insights?.hidden).toBe(true);
   });
 
   test("commands are enabled on Results screen", () => {
@@ -185,6 +185,23 @@ describe("register-results commands", () => {
     rawEvents?.onSelect();
 
     expect(overlayValue).toBe("rawEvents");
+  });
+
+  test("insights command calls setOverlay with insights", () => {
+    let overlayValue: string | undefined | "unset" = "unset";
+    const commands = createResultsCommands({
+      currentScreen: resultsScreen,
+      overlay: noOverlay,
+      isDialogEmpty: emptyDialog,
+      setOverlay: (overlay) => {
+        overlayValue = overlay;
+      },
+    });
+
+    const insights = commands.find((cmd) => cmd.value === "results.insights");
+    insights?.onSelect();
+
+    expect(overlayValue).toBe("insights");
   });
 
   test("no keybind collisions with global commands", () => {

@@ -61,10 +61,9 @@ export const createResultsCommands = (options: RegisterResultsOptions): readonly
     value: "results.insights",
     keybind: "i",
     category: "Results",
-    hidden: true,
     enabled: isEnabled(options),
     onSelect: () => {
-      // HACK: stub — insight panel is future work
+      options.setOverlay("insights");
     },
   },
   {

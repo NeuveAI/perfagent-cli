@@ -10,6 +10,7 @@ import { Logo } from "../../renderables/logo";
 import { RuledBox } from "../../renderables/ruled-box";
 import { MetricsTable } from "./metrics-table";
 import { RawEventsOverlay } from "./raw-events-overlay";
+import { InsightsOverlay } from "./insights-overlay";
 import { copyToClipboard } from "../../utils/copy-to-clipboard";
 import { getStepElapsedMs, getTotalElapsedMs } from "../../utils/step-elapsed";
 import { formatElapsedTime } from "../../utils/format-elapsed-time";
@@ -209,6 +210,10 @@ export const ResultsScreen = (props: ResultsScreenProps) => {
           executedPlan={props.report}
           onClose={() => navigation.setOverlay(undefined)}
         />
+      </Show>
+
+      <Show when={navigation.overlay() === "insights"}>
+        <InsightsOverlay report={props.report} onClose={() => navigation.setOverlay(undefined)} />
       </Show>
     </box>
   );
