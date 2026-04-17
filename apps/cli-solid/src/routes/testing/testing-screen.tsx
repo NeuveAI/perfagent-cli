@@ -219,7 +219,7 @@ export const TestingScreen = (props: TestingScreenProps) => {
 
   return (
     <box flexDirection="column" width="100%" paddingTop={1} paddingBottom={1} paddingLeft={1} paddingRight={1}>
-      <box>
+      <box flexShrink={0}>
         <Logo />
         <text>
           <span style={{ fg: COLORS.DIM }}>{` ${POINTER} `}</span>

@@ -130,7 +130,7 @@ export const SessionPickerScreen = () => {
       paddingLeft={1}
       paddingRight={1}
     >
-      <box marginBottom={1}>
+      <box marginBottom={1} flexShrink={0}>
         <Logo />
         <text style={{ fg: COLORS.DIM }}>
           {"  Recent sessions \u2014 enter to resume, esc to go back"}

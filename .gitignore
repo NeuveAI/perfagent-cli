@@ -10,3 +10,4 @@ tsup.config.bundled_*
 **/src/generated/
 .testie-agent-traces/
 .cursor/plans
+.repos

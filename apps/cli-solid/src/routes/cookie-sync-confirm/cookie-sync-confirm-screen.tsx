@@ -155,7 +155,7 @@ export const CookieSyncConfirmScreen = (props: CookieSyncConfirmScreenProps) => 
 
   return (
     <box flexDirection="column" width="100%" paddingTop={1} paddingBottom={1} paddingLeft={1} paddingRight={1}>
-      <box>
+      <box flexShrink={0}>
         <Logo />
         <text>
           {" "}
