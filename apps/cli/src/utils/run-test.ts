@@ -220,7 +220,7 @@ export const runHeadless = (options: HeadlessRunOptions) =>
           // HACK: InsightEnricher is scaffolded in `packages/supervisor/src/insight-enricher.ts`
           // but not wired here — it currently spawns its own chrome-devtools-mcp subprocess,
           // separate from the agent's, so `insightSetId`s from the agent's trace would never
-          // resolve. Primary path for drill-ins is the agent (LOCAL_AGENT_SYSTEM_PROMPT
+          // resolve. Primary path for drill-ins is the agent (buildLocalAgentSystemPrompt
           // mandates per-insight analyze). Revisit when shared-session support lands.
           const report = yield* reporter.report(finalExecuted);
 

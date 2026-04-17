@@ -1,5 +1,6 @@
 import { Effect, Option, Predicate, Stream } from "effect";
 import * as Atom from "effect/unstable/reactivity/Atom";
+import * as path from "node:path";
 import {
   ExecutedPerfPlan,
   Executor,
@@ -17,6 +18,8 @@ import { stripUndefinedRequirement } from "../utils/strip-undefined-requirement"
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { extractCloseArtifacts } from "../utils/extract-close-artifacts";
 
+const REPORTS_DIRECTORY = "reports";
+
 interface ExecuteInput {
   readonly options: ExecuteOptions;
   readonly agentBackend: AgentBackend;
@@ -28,6 +31,7 @@ export interface ExecutionResult {
   readonly executedPlan: ExecutedPerfPlan;
   readonly report: PerfReport;
   readonly videoUrl?: string;
+  readonly reportPath: Option.Option<string>;
 }
 
 // HACK: atom is read by testing-screen.tsx but never populated — screenshots are saved via McpSession instead
@@ -96,11 +100,14 @@ const executeCore = (input: ExecuteInput) =>
     // own chrome-devtools-mcp subprocess via DevToolsClient.layer — separate from
     // the agent's subprocess where the trace was recorded — so every insightSetId
     // lookup would fail. Primary path for insight bodies is the agent itself
-    // (LOCAL_AGENT_SYSTEM_PROMPT now mandates per-insight drill-ins). The enricher
+    // (buildLocalAgentSystemPrompt now mandates per-insight drill-ins). The enricher
     // scaffolding stays in tree for when shared-session lands.
     const report = yield* reporter.report(finalExecuted);
 
-    yield* reportStorage.saveSafe(report);
+    const persisted = yield* reportStorage.saveSafe(report);
+    const reportPath = Option.map(persisted, (value) =>
+      path.join(REPORTS_DIRECTORY, path.basename(value.jsonPath)),
+    );
     yield* Atom.refresh(recentReportsAtom);
 
     const passedCount = report.steps.filter(
@@ -136,6 +143,7 @@ const executeCore = (input: ExecuteInput) =>
       executedPlan: finalExecuted,
       report,
       videoUrl: artifacts.videoUrl,
+      reportPath,
     } satisfies ExecutionResult;
   }).pipe(Effect.withSpan("perf-agent.session"));
 

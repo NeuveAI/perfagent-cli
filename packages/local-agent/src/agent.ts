@@ -3,7 +3,7 @@ import { createOllamaClient, type OllamaClient } from "./ollama-client.js";
 import { createMcpBridge, type McpBridge } from "./mcp-bridge.js";
 import { runToolLoop } from "./tool-loop.js";
 import { log } from "./log.js";
-import { LOCAL_AGENT_SYSTEM_PROMPT } from "./system-prompt.js";
+import { buildLocalAgentSystemPrompt } from "@neuve/shared/prompts";
 import type { ChatCompletionMessageParam, ChatCompletionTool } from "openai/resources/chat/completions";
 
 interface Session {
@@ -12,6 +12,7 @@ interface Session {
   tools: ChatCompletionTool[];
   mcpBridge: McpBridge;
   pendingPrompt: AbortController | undefined;
+  systemPrompt: string;
 }
 
 export class LocalAgent implements acp.Agent {
@@ -73,11 +74,11 @@ export class LocalAgent implements acp.Agent {
     const meta = (params as Record<string, unknown>)["_meta"] as
       | { systemPrompt?: string }
       | undefined;
-    if (meta?.systemPrompt) {
-      log("ignoring incoming system prompt (using local-agent prompt instead)", {
-        incomingLength: meta.systemPrompt.length,
-      });
-    }
+    const systemPrompt = meta?.systemPrompt ?? buildLocalAgentSystemPrompt();
+    log("system prompt resolved", {
+      source: meta?.systemPrompt ? "incoming" : "fallback",
+      length: systemPrompt.length,
+    });
 
     this.sessions.set(sessionId, {
       id: sessionId,
@@ -85,6 +86,7 @@ export class LocalAgent implements acp.Agent {
       tools,
       mcpBridge,
       pendingPrompt: undefined,
+      systemPrompt,
     });
 
     return { sessionId };
@@ -109,7 +111,7 @@ export class LocalAgent implements acp.Agent {
     log("prompt", { sessionId: session.id, userTextLength: userText.length });
 
     const messages: ChatCompletionMessageParam[] = [
-      { role: "system", content: LOCAL_AGENT_SYSTEM_PROMPT },
+      { role: "system", content: session.systemPrompt },
       ...session.messages,
       { role: "user", content: userText },
     ];

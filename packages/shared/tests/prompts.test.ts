@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildExecutionPrompt,
   buildExecutionSystemPrompt,
+  buildLocalAgentSystemPrompt,
   buildWatchAssessmentPrompt,
   type ExecutionPromptOptions,
   type WatchAssessmentPromptOptions,
@@ -308,6 +309,42 @@ describe("buildExecutionPrompt", () => {
     expect(prompt).toContain("LCP > 4s");
     expect(prompt).toContain("INP > 500ms");
     expect(prompt).toContain("CLS > 0.25");
+  });
+});
+
+describe("buildLocalAgentSystemPrompt", () => {
+  it("names the three local-agent tool categories", () => {
+    const prompt = buildLocalAgentSystemPrompt();
+    expect(prompt).toContain("`interact`");
+    expect(prompt).toContain("`observe`");
+    expect(prompt).toContain("`trace`");
+  });
+
+  it("includes Core Web Vitals thresholds", () => {
+    const prompt = buildLocalAgentSystemPrompt();
+    expect(prompt).toContain("LCP < 2500 ms");
+    expect(prompt).toContain("CLS < 0.1");
+    expect(prompt).toContain("INP < 200 ms");
+  });
+
+  it("mandates per-insight analyze drill-ins with directive language", () => {
+    const prompt = buildLocalAgentSystemPrompt();
+    expect(prompt).toContain('YOU MUST call `trace` with command="analyze" for EACH insight');
+    expect(prompt).toContain("Do not produce a final report until every insight has been analyzed");
+    expect(prompt).toContain("LCPBreakdown");
+    expect(prompt).toContain("CLSCulprits");
+    expect(prompt).toContain("RenderBlocking");
+  });
+
+  it("fits a small-model context budget (<= 4 KB)", () => {
+    const prompt = buildLocalAgentSystemPrompt();
+    expect(prompt.length).toBeLessThanOrEqual(4 * 1024);
+  });
+
+  it("includes the analyze call-shape example", () => {
+    const prompt = buildLocalAgentSystemPrompt();
+    expect(prompt).toContain('"command": "analyze"');
+    expect(prompt).toContain('"insightSetId": "NAVIGATION_0"');
   });
 });
 

@@ -30,6 +30,7 @@ import {
 } from "@neuve/shared/models";
 import { hasStringMessage } from "@neuve/shared/utils";
 import { detectLaunchedFrom } from "@neuve/shared/launched-from";
+import { buildLocalAgentSystemPrompt } from "@neuve/shared/prompts";
 import { buildSessionMeta } from "./build-session-meta";
 
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
@@ -792,9 +793,19 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@neuve/AcpClient
     ) {
       yield* Effect.annotateCurrentSpan({ cwd, launchedFrom });
       const mcpServers = buildMcpServers(mcpEnv);
+      const effectiveSystemPrompt =
+        adapter.provider === "local"
+          ? buildLocalAgentSystemPrompt()
+          : Option.getOrUndefined(systemPrompt);
+      if (effectiveSystemPrompt !== undefined) {
+        yield* Effect.logInfo("ACP session system prompt resolved", {
+          provider: adapter.provider,
+          length: effectiveSystemPrompt.length,
+        });
+      }
       const sessionMeta = buildSessionMeta({
         provider: adapter.provider,
-        systemPrompt: Option.getOrUndefined(systemPrompt),
+        systemPrompt: effectiveSystemPrompt,
         metadata: { isGitHubActions },
       });
       return yield* Effect.tryPromise({

@@ -11,7 +11,7 @@
  * enricher gracefully returns the report unchanged.
  *
  * Primary path for insight drill-ins is the agent itself
- * (see LOCAL_AGENT_SYSTEM_PROMPT — it mandates per-insight analyze calls in
+ * (see buildLocalAgentSystemPrompt — it mandates per-insight analyze calls in
  * the agent's own live session where the insightSetIds are valid). The
  * enricher is kept in-tree so that when shared-session support lands
  * (agent and CLI sharing a DevTools daemon), wiring is a one-line change.
