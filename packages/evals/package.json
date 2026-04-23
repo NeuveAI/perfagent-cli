@@ -1,0 +1,26 @@
+{
+  "name": "@neuve/evals",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "eval": "evalite run ./evals/smoke.eval.ts",
+    "eval:watch": "evalite watch ./evals/smoke.eval.ts",
+    "lint": "vp lint && tsc --noEmit",
+    "format": "vp fmt",
+    "format:check": "vp fmt --check",
+    "check": "vp check",
+    "test": "vp test run",
+    "test:watch": "vp test",
+    "typecheck": "tsgo --noEmit"
+  },
+  "dependencies": {
+    "effect": "4.0.0-beta.35",
+    "evalite": "1.0.0-beta.16",
+    "vitest": "^4.0.18"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
