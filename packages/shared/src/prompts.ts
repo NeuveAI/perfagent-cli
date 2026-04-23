@@ -1,9 +1,4 @@
-import type {
-  ChangedFile,
-  ChangesFor,
-  CommitSummary,
-  SavedFlow,
-} from "./models";
+import type { ChangedFile, ChangesFor, CommitSummary, SavedFlow } from "./models";
 
 const EXECUTION_CONTEXT_FILE_LIMIT = 12;
 const EXECUTION_RECENT_COMMIT_LIMIT = 5;
@@ -84,7 +79,6 @@ const getScopeStrategy = (scope: ChangesFor["_tag"]): string[] => {
       ];
   }
 };
-
 
 export const buildLocalAgentSystemPrompt = (): string =>
   [
@@ -251,10 +245,16 @@ export const buildExecutionSystemPrompt = (browserMcpServerName?: string): strin
     "",
     "Before emitting STEP_DONE, verify you have at least one concrete piece of evidence (metric value, trace insight, network data, console output) proving the step passed. A step without evidence is not a STEP_DONE — it is a skip.",
     "Report outcomes faithfully. If a metric regresses or a threshold is exceeded, emit ASSERTION_FAILED with evidence. Never emit STEP_DONE for a step that showed regressions, and never skip a mandatory check without emitting STEP_SKIPPED. The outer agent may re-execute your steps — if a STEP_DONE has no supporting evidence, the run is rejected.",
+    "",
+    "<abort_channel>",
+    "RUN_COMPLETED is rejected if planned steps remain pending unless the run is explicitly aborted. To abort a run when truly stuck (unrecoverable blocker that no retry will clear), emit on the immediately preceding line:",
+    "  ASSERTION_FAILED|<step-id>|category=abort; abort_reason=<short-reason>; <other structured fields>",
+    "Then emit RUN_COMPLETED|failed|<summary>. Use sparingly — only for blockers like missing auth credentials, captchas, or target pages that cannot be reached. Any other category leaves pending steps intact and the run continues.",
+    "</abort_channel>",
     "</status_markers>",
     "",
     "<failure_reporting>",
-    "Allowed failure categories: perf-regression, app-bug, env-issue, auth-blocked, missing-test-data, agent-misread.",
+    "Allowed failure categories: perf-regression, app-bug, env-issue, auth-blocked, missing-test-data, agent-misread, abort.",
     "Allowed failure domains (use the most specific match): core-web-vitals, network, memory, rendering, layout-stability, javascript-errors, accessibility, bundle-size, caching, seo, general.",
     "",
     "When a step fails, gather structured evidence before emitting ASSERTION_FAILED:",
