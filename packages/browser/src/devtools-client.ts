@@ -3,7 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { DevToolsConnectionError, DevToolsToolError } from "./errors";
 
-interface CallToolResult {
+export interface CallToolResult {
   readonly content: ReadonlyArray<{
     readonly type: string;
     readonly text?: string;
