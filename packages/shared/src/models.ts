@@ -625,9 +625,16 @@ export class StepCompleted extends Schema.TaggedClass<StepCompleted>()("StepComp
 export class StepFailed extends Schema.TaggedClass<StepFailed>()("StepFailed", {
   stepId: StepId,
   message: Schema.String,
+  category: Schema.optional(Schema.String),
+  abortReason: Schema.optional(Schema.String),
 }) {
   get id(): string {
     return `step-failed-${this.stepId}`;
+  }
+  get isAbort(): boolean {
+    return (
+      this.category === "abort" && this.abortReason !== undefined && this.abortReason.length > 0
+    );
   }
 }
 
@@ -693,6 +700,7 @@ export class AgentText extends Schema.TaggedClass<AgentText>()("AgentText", {
 export class RunFinished extends Schema.TaggedClass<RunFinished>()("RunFinished", {
   status: Schema.Literals(["passed", "failed"] as const),
   summary: Schema.String,
+  abort: Schema.optional(Schema.Struct({ reason: Schema.String })),
 }) {
   get id(): string {
     return `run-finished-${this.status}`;
@@ -716,6 +724,26 @@ const serializeToolResult = (value: unknown): string => {
   }
 };
 
+interface AssertionTokens {
+  readonly category: string | undefined;
+  readonly abortReason: string | undefined;
+}
+
+const parseAssertionTokens = (message: string): AssertionTokens => {
+  let category: string | undefined;
+  let abortReason: string | undefined;
+  for (const rawToken of message.split(";")) {
+    const token = rawToken.trim();
+    const equalsIndex = token.indexOf("=");
+    if (equalsIndex === -1) continue;
+    const key = token.slice(0, equalsIndex).trim();
+    const value = token.slice(equalsIndex + 1).trim();
+    if (key === "category" && value.length > 0) category = value;
+    if (key === "abort_reason" && value.length > 0) abortReason = value;
+  }
+  return { category, abortReason };
+};
+
 const parseMarker = (line: string): ExecutionEvent | undefined => {
   const pipeIndex = line.indexOf("|");
   if (pipeIndex === -1) return undefined;
@@ -736,9 +764,12 @@ const parseMarker = (line: string): ExecutionEvent | undefined => {
     });
   }
   if (marker === "ASSERTION_FAILED") {
+    const tokens = parseAssertionTokens(second);
     return new StepFailed({
       stepId: StepId.makeUnsafe(first),
       message: second,
+      category: tokens.category,
+      abortReason: tokens.abortReason,
     });
   }
   if (marker === "STEP_SKIPPED") {
@@ -982,16 +1013,38 @@ export class ExecutedPerfPlan extends PerfPlan.extend<ExecutedPerfPlan>(
   finalizeTextBlock(): ExecutedPerfPlan {
     const lastEvent = this.events.at(-1);
     if (lastEvent?._tag !== "AgentText" && lastEvent?._tag !== "AgentThinking") return this;
-    const foundMarkers = lastEvent.text
-      .split("\n")
-      .map(parseMarker)
-      .filter(Predicate.isNotUndefined);
-    if (foundMarkers.length === 0) return this;
+    const rawMarkers = lastEvent.text.split("\n").map(parseMarker).filter(Predicate.isNotUndefined);
+    if (rawMarkers.length === 0) return this;
+    const enrichedMarkers: ExecutionEvent[] = [];
+    let pendingAbortReason: string | undefined = this.lastAbortReason;
+    for (const marker of rawMarkers) {
+      if (marker._tag === "StepFailed" && marker.isAbort) {
+        pendingAbortReason = marker.abortReason;
+        enrichedMarkers.push(marker);
+        continue;
+      }
+      if (marker._tag === "StepCompleted" || marker._tag === "StepSkipped") {
+        pendingAbortReason = undefined;
+        enrichedMarkers.push(marker);
+        continue;
+      }
+      if (marker._tag === "RunFinished" && pendingAbortReason !== undefined) {
+        enrichedMarkers.push(
+          new RunFinished({
+            status: marker.status,
+            summary: marker.summary,
+            abort: { reason: pendingAbortReason },
+          }),
+        );
+        continue;
+      }
+      enrichedMarkers.push(marker);
+    }
     let result: ExecutedPerfPlan = new ExecutedPerfPlan({
       ...this,
-      events: [...this.events, ...foundMarkers],
+      events: [...this.events, ...enrichedMarkers],
     });
-    for (const marker of foundMarkers) {
+    for (const marker of enrichedMarkers) {
       result = result.applyMarker(marker);
     }
     return result;
@@ -1090,6 +1143,22 @@ export class ExecutedPerfPlan extends PerfPlan.extend<ExecutedPerfPlan>(
         (step) => step.status === "passed" || step.status === "failed" || step.status === "skipped",
       )
     );
+  }
+
+  get allPlanStepsTerminal(): boolean {
+    if (this.steps.length === 0) return true;
+    return this.steps.every(
+      (step) => step.status === "passed" || step.status === "failed" || step.status === "skipped",
+    );
+  }
+
+  get lastAbortReason(): string | undefined {
+    for (let index = this.events.length - 1; index >= 0; index--) {
+      const event = this.events[index];
+      if (event._tag === "StepFailed" && event.isAbort) return event.abortReason;
+      if (event._tag === "StepCompleted" || event._tag === "StepSkipped") return undefined;
+    }
+    return undefined;
   }
 
   synthesizeRunFinished(): ExecutedPerfPlan {
