@@ -1,6 +1,5 @@
-import { createSignal, createEffect, Show } from "solid-js";
-import { useKeyboard, usePaste } from "@opentui/solid";
-import { decodePasteBytes, stripAnsiSequences } from "@opentui/core";
+import { createEffect, on, onMount } from "solid-js";
+import type { KeyEvent, TextareaRenderable } from "@opentui/core";
 import { useInputFocus } from "../context/input-focus";
 import { COLORS } from "../constants";
 
@@ -16,53 +15,22 @@ interface InputProps {
   readonly onAtTrigger?: () => void;
 }
 
-const isWordChar = (character: string): boolean => /\w/.test(character);
+const MULTILINE_KEY_BINDINGS = [
+  { name: "return", action: "submit" },
+  { name: "return", shift: true, action: "newline" },
+  { name: "return", meta: true, action: "newline" },
+  { name: "return", ctrl: true, action: "newline" },
+  { name: "linefeed", action: "newline" },
+] as const;
 
-const findPreviousWordBoundary = (text: string, from: number): number => {
-  let index = from - 1;
-  while (index > 0 && !isWordChar(text[index]!)) index--;
-  while (index > 0 && isWordChar(text[index - 1]!)) index--;
-  return Math.max(0, index);
-};
-
-const findNextWordBoundary = (text: string, from: number): number => {
-  let index = from;
-  while (index < text.length && isWordChar(text[index]!)) index++;
-  while (index < text.length && !isWordChar(text[index]!)) index++;
-  return index;
-};
-
-const findCursorLineAndColumn = (
-  text: string,
-  offset: number,
-): { lineIndex: number; column: number; lines: string[] } => {
-  const lines = text.split("\n");
-  let position = 0;
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-    const lineLength = lines[lineIndex]!.length;
-    if (offset <= position + lineLength) {
-      return { lineIndex, column: offset - position, lines };
-    }
-    position += lineLength + 1;
-  }
-  const lastLine = lines.length - 1;
-  return { lineIndex: lastLine, column: lines[lastLine]!.length, lines };
-};
-
-const resolveOffsetFromLineColumn = (
-  lines: string[],
-  lineIndex: number,
-  column: number,
-): number => {
-  let offset = 0;
-  for (let index = 0; index < lineIndex; index++) {
-    offset += lines[index]!.length + 1;
-  }
-  return offset + Math.min(column, lines[lineIndex]!.length);
-};
+const SINGLE_LINE_KEY_BINDINGS = [
+  { name: "return", action: "submit" },
+  { name: "linefeed", action: "submit" },
+] as const;
 
 export const Input = (props: InputProps) => {
-  const [cursorOffset, setCursorOffset] = createSignal(props.value.length);
+  let textareaRef: TextareaRenderable | undefined;
+  let pendingHistoryDirection: "up" | "down" | undefined;
   const inputFocus = useInputFocus();
   const focus = () => props.focus ?? true;
 
@@ -70,175 +38,115 @@ export const Input = (props: InputProps) => {
     inputFocus.setFocused(focus());
   });
 
-  useKeyboard((event) => {
-    if (!focus()) return;
+  onMount(() => {
+    if (textareaRef && textareaRef.plainText.length > 0) {
+      textareaRef.cursorOffset = textareaRef.plainText.length;
+    }
+  });
 
-    const value = props.value;
-    let nextOffset = cursorOffset();
-    let nextValue = value;
-    let handled = false;
+  createEffect(
+    on(
+      () => props.value,
+      (value) => {
+        if (!textareaRef) return;
+        if (textareaRef.plainText === value) return;
+        textareaRef.setText(value);
+        if (pendingHistoryDirection === "up") {
+          textareaRef.cursorOffset = 0;
+        } else {
+          textareaRef.cursorOffset = value.length;
+        }
+        pendingHistoryDirection = undefined;
+      },
+    ),
+  );
 
-    if (event.name === "return" && !event.shift) {
-      props.onSubmit?.(value);
+  const handleContentChange = () => {
+    const value = textareaRef?.plainText ?? "";
+    if (value !== props.value) {
+      props.onChange(value);
+    }
+  };
+
+  const handleSubmit = () => {
+    const value = textareaRef?.plainText ?? "";
+    props.onSubmit?.(value);
+  };
+
+  const handleKeyDown = (event: KeyEvent) => {
+    if (!textareaRef) return;
+
+    if (
+      event.sequence === "@" &&
+      !event.ctrl &&
+      !event.meta &&
+      !event.option &&
+      textareaRef.plainText === "" &&
+      props.onAtTrigger
+    ) {
+      event.preventDefault();
+      props.onAtTrigger();
       return;
     }
 
-    if (event.name === "return" && event.shift && props.multiline) {
-      nextValue = value.slice(0, nextOffset) + "\n" + value.slice(nextOffset);
-      nextOffset++;
-      handled = true;
-    }
-
-    if (!handled && event.name === "up" && props.multiline) {
-      const { lineIndex, column, lines } = findCursorLineAndColumn(value, nextOffset);
-      if (lineIndex > 0) {
-        nextOffset = resolveOffsetFromLineColumn(lines, lineIndex - 1, column);
-      } else {
-        props.onUpArrowAtTop?.();
+    if (event.name === "up" && !event.shift && !event.meta && !event.ctrl && !event.super) {
+      const cursor = textareaRef.visualCursor;
+      if (cursor.offset === 0) {
+        if (props.onUpArrowAtTop) {
+          event.preventDefault();
+          pendingHistoryDirection = "up";
+          props.onUpArrowAtTop();
+        }
         return;
       }
-      handled = true;
-    }
-
-    if (!handled && event.name === "down" && props.multiline) {
-      const { lineIndex, column, lines } = findCursorLineAndColumn(value, nextOffset);
-      if (lineIndex < lines.length - 1) {
-        nextOffset = resolveOffsetFromLineColumn(lines, lineIndex + 1, column);
-      } else {
-        props.onDownArrowAtBottom?.();
+      if (cursor.visualRow === 0) {
+        event.preventDefault();
+        textareaRef.cursorOffset = 0;
         return;
       }
-      handled = true;
     }
 
-    if (!handled && event.name === "left" && !event.ctrl && !event.meta) {
-      nextOffset = Math.max(0, nextOffset - 1);
-      handled = true;
-    }
-
-    if (!handled && event.name === "right" && !event.ctrl && !event.meta) {
-      nextOffset = Math.min(value.length, nextOffset + 1);
-      handled = true;
-    }
-
-    if (!handled && event.meta && event.name === "b") {
-      nextOffset = findPreviousWordBoundary(value, nextOffset);
-      handled = true;
-    }
-
-    if (!handled && event.meta && event.name === "f") {
-      nextOffset = findNextWordBoundary(value, nextOffset);
-      handled = true;
-    }
-
-    if (!handled && event.ctrl && event.name === "a") {
-      nextOffset = 0;
-      handled = true;
-    }
-
-    if (!handled && event.ctrl && event.name === "e") {
-      nextOffset = value.length;
-      handled = true;
-    }
-
-    if (!handled && event.name === "backspace") {
-      if (nextOffset > 0) {
-        nextValue = value.slice(0, nextOffset - 1) + value.slice(nextOffset);
-        nextOffset--;
-      }
-      handled = true;
-    }
-
-    if (!handled && event.name === "delete") {
-      if (nextOffset < value.length) {
-        nextValue = value.slice(0, nextOffset) + value.slice(nextOffset + 1);
-      }
-      handled = true;
-    }
-
-    if (!handled && event.ctrl && event.name === "w") {
-      if (nextOffset > 0) {
-        const boundary = findPreviousWordBoundary(value, nextOffset);
-        nextValue = value.slice(0, boundary) + value.slice(nextOffset);
-        nextOffset = boundary;
-      }
-      handled = true;
-    }
-
-    if (!handled && !event.ctrl && !event.meta && event.name === "space") {
-      nextValue = value.slice(0, nextOffset) + " " + value.slice(nextOffset);
-      nextOffset++;
-      handled = true;
-    }
-
-    if (!handled && !event.ctrl && !event.meta && event.name.length === 1) {
-      const text = event.name;
-      if (text === "@" && value === "" && props.onAtTrigger) {
-        props.onAtTrigger();
+    if (event.name === "down" && !event.shift && !event.meta && !event.ctrl && !event.super) {
+      const cursor = textareaRef.visualCursor;
+      const endOffset = textareaRef.plainText.length;
+      if (cursor.offset >= endOffset) {
+        if (props.onDownArrowAtBottom) {
+          event.preventDefault();
+          pendingHistoryDirection = "down";
+          props.onDownArrowAtBottom();
+        }
         return;
       }
-      nextValue = value.slice(0, nextOffset) + text + value.slice(nextOffset);
-      nextOffset += text.length;
-      handled = true;
+      const lastVisualRow = textareaRef.virtualLineCount - 1;
+      if (cursor.visualRow >= lastVisualRow) {
+        event.preventDefault();
+        textareaRef.cursorOffset = endOffset;
+        return;
+      }
     }
-
-    if (!handled) return;
-
-    nextOffset = Math.max(0, Math.min(nextValue.length, nextOffset));
-    setCursorOffset(nextOffset);
-
-    if (nextValue !== value) {
-      props.onChange(nextValue);
-    }
-  });
-
-  usePaste((event: unknown) => {
-    // HACK: debug paste — remove after confirming it works
-    const asRecord = event as Record<string, unknown>;
-    const bytes = asRecord?.bytes;
-    if (bytes instanceof Uint8Array) {
-      const text = stripAnsiSequences(decodePasteBytes(bytes));
-      if (!focus() || !text) return;
-      const sanitized = props.multiline ? text : text.replace(/[\n\r]/g, " ");
-      const value = props.value;
-      const offset = cursorOffset();
-      const nextValue = value.slice(0, offset) + sanitized + value.slice(offset);
-      const nextOffset = offset + sanitized.length;
-      setCursorOffset(nextOffset);
-      props.onChange(nextValue);
-    } else if (typeof event === "string") {
-      if (!focus() || !event) return;
-      const sanitized = props.multiline ? event : event.replace(/[\n\r]/g, " ");
-      const value = props.value;
-      const offset = cursorOffset();
-      const nextValue = value.slice(0, offset) + sanitized + value.slice(offset);
-      const nextOffset = offset + sanitized.length;
-      setCursorOffset(nextOffset);
-      props.onChange(nextValue);
-    }
-  });
-
-  const displayValue = () => {
-    const value = props.value;
-    if (value.length === 0 && props.placeholder) {
-      return props.placeholder;
-    }
-    return value;
   };
 
-  const displayColor = () => {
-    if (props.value.length === 0 && props.placeholder) {
-      return COLORS.DIM;
-    }
-    return COLORS.TEXT;
-  };
+  const keyBindings = () =>
+    props.multiline ? [...MULTILINE_KEY_BINDINGS] : [...SINGLE_LINE_KEY_BINDINGS];
 
   return (
-    <box flexGrow={1}>
-      <text style={{ fg: displayColor() }}>{displayValue()}</text>
-      <Show when={focus() && props.value.length === 0 && !props.placeholder}>
-        <text style={{ fg: COLORS.DIM }}>{" "}</text>
-      </Show>
-    </box>
+    <textarea
+      ref={(ref) => {
+        textareaRef = ref;
+      }}
+      focused={focus()}
+      initialValue={props.value}
+      placeholder={props.placeholder ?? null}
+      placeholderColor={COLORS.DIM}
+      textColor={COLORS.TEXT}
+      focusedTextColor={COLORS.TEXT}
+      backgroundColor="transparent"
+      focusedBackgroundColor="transparent"
+      keyBindings={keyBindings()}
+      onContentChange={handleContentChange}
+      onSubmit={handleSubmit}
+      onKeyDown={handleKeyDown}
+      flexGrow={1}
+    />
   );
 };
