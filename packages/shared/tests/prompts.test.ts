@@ -1,4 +1,13 @@
+import { Option } from "effect";
 import { describe, expect, it } from "vite-plus/test";
+import {
+  AnalysisStep,
+  ChangesFor,
+  PerfPlan,
+  PlanId,
+  StepId,
+  type PerfPlan as PerfPlanType,
+} from "../src/models";
 import {
   buildExecutionPrompt,
   buildExecutionSystemPrompt,
@@ -27,13 +36,165 @@ const makeDefaultOptions = (
   ...overrides,
 });
 
-describe("buildExecutionPrompt", () => {
-  it("includes the user instruction in the prompt", () => {
-    const prompt = buildExecutionPrompt(makeDefaultOptions());
-    expect(prompt).toContain("Test the login flow");
+const makePlanWithSteps = (): PerfPlanType =>
+  new PerfPlan({
+    id: PlanId.makeUnsafe("plan-01"),
+    title: "Login journey",
+    rationale: "Verify login flow end-to-end",
+    changesFor: ChangesFor.makeUnsafe({ _tag: "WorkingTree" }),
+    currentBranch: "feat/login",
+    diffPreview: "",
+    fileStats: [],
+    instruction: "Test the login flow",
+    baseUrl: Option.some("http://localhost:3000"),
+    isHeadless: false,
+    cookieBrowserKeys: [],
+    targetUrls: [],
+    perfBudget: Option.none(),
+    steps: [
+      new AnalysisStep({
+        id: StepId.makeUnsafe("step-01"),
+        title: "Navigate to /login",
+        instruction: "Open the login page",
+        expectedOutcome: "Login form visible",
+        routeHint: Option.some("/login"),
+        status: "active",
+        summary: Option.none(),
+        startedAt: Option.none(),
+        endedAt: Option.none(),
+      }),
+      new AnalysisStep({
+        id: StepId.makeUnsafe("step-02"),
+        title: "Submit credentials",
+        instruction: "Fill and submit the login form",
+        expectedOutcome: "Redirect to /dashboard",
+        routeHint: Option.none(),
+        status: "pending",
+        summary: Option.none(),
+        startedAt: Option.none(),
+        endedAt: Option.none(),
+      }),
+    ],
   });
 
-  it("wraps user prompt sections in XML tags", () => {
+describe("buildExecutionSystemPrompt — shape & invariants", () => {
+  it("emits at most 80 non-blank lines", () => {
+    const prompt = buildExecutionSystemPrompt();
+    const nonBlank = prompt.split("\n").filter((line) => line.trim().length > 0);
+    expect(nonBlank.length).toBeLessThanOrEqual(80);
+  });
+
+  it("contains every mandatory status marker invariant", () => {
+    const prompt = buildExecutionSystemPrompt();
+    expect(prompt).toContain("STEP_START");
+    expect(prompt).toContain("STEP_DONE");
+    expect(prompt).toContain("ASSERTION_FAILED");
+    expect(prompt).toContain("RUN_COMPLETED");
+    expect(prompt).toContain("abort_reason");
+    expect(prompt).toContain("category=");
+    expect(prompt).toContain("domain=");
+  });
+
+  it("lists every failure category from wave 1.B", () => {
+    const prompt = buildExecutionSystemPrompt();
+    expect(prompt).toContain("budget-violation");
+    expect(prompt).toContain("regression");
+    expect(prompt).toContain("resource-blocker");
+    expect(prompt).toContain("memory-leak");
+    expect(prompt).toContain("abort");
+  });
+
+  it("lists every wave-2.A interaction tool in the catalog", () => {
+    const prompt = buildExecutionSystemPrompt();
+    expect(prompt).toContain("click(ref)");
+    expect(prompt).toContain("fill(ref, text)");
+    expect(prompt).toContain("hover(ref)");
+    expect(prompt).toContain("select(ref, option)");
+    expect(prompt).toContain("wait_for(target");
+  });
+
+  it("lists every chrome-devtools-mcp tool in the catalog", () => {
+    const prompt = buildExecutionSystemPrompt();
+    expect(prompt).toContain("navigate_page(url)");
+    expect(prompt).toContain("take_snapshot()");
+    expect(prompt).toContain("take_screenshot()");
+    expect(prompt).toContain("performance_start_trace");
+    expect(prompt).toContain("performance_stop_trace()");
+    expect(prompt).toContain("performance_analyze_insight");
+    expect(prompt).toContain("emulate(");
+    expect(prompt).toContain("lighthouse_audit()");
+    expect(prompt).toContain("take_memory_snapshot()");
+    expect(prompt).toContain("list_network_requests()");
+    expect(prompt).toContain("list_console_messages()");
+    expect(prompt).toContain("evaluate_script(js)");
+    expect(prompt).toContain("close()");
+  });
+
+  it("relegates evaluate_script to last resort", () => {
+    const prompt = buildExecutionSystemPrompt();
+    expect(prompt).toContain("LAST RESORT");
+  });
+
+  it("wraps every section in the required XML block", () => {
+    const prompt = buildExecutionSystemPrompt();
+    expect(prompt).toContain("<identity>");
+    expect(prompt).toContain("</identity>");
+    expect(prompt).toContain("<protocol>");
+    expect(prompt).toContain("</protocol>");
+    expect(prompt).toContain("<tool_catalog");
+    expect(prompt).toContain("</tool_catalog>");
+    expect(prompt).toContain("<failure_categories>");
+    expect(prompt).toContain("</failure_categories>");
+    expect(prompt).toContain("<rules>");
+    expect(prompt).toContain("</rules>");
+  });
+
+  it("identity section comes first and rules section comes last", () => {
+    const prompt = buildExecutionSystemPrompt();
+    const identityIndex = prompt.indexOf("<identity>");
+    const protocolIndex = prompt.indexOf("<protocol>");
+    const catalogIndex = prompt.indexOf("<tool_catalog");
+    const categoriesIndex = prompt.indexOf("<failure_categories>");
+    const rulesIndex = prompt.indexOf("<rules>");
+    expect(identityIndex).toBe(0);
+    expect(identityIndex).toBeLessThan(protocolIndex);
+    expect(protocolIndex).toBeLessThan(catalogIndex);
+    expect(catalogIndex).toBeLessThan(categoriesIndex);
+    expect(categoriesIndex).toBeLessThan(rulesIndex);
+  });
+
+  it("uses the default browser MCP server name when none provided", () => {
+    const prompt = buildExecutionSystemPrompt();
+    expect(prompt).toContain('server="browser"');
+  });
+
+  it("honors a custom browser MCP server name", () => {
+    const prompt = buildExecutionSystemPrompt("chrome-devtools");
+    expect(prompt).toContain('server="chrome-devtools"');
+  });
+
+  it("explicitly forbids RUN_COMPLETED with pending steps absent an abort", () => {
+    const prompt = buildExecutionSystemPrompt();
+    expect(prompt).toContain("Never emit RUN_COMPLETED");
+    expect(prompt).toContain("category=abort");
+  });
+
+  it("golden snapshot — output is stable across invocations", () => {
+    const promptOne = buildExecutionSystemPrompt();
+    const promptTwo = buildExecutionSystemPrompt();
+    expect(promptOne).toBe(promptTwo);
+  });
+
+  it("golden snapshot — custom server name output is stable", () => {
+    const promptOne = buildExecutionSystemPrompt("my-server");
+    const promptTwo = buildExecutionSystemPrompt("my-server");
+    expect(promptOne).toBe(promptTwo);
+    expect(promptOne).not.toBe(buildExecutionSystemPrompt());
+  });
+});
+
+describe("buildExecutionPrompt — per-turn state blocks", () => {
+  it("wraps the base state blocks in XML tags", () => {
     const prompt = buildExecutionPrompt(makeDefaultOptions());
     expect(prompt).toContain("<environment>");
     expect(prompt).toContain("</environment>");
@@ -43,46 +204,9 @@ describe("buildExecutionPrompt", () => {
     expect(prompt).toContain("<scope_strategy>");
   });
 
-  it("includes DevTools tool descriptions in system prompt", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("navigate_page: navigate to a URL");
-    expect(prompt).toContain("take_snapshot: get accessibility tree");
-    expect(prompt).toContain("take_screenshot: capture page as PNG");
-    expect(prompt).toContain("performance_start_trace: start a performance trace");
-    expect(prompt).toContain("performance_stop_trace: stop the active trace");
-    expect(prompt).toContain("performance_analyze_insight: get detailed info");
-    expect(prompt).toContain("emulate: apply CPU/network throttling");
-    expect(prompt).toContain("lighthouse_audit: run Lighthouse");
-    expect(prompt).toContain("take_memory_snapshot: capture heap snapshot");
-    expect(prompt).toContain("list_network_requests: list all network requests");
-    expect(prompt).toContain("list_console_messages: list console messages");
-    expect(prompt).toContain("evaluate_script: execute JavaScript");
-    expect(prompt).toContain("close: close the DevTools session");
-  });
-
-  it("includes profiling workflow in system prompt", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("<profiling_workflow>");
-    expect(prompt).toContain("cold-load profiling");
-    expect(prompt).toContain("interaction profiling");
-    expect(prompt).toContain("cpuThrottlingRate=4");
-  });
-
-  it("includes step marker protocol in system prompt", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("STEP_START|<step-id>|<step-title>");
-    expect(prompt).toContain("STEP_DONE|<step-id>|<short-summary>");
-    expect(prompt).toContain("ASSERTION_FAILED|<step-id>|<why-it-failed>");
-    expect(prompt).toContain("RUN_COMPLETED|passed|<session-summary>");
-    expect(prompt).toContain("RUN_COMPLETED|failed|<session-summary>");
-  });
-
-  it("describes session summary as a handoff to the outer agent", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("handoff to the outer agent");
-    expect(prompt).toContain("what was profiled");
-    expect(prompt).toContain("regressions found");
-    expect(prompt).toContain("anything learned");
+  it("includes the user instruction", () => {
+    const prompt = buildExecutionPrompt(makeDefaultOptions());
+    expect(prompt).toContain("Test the login flow");
   });
 
   it("includes changed files", () => {
@@ -101,7 +225,7 @@ describe("buildExecutionPrompt", () => {
     expect(prompt).toContain("export const login = () => {}");
   });
 
-  it("puts data before developer request and scope strategy at the end", () => {
+  it("places data before developer request and scope strategy at the end", () => {
     const prompt = buildExecutionPrompt(makeDefaultOptions());
     const diffIndex = prompt.indexOf("<diff_preview>");
     const requestIndex = prompt.indexOf("<developer_request>");
@@ -123,25 +247,50 @@ describe("buildExecutionPrompt", () => {
     expect(prompt).toContain("Main branch: main");
   });
 
-  it("includes scope strategy for branch scope", () => {
-    const prompt = buildExecutionPrompt(makeDefaultOptions({ scope: "Branch" }));
-    expect(prompt).toContain("branch-level review");
-    expect(prompt).toContain("5-8 total tested flows");
+  it("populates <plan> when a PerfPlan is provided", () => {
+    const plan = makePlanWithSteps();
+    const prompt = buildExecutionPrompt(makeDefaultOptions({ perfPlan: plan }));
+    expect(prompt).toContain("<plan>");
+    expect(prompt).toContain("[active] step-01 — Navigate to /login");
+    expect(prompt).toContain("[pending] step-02 — Submit credentials");
+    expect(prompt).toContain("</plan>");
   });
 
-  it("includes scope strategy for commit scope", () => {
-    const prompt = buildExecutionPrompt(makeDefaultOptions({ scope: "Commit" }));
-    expect(prompt).toContain("Start narrow and prove the selected commit");
+  it("populates <current_sub_goal> from the active step when a PerfPlan is provided", () => {
+    const plan = makePlanWithSteps();
+    const prompt = buildExecutionPrompt(makeDefaultOptions({ perfPlan: plan }));
+    expect(prompt).toContain("<current_sub_goal>");
+    expect(prompt).toContain("step-01 — Navigate to /login");
+    expect(prompt).toContain("Open the login page");
+    expect(prompt).toContain("</current_sub_goal>");
   });
 
-  it("includes scope strategy for working tree scope", () => {
-    const prompt = buildExecutionPrompt(makeDefaultOptions({ scope: "WorkingTree" }));
-    expect(prompt).toContain("local in-progress changes");
+  it("honors an explicit currentSubGoal override", () => {
+    const prompt = buildExecutionPrompt(
+      makeDefaultOptions({ currentSubGoal: "Reach /dashboard and measure LCP" }),
+    );
+    expect(prompt).toContain("<current_sub_goal>");
+    expect(prompt).toContain("Reach /dashboard and measure LCP");
   });
 
-  it("includes scope strategy for changes scope", () => {
-    const prompt = buildExecutionPrompt(makeDefaultOptions({ scope: "Changes" }));
-    expect(prompt).toContain("committed and uncommitted work as one body");
+  it("omits <plan> and <current_sub_goal> when no plan or sub-goal is provided", () => {
+    const prompt = buildExecutionPrompt(makeDefaultOptions());
+    expect(prompt).not.toContain("<plan>");
+    expect(prompt).not.toContain("<current_sub_goal>");
+  });
+
+  it("populates <observed_state> when provided", () => {
+    const prompt = buildExecutionPrompt(
+      makeDefaultOptions({ observedState: "Current URL: /login. Form fields: email, password." }),
+    );
+    expect(prompt).toContain("<observed_state>");
+    expect(prompt).toContain("Current URL: /login");
+    expect(prompt).toContain("</observed_state>");
+  });
+
+  it("omits <observed_state> when not provided", () => {
+    const prompt = buildExecutionPrompt(makeDefaultOptions());
+    expect(prompt).not.toContain("<observed_state>");
   });
 
   it("includes saved flow guidance when provided", () => {
@@ -190,125 +339,37 @@ describe("buildExecutionPrompt", () => {
     expect(prompt).not.toContain("x".repeat(13000));
   });
 
-  it("instructs agent to create steps dynamically in system prompt", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("Create your own step structure while executing");
-    expect(prompt).toContain("step-01, step-02, step-03");
+  it("includes scope strategy for branch scope", () => {
+    const prompt = buildExecutionPrompt(makeDefaultOptions({ scope: "Branch" }));
+    expect(prompt).toContain("branch-level review");
+    expect(prompt).toContain("5-8 total tested flows");
   });
 
-  it("includes snapshot workflow in system prompt", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("<snapshot_workflow>");
-    expect(prompt).toContain("take_snapshot");
-    expect(prompt).toContain("Always snapshot first");
+  it("includes scope strategy for commit scope", () => {
+    const prompt = buildExecutionPrompt(makeDefaultOptions({ scope: "Commit" }));
+    expect(prompt).toContain("Start narrow and prove the selected commit");
   });
 
-  it("wraps system prompt sections in XML tags", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("<change_analysis>");
-    expect(prompt).toContain("<coverage_rules>");
-    expect(prompt).toContain("<execution_strategy>");
-    expect(prompt).toContain("<profiling_workflow>");
-    expect(prompt).toContain("<tools");
-    expect(prompt).toContain("<snapshot_workflow>");
-    expect(prompt).toContain("<status_markers>");
-    expect(prompt).toContain("<failure_reporting>");
-    expect(prompt).toContain("<run_completion>");
+  it("includes scope strategy for working tree scope", () => {
+    const prompt = buildExecutionPrompt(makeDefaultOptions({ scope: "WorkingTree" }));
+    expect(prompt).toContain("local in-progress changes");
   });
 
-  it("places sections in correct order", () => {
-    const prompt = buildExecutionSystemPrompt();
-    const changeAnalysis = prompt.indexOf("<change_analysis>");
-    const executionStrategy = prompt.indexOf("<execution_strategy>");
-    const profilingWorkflow = prompt.indexOf("<profiling_workflow>");
-    const tools = prompt.indexOf("<tools");
-    const statusMarkers = prompt.indexOf("<status_markers>");
-    const runCompletion = prompt.indexOf("<run_completion>");
-    expect(changeAnalysis).toBeLessThan(executionStrategy);
-    expect(executionStrategy).toBeLessThan(profilingWorkflow);
-    expect(profilingWorkflow).toBeLessThan(tools);
-    expect(tools).toBeLessThan(statusMarkers);
-    expect(statusMarkers).toBeLessThan(runCompletion);
+  it("includes scope strategy for changes scope", () => {
+    const prompt = buildExecutionPrompt(makeDefaultOptions({ scope: "Changes" }));
+    expect(prompt).toContain("committed and uncommitted work as one body");
   });
 
-  it("includes assertion depth guidance in execution strategy", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("two independent signals");
-  });
-
-  it("includes change-analysis guidance in system prompt", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("<change_analysis>");
-    expect(prompt).toContain("Scan the provided changed files list and diff preview");
-    expect(prompt).toContain("developer request is a starting point");
-  });
-
-  it("includes coverage rules in system prompt", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("<coverage_rules>");
-    expect(prompt).toContain("profile multiple consumers");
-  });
-
-  it("includes code-level testing guidance in system prompt", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("<code_testing>");
-    expect(prompt).toContain("no user-visible surface");
-  });
-
-  it("includes project healthcheck guidance in system prompt", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("healthcheck");
-    expect(prompt).toContain("package.json");
-    expect(prompt).toContain("lock files");
-  });
-
-  it("includes stability and recovery guidance in system prompt", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("<stability_and_recovery>");
-    expect(prompt).toContain("four attempts fail");
-    expect(prompt).toContain("stop and report");
-  });
-
-  it("requires structured failure reports with good/bad example", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("category=<allowed-category>;");
-    expect(prompt).toContain("next-agent-prompt=<one sentence");
-    expect(prompt).toContain("Bad: ASSERTION_FAILED|step-03|page is slow");
-    expect(prompt).toContain("Good: ASSERTION_FAILED|step-03|category=perf-regression");
-  });
-
-  it("includes performance regression failure categories", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("perf-regression");
-    expect(prompt).toContain("core-web-vitals");
-    expect(prompt).toContain("memory");
-    expect(prompt).toContain("bundle-size");
-  });
-
-  it("includes self-check before RUN_COMPLETED", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain(
-      "Review the changed files list and confirm every file is accounted for",
+  it("includes dev server hints when provided", () => {
+    const prompt = buildExecutionPrompt(
+      makeDefaultOptions({
+        devServerHints: [
+          { projectPath: "apps/web", devCommand: "pnpm dev", url: "http://localhost:3000" },
+        ],
+      }),
     );
-  });
-
-  it("includes emulation guidance for mobile profiling", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("cpuThrottlingRate=4");
-    expect(prompt).toContain("Slow 3G");
-  });
-
-  it("includes memory profiling guidance", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("take_memory_snapshot");
-    expect(prompt).toContain("memory");
-  });
-
-  it("includes Core Web Vitals thresholds in run completion", () => {
-    const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("LCP > 4s");
-    expect(prompt).toContain("INP > 500ms");
-    expect(prompt).toContain("CLS > 0.25");
+    expect(prompt).toContain("Dev servers");
+    expect(prompt).toContain("cd apps/web && pnpm dev");
   });
 });
 
