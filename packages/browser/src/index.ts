@@ -6,9 +6,4 @@ export {
   McpServerStartError,
   NavigationError,
 } from "./errors";
-export type {
-  Browser as BrowserProfile,
-  BrowserKey,
-  Cookie,
-  ExtractOptions,
-} from "@neuve/cookies";
+export type { Browser as BrowserProfile, BrowserKey, Cookie, ExtractOptions } from "@neuve/cookies";

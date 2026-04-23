@@ -17,9 +17,11 @@ export class DevToolsToolError extends Schema.ErrorClass<DevToolsToolError>("Dev
   message = `DevTools tool "${this.tool}" failed: ${this.cause}`;
 }
 
-export class TraceNotFoundError extends Schema.ErrorClass<TraceNotFoundError>("TraceNotFoundError")({
-  _tag: Schema.tag("TraceNotFoundError"),
-}) {
+export class TraceNotFoundError extends Schema.ErrorClass<TraceNotFoundError>("TraceNotFoundError")(
+  {
+    _tag: Schema.tag("TraceNotFoundError"),
+  },
+) {
   message = "No active performance trace. Start a trace with performance_start_trace first.";
 }
 

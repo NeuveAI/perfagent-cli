@@ -33,9 +33,7 @@ const TraceAction = z.discriminatedUnion("command", [
   z.object({
     command: z.literal("emulate"),
     cpuThrottling: z.number().min(1).max(20).optional(),
-    network: z
-      .enum(["Offline", "Slow 3G", "Fast 3G", "Slow 4G", "4G"])
-      .optional(),
+    network: z.enum(["Offline", "Slow 3G", "Fast 3G", "Slow 4G", "4G"]).optional(),
     viewport: z.string().optional(),
     colorScheme: z.enum(["dark", "light", "auto"]).optional(),
     geolocation: z.string().optional(),
@@ -61,10 +59,7 @@ const rewriteStartAck = (result: CallToolResultLike): CallToolResultLike => {
     if (!item.text.includes("performance_stop_trace")) return item;
     return {
       ...item,
-      text: item.text.replaceAll(
-        "performance_stop_trace",
-        'trace with command="stop"',
-      ),
+      text: item.text.replaceAll("performance_stop_trace", 'trace with command="stop"'),
     };
   });
   return { ...result, content: rewrittenContent };
@@ -111,16 +106,13 @@ export const registerTraceTool = <E>(
 
           switch (action.command) {
             case "start": {
-              const startResult = yield* devtools.callTool(
-                "performance_start_trace",
-                {
-                  reload: action.reload,
-                  autoStop: action.autoStop,
-                  ...(action.filePath !== undefined && {
-                    filePath: action.filePath,
-                  }),
-                },
-              );
+              const startResult = yield* devtools.callTool("performance_start_trace", {
+                reload: action.reload,
+                autoStop: action.autoStop,
+                ...(action.filePath !== undefined && {
+                  filePath: action.filePath,
+                }),
+              });
               return rewriteStartAck(startResult);
             }
             case "stop":
@@ -130,13 +122,10 @@ export const registerTraceTool = <E>(
                 }),
               });
             case "analyze":
-              return yield* devtools.callTool(
-                "performance_analyze_insight",
-                {
-                  insightSetId: action.insightSetId,
-                  insightName: action.insightName,
-                },
-              );
+              return yield* devtools.callTool("performance_analyze_insight", {
+                insightSetId: action.insightSetId,
+                insightName: action.insightName,
+              });
             case "memory":
               return yield* devtools.callTool("take_memory_snapshot", {
                 filePath: action.filePath,

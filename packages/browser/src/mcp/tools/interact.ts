@@ -8,10 +8,7 @@ const InteractAction = z.discriminatedUnion("command", [
   z.object({
     command: z.literal("navigate"),
     url: z.string().optional(),
-    direction: z
-      .enum(["url", "back", "forward", "reload"])
-      .optional()
-      .default("url"),
+    direction: z.enum(["url", "back", "forward", "reload"]).optional().default("url"),
     ignoreCache: z.boolean().optional(),
     handleBeforeUnload: z.enum(["accept", "decline"]).optional(),
     initScript: z.string().optional(),
@@ -132,9 +129,7 @@ export const registerInteractTool = <E>(
           switch (action.command) {
             case "navigate":
               return yield* devtools.callTool("navigate_page", {
-                url: action.url
-                  ? session.resolveUrl(action.url)
-                  : undefined,
+                url: action.url ? session.resolveUrl(action.url) : undefined,
                 type: action.direction,
                 ...(action.ignoreCache !== undefined && {
                   ignoreCache: action.ignoreCache,
