@@ -161,7 +161,7 @@ const makeWriteTraceEvent = (
   return write;
 };
 
-const applyExecutionEvent = Effect.fn("realRunner.applyExecutionEvent")(function* (
+const applyExecutionEvent = Effect.fn("RealRunner.applyExecutionEvent")(function* (
   event: ExecutionEvent,
   acc: RunAccumulator,
   write: WriteTraceEvent,
@@ -239,7 +239,7 @@ const applyExecutionEvent = Effect.fn("realRunner.applyExecutionEvent")(function
  * Git, PlanDecomposer). Exposed as a standalone effect so tests can inject
  * scripted Agent/Git/PlanDecomposer layers without touching production wiring.
  */
-export const runRealTask = Effect.fn("runRealTask")(function* (
+export const runRealTask = Effect.fn("RealRunner.run")(function* (
   task: EvalTask,
   context: RealRunContext,
 ) {

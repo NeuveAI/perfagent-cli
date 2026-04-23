@@ -52,11 +52,38 @@ const tasks: ReadonlyArray<EvalTask> = [
   journey10MarketplaceFilter,
 ];
 
-const RUNNER_CONFIG = Config.schema(Schema.Literals(["mock", "real"] as const), "EVAL_RUNNER").pipe(
-  Config.withDefault("mock" as const),
+// HACK: Config.withDefault on a schema-validated Config silently catches
+// schema-validation failures (it classifies the OneOf/AnyOf tree as
+// "missing data" and substitutes the default). We layer validation on top of
+// Config.string — whose only failure mode is MissingKey, the legitimate
+// default-on-absent trigger — and apply the schema decoder in `mapOrFail`
+// so validation errors surface as a ConfigError instead of being swallowed.
+const stringWithSchemaDefault = <T, E>(
+  envName: string,
+  codec: Schema.Codec<T, E>,
+  defaultRawValue: string,
+): Config.Config<T> => {
+  const decode = Schema.decodeUnknownEffect(codec);
+  return Config.string(envName).pipe(
+    Config.withDefault(defaultRawValue),
+    Config.mapOrFail((raw) =>
+      decode(raw).pipe(
+        Effect.catchTag("SchemaError", (schemaError) =>
+          Effect.fail(new Config.ConfigError(schemaError)),
+        ),
+      ),
+    ),
+  );
+};
+
+const RUNNER_CONFIG = stringWithSchemaDefault(
+  "EVAL_RUNNER",
+  Schema.Literals(["mock", "real"] as const),
+  "mock",
 );
 
-const BACKEND_CONFIG = Config.schema(
+const BACKEND_CONFIG = stringWithSchemaDefault(
+  "EVAL_BACKEND",
   Schema.Literals([
     "claude",
     "codex",
@@ -68,19 +95,22 @@ const BACKEND_CONFIG = Config.schema(
     "pi",
     "local",
   ] as const),
-  "EVAL_BACKEND",
-).pipe(Config.withDefault("claude" as const));
+  "claude",
+);
 
-const PLANNER_CONFIG = Config.schema(
-  Schema.Literals(["frontier", "template", "none"] as const),
+const PLANNER_CONFIG = stringWithSchemaDefault(
   "EVAL_PLANNER",
-).pipe(Config.withDefault("frontier" as const));
+  Schema.Literals(["frontier", "template", "none"] as const),
+  "frontier",
+);
 
 const TRACE_DIR_CONFIG = Config.string("EVAL_TRACE_DIR").pipe(Config.withDefault("evals/traces"));
 
 const BASE_URL_CONFIG = Config.option(Config.string("EVAL_BASE_URL"));
 
-const HEADED_CONFIG = Config.boolean("EVAL_HEADED").pipe(Config.withDefault(false));
+// EVAL_HEADED routes through the string+schema pattern too so "notabool"
+// surfaces a ConfigError rather than silently falling back to false.
+const HEADED_CONFIG = stringWithSchemaDefault("EVAL_HEADED", Config.Boolean, "false");
 
 const resolveEvalConfig = Effect.gen(function* () {
   const runner = yield* RUNNER_CONFIG;
