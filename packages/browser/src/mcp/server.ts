@@ -2,8 +2,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { type ManagedRuntime } from "effect";
 import { DevToolsClient } from "../devtools-client";
+import { NetworkIdleSampler, RefResolver, SnapshotTaker, WaitForEngine } from "../tools/types";
 import { McpSession } from "./mcp-session";
 import { registerInteractTool } from "./tools/interact";
+import { registerInteractionTools } from "./tools/interactions";
 import { registerObserveTool } from "./tools/observe";
 import { registerTraceTool } from "./tools/trace";
 
@@ -83,7 +85,10 @@ const buildPerfAgentGuide = (): string =>
   ].join("\n");
 
 export const createBrowserMcpServer = <E>(
-  runtime: ManagedRuntime.ManagedRuntime<McpSession | DevToolsClient, E>,
+  runtime: ManagedRuntime.ManagedRuntime<
+    McpSession | DevToolsClient | RefResolver | NetworkIdleSampler | SnapshotTaker | WaitForEngine,
+    E
+  >,
 ) => {
   const server = new McpServer({
     name: "perf-agent",
@@ -93,6 +98,7 @@ export const createBrowserMcpServer = <E>(
   registerInteractTool(server, runtime);
   registerObserveTool(server, runtime);
   registerTraceTool(server, runtime);
+  registerInteractionTools(server, runtime);
 
   server.registerPrompt(
     "run",
@@ -117,7 +123,10 @@ export const createBrowserMcpServer = <E>(
 };
 
 export const startBrowserMcpServer = async <E>(
-  runtime: ManagedRuntime.ManagedRuntime<McpSession | DevToolsClient, E>,
+  runtime: ManagedRuntime.ManagedRuntime<
+    McpSession | DevToolsClient | RefResolver | NetworkIdleSampler | SnapshotTaker | WaitForEngine,
+    E
+  >,
 ) => {
   const { server } = createBrowserMcpServer(runtime);
   const transport = new StdioServerTransport();
