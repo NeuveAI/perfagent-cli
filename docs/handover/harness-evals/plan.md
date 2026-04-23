@@ -67,6 +67,8 @@ All agent turns and tool I/O are captured in a structured trace format (`evals/t
 | 2 | Tool surface + prompt | SOM visual grounding, click/fill/hover tools, 4B-tuned prompt rewrite | 3 |
 | 3 | Eval integration | Wire real agent into evalite runner; score Gemma + Claude on 5 tasks; regression dashboards | 4 |
 | 4 | Online-Mind2Web subset | BrowserGym-style adapter; filtered ≤5-key-node subset; baseline scores | 5 |
+| 4.5 | Baseline vs current regression eval | Post-hoc revert of prompt/decomposer commits; run eval on reverted tree AND on HEAD; commit diff report | 5 |
+| 4.6 | Rolling context window (conditional) | Only if Wave 4.5 shows context-window blowup on Gemma 3n E4B. Keep system prompt + current sub-goal + last-N turns; summarize older turns; drop stale screenshots | 5 |
 | 5 | Distillation pipeline | Trace capture format finalised; teacher-data exporter; fine-tune stub (no training yet) | — |
 
 Phases 0 and 1 overlap partially (disjoint files). Phase 2 blocks on 1. Phase 3 blocks on 1+2. Phase 4 blocks on 3. Phase 5 blocks on 4.
@@ -236,6 +238,42 @@ Add `packages/evals/src/adapters/online-mind2web.ts`. Read the HF dataset, filte
 
 Run Claude (frontier baseline) + Gemma (production target) against the filtered subset. Commit score deltas to `docs/handover/harness-evals/baselines/`.
 
+## Wave 4.5 — Baseline vs current regression eval
+
+**Why:** The prompt rewrite in Wave 2.B and the pre-planner in Wave 1.A shipped without a "before" measurement. The only way to quantify impact is to rewind and re-run evals on the reverted tree. User directive (2026-04-23): prompts should teach frameworks, not heuristics — we need data to confirm the rewrite didn't regress specific sites in pursuit of generalization.
+
+**Approach:**
+- At end of Wave 4, with all planned work committed and real eval infrastructure producing scores.
+- Capture **two** baselines on throwaway branches (never rewrite main):
+  - **B1 — whole-harness baseline.** `git switch -c baseline-b1`; `git revert` the Wave 1.A, 1.B, 2.A, 2.B, 2.C commit hashes (`--no-edit`, no conflicts expected — each wave is a self-contained slice); run the real eval; record scores.
+  - **B2 — prompt-only baseline.** Fresh branch from main; revert ONLY Wave 2.B's 2 prompt commits; run the real eval; record scores.
+- **Current:** eval on main HEAD.
+- Commit scores + a diff report to `docs/handover/harness-evals/baselines/`:
+  - `baseline-b1-scores.json`, `baseline-b2-scores.json`, `current-scores.json`
+  - `regression-report.md` — per-task, per-scorer table with Δ columns, flagged regressions, flagged improvements.
+- User will also run manual tests in parallel. Evals are directional, not definitive.
+
+**Overfitting guard:** the regression report must flag tasks where prompt changes moved a site-specific score while generalization scores moved the opposite way — that's the overfitting signature.
+
+**DoD:**
+- All 3 eval runs complete and scored.
+- `regression-report.md` committed with absolute scores + deltas.
+- Every task that regressed ≥10% has a root-cause note in the report.
+- No edits to main's harness code — baselines are branches that never merge.
+
+## Wave 4.6 — Rolling context window (conditional)
+
+**Conditional on Wave 4.5.** Only implement if baseline scoring shows Gemma 3n E4B hitting context-window limits. Signals to watch: truncation warnings, sudden accuracy cliff on tasks with >N turns, OOM on the Ollama side.
+
+If triggered, scope:
+- System prompt (fixed) + current sub-goal block (fixed) stay always.
+- Last N agent turns kept verbatim (N tuned empirically — probably 3–5).
+- Older turns compressed via either a frontier summarizer call OR rule-based rollup (drop tool-result payloads, keep status markers + step transitions).
+- Screenshots: keep only the most recent SOM render; drop older ones.
+- Guarantee: plan.steps stay referenced by ID so the agent doesn't lose sub-goal continuity.
+
+**DoD TBD** — refine once Wave 4.5 data says whether this is needed. Don't overbuild speculatively.
+
 ## Wave 5 — Distillation pipeline
 
 ### 5.A — Teacher-data exporter
@@ -256,6 +294,13 @@ Scripts to LoRA-fine-tune Gemma via Ollama's Modelfile path. No training run yet
 | evalite beta churn | Pin version, fall back to vitest + custom scorer harness if API breaks |
 | Trace format lock-in bites later | Design format review gate in Wave 5 before committing to distillation |
 | Adherence gate loops forever on a confused agent | `ALL_STEPS_TERMINAL_GRACE_MS` safety net + per-run hard time budget |
+
+## Design guardrails (apply to every wave)
+
+- **Prompts teach frameworks, not heuristics.** No site-specific navigation patterns, menu naming, or DOM paths baked into system prompts. Reasoning primitives only. Site patterns are distillation's job (Wave 5), not prompt's.
+- **Plan steps stay generic.** Decomposer output is "navigate to build page", not "click #nav-main li:nth-child(2)". Specifics belong to the interaction tools + SOM refs at runtime, not to static plan text.
+- **Context discipline.** System prompt stays ≤80 lines (Wave 2.B contract). Per-turn state blocks stay terse. Tool results are summarized, not raw-dumped. Screenshots capped at ≤768px, JPEG q70 (Wave 2.C contract). If Wave 4.5 shows context-window blowup, Wave 4.6 kicks in.
+- **Evals are directional, not definitive.** User validates via manual testing in parallel. A green eval + a broken manual run = the eval set is under-specified, fix the eval set.
 
 ## Out of scope
 

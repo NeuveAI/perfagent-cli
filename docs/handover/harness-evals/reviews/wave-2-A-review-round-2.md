@@ -1,0 +1,62 @@
+# Review: Wave 2.A — First-class interaction tools (Round 2)
+
+## Verdict: REQUEST_CHANGES
+
+Three of the four Critical findings from Round 1 are genuinely fixed and backed by real live-layer tests — MCP registration wires through the server and is verified by an `InMemoryTransport` round-trip, the `[pending]` counter parses real `list_network_requests` fixtures correctly (verified against `.specs/observability-output-format.md`), and the uid resolver now uses word-boundary regex (`\buid=<ref>\b`) with regex-escape, which I confirmed excludes `uid=2_100` from `2_10`'s match by running the actual regex in node. The Major cluster on error swallowing and `as` casts is mostly addressed, and the `// HACK:` RefResolver seam is named.
+
+**But Critical #4 is NOT fixed — it was reshaped into a subtler production-vs-test divergence.** The new `selectByIndexScript` resolves elements via `document.querySelector('[data-uid=' + JSON.stringify(uid) + ']') || document.querySelector('#' + CSS.escape(uid))`, but **chrome-devtools-mcp uids do not exist in the DOM**. I verified this directly against the vendored source — `node_modules/chrome-devtools-mcp/build/src/McpPage.js:67` shows `getElementByUid(uid)` looks the uid up in `this.textSnapshot.idToNode` (a server-side Map of accessibility-tree IDs → puppeteer handles). The uid is never injected into any element's `data-uid` attribute or `id`. So `document.querySelector('[data-uid="2_10"]')` always returns `null` in a real browser, and the CSS-escape fallback `#\32 _10` also misses because uid `2_10` is not an HTML `id`. The `selectByIndexScript` will always throw `"select by index: element is not a <select>"`. The live-layer test at `live-layers.test.ts:83-101` only asserts that `evaluate_script` was invoked with args `[ref, 2]` — it never executes the script. This is exactly the "tests pass because mocks sidestep the bug" Round 1 pattern, rotated one layer deeper.
+
+One additional Major I flag separately: a silent `DevToolsToolError` swallow survived in `waitForEngineLayer.textProbe` (`live.ts:214`) while its siblings were fixed. And `interactions.ts:214` still has an avoidable `as WaitForState` cast that the engineer's Round 1 response list claimed was removed.
+
+### Verification executed
+
+- `pnpm --filter @neuve/devtools test` run TWICE → 9 files, 49/49 pass, deterministic. Confirmed.
+- `pnpm --filter @neuve/devtools typecheck` → green.
+- `pnpm --filter @neuve/perf-agent-cli typecheck` → green.
+- `pnpm --filter cli-solid typecheck` → green.
+- `pnpm --filter @neuve/devtools format:check` → clean on 175 files.
+- `git status --short` → only 2.A-scoped files + shared Round 1/2 docs. No unauthorized scope expansion (the other uncommitted waves' files were out of the diff for this review already and are untouched by 2.A code).
+- `grep registerInteractionTools` repo-wide → one declaration + one call (`server.ts:101`). Confirmed wired.
+- Regex reproduction in node:
+  - `/\buid=2_10\b/.test("uid=2_100")` → `false`. Word-boundary fix works.
+  - `/^reqid=\d+\s+\S+\s+\S+\s+\[pending\]/gm` against a multi-status fixture → matches exactly the two `[pending]` lines, ignores `[200]`, `[404]`, `[500]`, `[net::ERR_NAME_NOT_RESOLVED]`. Confirmed.
+- Inspected `node_modules/chrome-devtools-mcp/build/src/McpPage.js:67-76` and `build/src/formatters/SnapshotFormatter.js:53-58` to confirm uids come from `serializedAXNode.id` and are tracked in `textSnapshot.idToNode` — no DOM projection. This is the evidence for the remaining Critical below.
+- Read `live-layer-support.ts`, `live-layers.test.ts`, `parse.test.ts`, `mcp-registration.test.ts` end-to-end. Test architecture is sound except where noted.
+
+### Findings
+
+- **[CRITICAL] `selectByIndexScript` cannot resolve the target `<select>` element in production because chrome-devtools-mcp uids are not present in the DOM.** (`packages/browser/src/tools/live.ts:21-33, 79-83`). The script does `document.querySelector('[data-uid=...]') || document.querySelector('#' + CSS.escape(uid))`. Both selectors rely on chrome-devtools-mcp projecting its server-side uid either as a `data-uid` attribute or as the element's HTML `id`. I inspected `node_modules/chrome-devtools-mcp/build/src/McpPage.js:67-76`: the uid-to-element mapping is server-side via `textSnapshot.idToNode.get(uid)` returning a puppeteer handle — uids never appear in the rendered DOM. I inspected `SnapshotFormatter.js`: `uid=${serializedAXNodeRoot.id}` comes from the accessibility tree node's internal id, not from any DOM attribute. Consequence: `select(ref, 2)` will throw `"select by index: element is not a <select>"` against any real page. The Round 2 test at `live-layers.test.ts:83-101` asserts only the dispatch (`toolsCalled.toContain("evaluate_script")` + args shape) — it does not verify the script actually executes correctly. This is the exact failure mode Round 1 flagged: a unit test that passes because a mock intermediates between the assertion and the live code, leaving a real production bug unverified. The right fix is to drop `evaluate_script` for this case and use an approach that goes through chrome-devtools-mcp's server-side uid→handle map — e.g. call `evaluate_script` with an inlined `(index) => { const el = CURRENT_HANDLE; … }` where chrome-devtools-mcp's `evaluate_script` provides an element context (needs checking against the MCP schema), OR extend `fill` to accept an index hint, OR do the index → value translation on the TS side by reading the snapshot's `<option>` children and calling `fill(ref, optionValue)`. The last option is the cleanest — the snapshot already enumerates option children with `role=option` and their names; pick the Nth name and hand it to `fill`.
+
+- **[MAJOR] `waitForEngineLayer.textProbe` silently swallows `DevToolsToolError` and returns `false`.** (`packages/browser/src/tools/live.ts:214`). `Effect.catchTag("DevToolsToolError", () => Effect.succeed(false))`. This is the same banned pattern that was fixed in `networkIdleSamplerLayer` (line 136) and `snapshotTakerLayer` (line 156). If the MCP `wait_for` call fails (transport error, page closed, bad args), `textProbe` returns "not found", the wait loop keeps polling until timeout, the user sees `WaitTimeoutError` with a message that falsely blames the target. The infra failure is hidden as a semantic one — the same class of bug Round 1 flagged. Fix symmetrically: map the error to `InteractionError` with action `"wait_for_text"` and let it propagate.
+
+- **[MAJOR] Avoidable `as WaitForState` cast survives in `interactions.ts:214`.** (`packages/browser/src/mcp/tools/interactions.ts:214` — `const state = (parsed.state ?? "visible") as WaitForState`). The Round 2 diary claims "`as` cast cluster" fixed. This one wasn't. `WAIT_FOR_STATES` is already `["visible", "hidden", "attached", "detached"] as const`, and `z.enum(WAIT_FOR_STATES).optional()` returns `"visible" | "hidden" | "attached" | "detached" | undefined`, which IS `WaitForState | undefined`. The cast is redundant — `const state: WaitForState = parsed.state ?? "visible"` or just `const state = parsed.state ?? "visible"` should typecheck without it. CLAUDE.md: "No type casts (`as`) unless unavoidable."
+
+- **[MAJOR] Double-cast `buildRuntime() as unknown as ManagedRuntime.ManagedRuntime<...>` in the new MCP registration test.** (`packages/browser/tests/tools/mcp-registration.test.ts:30`). `as unknown as X` is the most aggressive circumvention of TypeScript's type system. The real runtime at line 25 provides the full set of services (`McpSession | DevToolsClient | RefResolver | NetworkIdleSampler | SnapshotTaker | WaitForEngine`) which is broader than `McpSession | DevToolsClient`. Fix: type the `buildRuntime` return or the `createBrowserMcpServer` signature so the cast isn't needed — or at minimum, single-cast to the wider actual type. Through-unknown double-casts are a reviewer smell.
+
+- **[MAJOR] `waitForNetworkIdle` in `helpers.ts` now aborts the whole interaction tool if the network-idle probe fails once.** (`packages/browser/src/tools/helpers.ts:11-18`). After Round 2, `sampler.inFlightCount()` can fail with `InteractionError`. `Effect.repeat` stops on the first error — so any transient MCP glitch during the idle poll bubbles up through `click`/`fill`/`hover`/`select` as an InteractionError, failing the whole tool. That's an over-correction from the Round 1 "silent swallow" bug — the probe is a best-effort heuristic, not a required step. The right shape is to `Effect.catchTag("InteractionError", cause => Effect.logWarning("network idle probe failed, proceeding without debounce", cause).pipe(Effect.andThen(Effect.sleep(...))))` or similar — recovery that logs, doesn't swallow. Currently production wait behavior will be strictly worse than Round 1 on flaky networks, which is not the intent.
+
+- **[MINOR] Diary's test counts don't match the code.** The Round 2 response section claims "11 new parse tests" and "9 live-layer tests". Actual counts: `parse.test.ts` has 8 `it` blocks, `live-layers.test.ts` has 12. Total matches the 49 headline figure, but the per-file breakdown is off. Minor hygiene — double-count before signing off on the diary.
+
+- **[MINOR] The `buildPerfAgentGuide` guide text in `server.ts:12-85` still says "You have 3 tools: `interact`, `observe`, and `trace`" and enumerates only those three tool families — despite 5 new top-level tools now registered at the MCP layer.** (`packages/browser/src/mcp/server.ts:18, 20-53`). The agent will not be told the new tools exist from the prompt it receives. The 2.B wave is where the system prompt lives, so arguably this is out of scope for 2.A — but it means 2.A's DoD "agent can click the 'Buy' menu without `evaluate_script`" is not actually demonstrable at the end of this wave either, because the agent's guide doesn't advertise `click`/`fill`/`hover`/`select`/`wait_for`. Coordinate with 2.B or add a minimal advert paragraph here.
+
+- **[MINOR] `Layer.succeed(DevToolsClient, fake)` in `live-layer-support.ts:64` passes a plain object without a TypeScript assertion that it satisfies the full `DevToolsClient` shape.** The `fake` object at line 45 implements every current method, but a future addition to `DevToolsClient` won't be flagged here. Acceptable tradeoff for a test stub, noted for visibility.
+
+- **[INFO] Remaining good hygiene.** Service wiring via `ServiceMap.Service` + `Layer.effect` intact. Error classes unchanged. No `null`, no banned combinators (`catchAll`/`mapError`/`Effect.option`/`Effect.ignore`/`orElseSucceed`) in 2.A source. All functional `Effect.fn` calls have span names. kebab-case filenames. No barrel `index.ts`. Tool descriptions contain no site-specific overfitting (no Volvo/configurator phrasing). The word-boundary fix is correct (confirmed via node REPL). The `[pending]` regex matches real fixture verbatim and excludes `net::ERR_*` + numeric statuses (confirmed via node REPL against the spec fixture).
+
+- **[INFO] Declined `it.effect` migration is reasonable.** Existing browser tests use `it` + `Effect.runPromise`; consistency within the package outweighs the dev-dep cost. Noted and accepted.
+
+- **[INFO] `isVisible` deletion confirmed** — no remaining references outside `set-of-mark.ts` (2.C territory).
+
+- **[INFO] `WaitTimeoutError.observedAtLeastOnce` distinction is correctly threaded through `live.ts:191-200` and `errors.ts:20`.** Test support updated.
+
+### Suggestions (non-blocking)
+
+- For `select(ref, N)`, translate index → value in TS by reading the snapshot's `role=option` children of the `<select>` node, then call `fill(ref, valueOfNthOption)`. This reuses chrome-devtools-mcp's server-side uid map and avoids the DOM-projection assumption entirely.
+- Make `waitForNetworkIdle` resilient to a single-sample failure: log and recover once, only fail on repeated errors. A best-effort probe shouldn't gate the tool.
+- Narrow the `buildRuntime` test helper's return type so the `as unknown as` isn't needed.
+- When Wave 2.B lands, update `buildPerfAgentGuide` to enumerate the new tools — otherwise the agent is blind to them.
+- Consider dropping the redundant `as WaitForState` at `interactions.ts:214`. Should typecheck without it once zod narrows the enum.
+
+---
+
+Round 2 verdict stands. One Critical remains (select numeric index), two Majors of my own on the silent-swallow twin and the avoidable cast/double-cast pair, one Major on the over-corrected network-idle probe. Holding open for Round 3.
