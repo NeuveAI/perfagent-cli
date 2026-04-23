@@ -2,7 +2,12 @@ import { createContext, useContext, type JSX, onCleanup } from "solid-js";
 import { Option } from "effect";
 import * as AtomRegistry from "effect/unstable/reactivity/AtomRegistry";
 import type { AgentBackend } from "@neuve/agent";
-import { agentProviderAtom, verboseAtom } from "@neuve/perf-agent-cli/data/runtime";
+import type { PlannerMode } from "@neuve/supervisor";
+import {
+  agentProviderAtom,
+  plannerModeAtom,
+  verboseAtom,
+} from "@neuve/perf-agent-cli/data/runtime";
 import { setAtomRegistry, atomMount } from "../adapters/effect-atom";
 import { recentReportsAtom } from "@neuve/perf-agent-cli/data/recent-reports-atom";
 import { registerCleanupHandler, isShuttingDown } from "../lifecycle/shutdown";
@@ -33,6 +38,7 @@ interface RuntimeProviderProps {
   readonly children: JSX.Element;
   readonly agent: AgentBackend;
   readonly verbose?: boolean;
+  readonly plannerMode?: PlannerMode;
 }
 
 export const RuntimeProvider = (props: RuntimeProviderProps) => {
@@ -40,6 +46,7 @@ export const RuntimeProvider = (props: RuntimeProviderProps) => {
     initialValues: [
       [agentProviderAtom, Option.some(props.agent)],
       [verboseAtom, props.verbose ?? false],
+      [plannerModeAtom, props.plannerMode ?? "frontier"],
     ],
   });
 

@@ -6,6 +6,7 @@ import {
   Reporter,
   ReportStorage,
   Github,
+  type PlannerMode,
 } from "@neuve/supervisor";
 import { Analytics } from "@neuve/shared/observability";
 import { detectParentAgent } from "@neuve/shared/launched-from";
@@ -34,6 +35,7 @@ interface HeadlessRunOptions {
   timeoutMs: Option.Option<number>;
   output: "text" | "json";
   baseUrl?: string;
+  plannerMode?: PlannerMode;
 }
 
 export const runHeadless = (options: HeadlessRunOptions) =>
@@ -134,6 +136,7 @@ export const runHeadless = (options: HeadlessRunOptions) =>
               isHeadless: !options.headed,
               cookieBrowserKeys: [],
               baseUrl: options.baseUrl,
+              plannerMode: options.plannerMode,
             })
             .pipe(
               Stream.tap((executed) => Effect.sync(() => printNewEvents(executed))),

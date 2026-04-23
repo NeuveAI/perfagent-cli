@@ -1,6 +1,6 @@
 import { Effect, Option } from "effect";
 import { Command } from "commander";
-import { ChangesFor } from "@neuve/supervisor";
+import { ChangesFor, parsePlannerMode } from "@neuve/supervisor";
 import { runHeadless } from "./utils/run-test";
 import { runInit } from "./commands/init";
 import { runAddGithubAction } from "./commands/add-github-action";
@@ -50,8 +50,7 @@ const lazyBrowserMode = (() => {
   };
 })();
 
-const DEFAULT_INSTRUCTION =
-  "Analyze the performance impact of all changes from main.";
+const DEFAULT_INSTRUCTION = "Analyze the performance impact of all changes from main.";
 
 type Target = "unstaged" | "branch" | "changes";
 
@@ -74,6 +73,7 @@ interface CommanderOpts {
   timeout?: number;
   output?: OutputFormat;
   url?: string[];
+  planner?: string;
 }
 
 // HACK: when adding or changing options/commands below, update the Options and Commands tables in README.md
@@ -112,6 +112,7 @@ const seedStores = async (opts: CommanderOpts, changesFor: ChangesFor) => {
     browserHeaded: browserMode !== "headless",
     browserProfile: opts.profile,
     cdpUrl: opts.cdp,
+    plannerMode: parsePlannerMode(opts.planner),
   });
 
   if (opts.message) {
@@ -148,6 +149,7 @@ const runHeadlessForTarget = async (target: Target, opts: CommanderOpts) => {
     timeoutMs,
     output: opts.output ?? "text",
     baseUrl: opts.url?.join(", "),
+    plannerMode: parsePlannerMode(opts.planner),
   });
 };
 
@@ -269,6 +271,11 @@ program
   .option("--profile <name>", "reuse a Chrome profile by name (e.g. Default)")
   .option("--no-cookies", "skip system browser cookie extraction")
   .option("-u, --url <urls...>", "base URL(s) for the dev server")
+  .option(
+    "-p, --planner <mode>",
+    "pre-planner mode: frontier (Gemini Flash 3), template (rule-based), or none",
+    "frontier",
+  )
   .action(async (opts: CommanderOpts) => {
     await runWatchCommand(opts);
   });
@@ -414,6 +421,11 @@ const tuiCommand = program
   )
   .option("--output <format>", "output format: text (default) or json")
   .option("-u, --url <urls...>", "base URL(s) for the dev server (skips port picker)")
+  .option(
+    "-p, --planner <mode>",
+    "pre-planner mode: frontier (Gemini Flash 3), template (rule-based), or none",
+    "frontier",
+  )
   .action(async () => {
     const opts = tuiCommand.opts<CommanderOpts>();
 

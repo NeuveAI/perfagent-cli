@@ -15,6 +15,7 @@ import { atomToAccessor } from "./adapters/effect-atom";
 import { recentReportsAtom } from "@neuve/perf-agent-cli/data/recent-reports-atom";
 import { AGENT_PROVIDER_DISPLAY_NAMES } from "@neuve/shared/models";
 import type { AgentBackend } from "@neuve/agent";
+import type { PlannerMode } from "@neuve/supervisor";
 import { Modeline } from "./renderables/modeline";
 import { ToastDisplay } from "./renderables/toast-display";
 import { StartupScreen } from "./routes/startup/startup-screen";
@@ -186,13 +187,15 @@ const AppInner = () => {
 interface AppProps {
   readonly agent?: string;
   readonly urls?: readonly string[];
+  readonly plannerMode?: PlannerMode;
 }
 
 const App = (props: AppProps) => {
   const agent = validateAgent(props.agent);
+  const plannerMode: PlannerMode = props.plannerMode ?? "frontier";
 
   return (
-    <RuntimeProvider agent={agent}>
+    <RuntimeProvider agent={agent} plannerMode={plannerMode}>
       <KvProvider>
         <AgentProvider initialAgent={agent}>
           <ProjectProvider cliBaseUrls={props.urls}>
