@@ -37,6 +37,8 @@ import {
   EXECUTION_CONTEXT_FILE_LIMIT,
   EXECUTION_RECENT_COMMIT_LIMIT,
 } from "./constants";
+import { PlanDecomposer } from "./plan-decomposer";
+import { DecomposeError, type PlannerMode } from "./errors";
 
 export class ExecutionError extends Schema.ErrorClass<ExecutionError>("@supervisor/ExecutionError")(
   {
@@ -46,6 +48,7 @@ export class ExecutionError extends Schema.ErrorClass<ExecutionError>("@supervis
       AcpSessionCreateError,
       AcpProviderUnauthenticatedError,
       AcpProviderUsageLimitError,
+      DecomposeError,
     ]),
   },
 ) {
@@ -66,6 +69,7 @@ export interface ExecuteOptions {
   readonly onConfigOptions?: (configOptions: readonly AcpConfigOption[]) => void;
   readonly modelPreference?: { configId: string; value: string };
   readonly devServerHints?: readonly DevServerHint[];
+  readonly plannerMode?: PlannerMode;
 }
 
 interface ExecutorAccumState {
@@ -82,6 +86,7 @@ export class Executor extends ServiceMap.Service<Executor>()("@supervisor/Execut
   make: Effect.gen(function* () {
     const agent = yield* Agent;
     const git = yield* Git;
+    const planDecomposer = yield* PlanDecomposer;
 
     const gatherContext = Effect.fn("Executor.gatherContext")(function* (changesFor: ChangesFor) {
       yield* Effect.annotateCurrentSpan({ changesFor: changesFor._tag });
@@ -149,28 +154,54 @@ export class Executor extends ServiceMap.Service<Executor>()("@supervisor/Execut
         devServerHints: options.devServerHints,
       });
 
-      const planId = PlanId.makeUnsafe(crypto.randomUUID());
+      const plannerMode: PlannerMode = options.plannerMode ?? "none";
 
-      const syntheticPlan = new PerfPlan({
-        id: planId,
-        changesFor: options.changesFor,
-        currentBranch: context.currentBranch,
-        diffPreview: context.diffPreview,
-        fileStats: [],
-        instruction: options.instruction,
-        baseUrl: options.baseUrl ? Option.some(options.baseUrl) : Option.none(),
-        isHeadless: options.isHeadless,
-        cookieBrowserKeys: options.cookieBrowserKeys,
-        targetUrls: [],
-        perfBudget: Option.none(),
-        title: options.instruction,
-        rationale: "Direct execution",
-        steps: [],
+      const decomposedPlan =
+        plannerMode === "none"
+          ? undefined
+          : yield* planDecomposer
+              .decompose(options.instruction, plannerMode, {
+                changesFor: options.changesFor,
+                currentBranch: context.currentBranch,
+                diffPreview: context.diffPreview,
+                baseUrl: options.baseUrl,
+                isHeadless: options.isHeadless,
+                cookieBrowserKeys: options.cookieBrowserKeys,
+              })
+              .pipe(
+                Effect.catchTag("DecomposeError", (error) =>
+                  new ExecutionError({ reason: error }).asEffect(),
+                ),
+              );
+
+      const initialPlan =
+        decomposedPlan ??
+        new PerfPlan({
+          id: PlanId.makeUnsafe(crypto.randomUUID()),
+          changesFor: options.changesFor,
+          currentBranch: context.currentBranch,
+          diffPreview: context.diffPreview,
+          fileStats: [],
+          instruction: options.instruction,
+          baseUrl: options.baseUrl ? Option.some(options.baseUrl) : Option.none(),
+          isHeadless: options.isHeadless,
+          cookieBrowserKeys: options.cookieBrowserKeys,
+          targetUrls: [],
+          perfBudget: Option.none(),
+          title: options.instruction,
+          rationale: "Direct execution",
+          steps: [],
+        });
+
+      yield* Effect.logInfo("Execution plan prepared", {
+        planId: initialPlan.id,
+        plannerMode,
+        stepCount: initialPlan.steps.length,
       });
 
       const initial = new ExecutedPerfPlan({
-        ...syntheticPlan,
-        events: [new RunStarted({ plan: syntheticPlan })],
+        ...initialPlan,
+        events: [new RunStarted({ plan: initialPlan })],
       });
 
       const mcpEnv: Array<{ name: string; value: string }> = [];
@@ -195,7 +226,7 @@ export class Executor extends ServiceMap.Service<Executor>()("@supervisor/Execut
       }
 
       yield* Effect.logInfo("Agent stream starting", {
-        planId,
+        planId: initialPlan.id,
         promptLength: prompt.length,
         mcpEnvCount: mcpEnv.length,
       });

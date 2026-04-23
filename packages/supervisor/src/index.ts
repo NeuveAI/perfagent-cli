@@ -1,5 +1,14 @@
 export { Updates } from "./updates";
 export { Executor, ExecutionError, type ExecuteOptions } from "./executor";
+export { PlanDecomposer, PlannerAgent, splitByConnectives } from "./plan-decomposer";
+export {
+  DecomposeError,
+  DEFAULT_PLANNER_MODE,
+  isPlannerMode,
+  parsePlannerMode,
+  PLANNER_MODES,
+  PlannerMode,
+} from "./errors";
 export { Reporter } from "./reporter";
 export { InsightEnricher } from "./insight-enricher";
 export {
