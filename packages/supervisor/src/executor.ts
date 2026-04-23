@@ -17,6 +17,7 @@ import {
   RunStarted,
   type SavedFlow,
   PerfPlan,
+  type ExecutionEvent,
 } from "@neuve/shared/models";
 import {
   buildExecutionPrompt,
@@ -80,6 +81,35 @@ interface ExecutorAccumState {
 const resolveTerminalTimestamp = (executed: ExecutedPerfPlan, previous: number | undefined) => {
   if (!executed.allStepsTerminal) return undefined;
   return previous ?? Date.now();
+};
+
+const countNewRunFinished = (previous: ExecutedPerfPlan, next: ExecutedPerfPlan): number => {
+  let previousCount = 0;
+  for (const event of previous.events) {
+    if (event._tag === "RunFinished") previousCount++;
+  }
+  let nextCount = 0;
+  for (const event of next.events) {
+    if (event._tag === "RunFinished") nextCount++;
+  }
+  return nextCount - previousCount;
+};
+
+const stripRunFinished = (plan: ExecutedPerfPlan): ExecutedPerfPlan =>
+  new ExecutedPerfPlan({
+    ...plan,
+    events: plan.events.filter((event) => event._tag !== "RunFinished"),
+  });
+
+const runFinishedSatisfiesGate = (plan: ExecutedPerfPlan): boolean => {
+  const lastRunFinished = [...plan.events]
+    .reverse()
+    .find((event): event is Extract<ExecutionEvent, { _tag: "RunFinished" }> =>
+      event._tag === "RunFinished",
+    );
+  if (!lastRunFinished) return false;
+  if (lastRunFinished.abort !== undefined) return true;
+  return plan.allPlanStepsTerminal;
 };
 
 export class Executor extends ServiceMap.Service<Executor>()("@supervisor/Executor", {
@@ -248,23 +278,49 @@ export class Executor extends ServiceMap.Service<Executor>()("@supervisor/Execut
           }
           return Effect.void;
         }),
-        Stream.mapAccum(
+        Stream.mapAccumEffect(
           (): ExecutorAccumState => ({
             plan: initial,
             allTerminalSince: undefined,
           }),
-          (state, part) => {
-            const updated = state.plan.addEvent(part);
-            const terminalTimestamp = resolveTerminalTimestamp(updated, state.allTerminalSince);
-            const finalized =
-              terminalTimestamp !== undefined &&
-              !updated.hasRunFinished &&
-              Date.now() - terminalTimestamp >= ALL_STEPS_TERMINAL_GRACE_MS
-                ? updated.synthesizeRunFinished()
-                : updated;
+          (state, part) =>
+            Effect.gen(function* () {
+              const updated = state.plan.addEvent(part);
+              const terminalTimestamp = resolveTerminalTimestamp(updated, state.allTerminalSince);
+              const withGrace =
+                terminalTimestamp !== undefined &&
+                !updated.hasRunFinished &&
+                Date.now() - terminalTimestamp >= ALL_STEPS_TERMINAL_GRACE_MS
+                  ? updated.synthesizeRunFinished()
+                  : updated;
 
-            return [{ plan: finalized, allTerminalSince: terminalTimestamp }, [finalized]] as const;
-          },
+              const newRunFinished = countNewRunFinished(state.plan, withGrace);
+              if (newRunFinished > 0 && !runFinishedSatisfiesGate(withGrace)) {
+                const terminalSteps = withGrace.steps.filter(
+                  (step) =>
+                    step.status === "passed" ||
+                    step.status === "failed" ||
+                    step.status === "skipped",
+                ).length;
+                const remainingSteps = withGrace.steps.length - terminalSteps;
+                yield* Effect.logWarning("premature-run-completed", {
+                  planId: withGrace.id,
+                  totalSteps: withGrace.steps.length,
+                  terminalSteps,
+                  remainingSteps,
+                });
+                const filtered = stripRunFinished(withGrace);
+                return [
+                  { plan: filtered, allTerminalSince: terminalTimestamp },
+                  [filtered],
+                ] as const;
+              }
+
+              return [
+                { plan: withGrace, allTerminalSince: terminalTimestamp },
+                [withGrace],
+              ] as const;
+            }),
         ),
         Stream.takeUntil((executed) => executed.hasRunFinished),
         Stream.mapError((reason) => new ExecutionError({ reason })),
