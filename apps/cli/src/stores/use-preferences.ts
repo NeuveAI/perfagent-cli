@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { promptHistoryStorage, type PlannerMode } from "@neuve/supervisor";
+import { promptHistoryStorage } from "@neuve/supervisor";
 import type { AgentBackend } from "@neuve/agent";
 import { FLOW_INPUT_HISTORY_LIMIT } from "../constants";
 import type { BrowserMode } from "./use-project-preferences";
@@ -17,13 +17,11 @@ interface PreferencesStore {
   instructionHistory: string[];
   modelPreferences: Record<AgentBackend, { configId: string; value: string } | undefined>;
   cliBaseUrls: readonly string[] | undefined;
-  plannerMode: PlannerMode;
   setAgentBackend: (backend: AgentBackend) => void;
   setModelPreference: (agent: AgentBackend, configId: string, modelValue: string) => void;
   toggleAutoSave: () => void;
   toggleNotifications: () => void;
   rememberInstruction: (instruction: string) => void;
-  setPlannerMode: (mode: PlannerMode) => void;
 }
 
 export const usePreferencesStore = create<PreferencesStore>()(
@@ -50,9 +48,7 @@ export const usePreferencesStore = create<PreferencesStore>()(
         local: undefined,
       },
       cliBaseUrls: undefined,
-      plannerMode: "frontier",
       setAgentBackend: (backend: AgentBackend) => set({ agentBackend: backend }),
-      setPlannerMode: (mode: PlannerMode) => set({ plannerMode: mode }),
       setModelPreference: (agent: AgentBackend, configId: string, modelValue: string) =>
         set((state) => ({
           modelPreferences: { ...state.modelPreferences, [agent]: { configId, value: modelValue } },

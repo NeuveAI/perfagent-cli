@@ -46,7 +46,6 @@ export const WatchScreen = ({
   const verbose = usePreferencesStore((state) => state.verbose);
   const browserHeaded = usePreferencesStore((state) => state.browserHeaded);
   const notifications = usePreferencesStore((state) => state.notifications);
-  const plannerMode = usePreferencesStore((state) => state.plannerMode);
 
   const [phase, setPhase] = useState<WatchPhase>("polling");
   const [executedPlan, setExecutedPlan] = useState<ExecutedPerfPlan | undefined>(undefined);
@@ -123,7 +122,6 @@ export const WatchScreen = ({
         isHeadless: !browserHeaded,
         cookieBrowserKeys: [...cookieBrowserKeys],
         baseUrl,
-        plannerMode,
         onEvent: handleEvent,
       });
       yield* loop;

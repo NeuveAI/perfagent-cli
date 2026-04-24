@@ -430,7 +430,6 @@ export const TestingScreen = ({
   const browserHeaded = usePreferencesStore((state) => state.browserHeaded);
   const browserProfile = usePreferencesStore((state) => state.browserProfile);
   const cdpUrl = usePreferencesStore((state) => state.cdpUrl);
-  const plannerMode = usePreferencesStore((state) => state.plannerMode);
   const toggleNotifications = usePreferencesStore((state) => state.toggleNotifications);
   const [executionResult, triggerExecute] = useAtom(executeFn, {
     mode: "promiseExit",
@@ -580,7 +579,6 @@ export const TestingScreen = ({
           modelPreferenceConfigId && modelPreferenceValue
             ? { configId: modelPreferenceConfigId, value: modelPreferenceValue }
             : undefined,
-        plannerMode,
       },
       agentBackend,
       onUpdate: setExecutedPlan,
@@ -609,7 +607,6 @@ export const TestingScreen = ({
     devServerHints,
     modelPreferenceConfigId,
     modelPreferenceValue,
-    plannerMode,
     setConfigOptions,
   ]);
 

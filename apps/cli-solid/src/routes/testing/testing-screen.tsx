@@ -10,7 +10,6 @@ import type {
 } from "@neuve/shared/models";
 import type { DevServerHint } from "@neuve/shared/prompts";
 import { executeFn } from "@neuve/perf-agent-cli/data/execution-atom";
-import { plannerModeAtom } from "@neuve/perf-agent-cli/data/runtime";
 import { agentConfigOptionsAtom } from "@neuve/perf-agent-cli/data/config-options";
 import { saveSession, updateSession } from "../../data/session-history";
 import { useNavigation, Screen } from "../../context/navigation";
@@ -89,8 +88,6 @@ export const TestingScreen = (props: TestingScreenProps) => {
       const baseUrl =
         props.baseUrls && props.baseUrls.length > 0 ? props.baseUrls.join(", ") : undefined;
 
-      const plannerMode = atomGet(plannerModeAtom);
-
       const trigger = atomFnToPromise(executeFn);
       const promise = trigger({
         options: {
@@ -105,7 +102,6 @@ export const TestingScreen = (props: TestingScreenProps) => {
           devServerHints: props.devServerHints ? [...props.devServerHints] : undefined,
           modelPreference:
             modelPref ? { configId: modelPref.configId, value: modelPref.value } : undefined,
-          plannerMode,
         },
         agentBackend,
         onUpdate: setExecutedPlan,

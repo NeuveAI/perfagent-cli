@@ -1,13 +1,6 @@
 import { Config, Effect, Option, Schema, Stream } from "effect";
 import { type ChangesFor, type PlanId, CiResultOutput } from "@neuve/shared/models";
-import {
-  Executor,
-  ExecutedPerfPlan,
-  Reporter,
-  ReportStorage,
-  Github,
-  type PlannerMode,
-} from "@neuve/supervisor";
+import { Executor, ExecutedPerfPlan, Reporter, ReportStorage, Github } from "@neuve/supervisor";
 import { Analytics } from "@neuve/shared/observability";
 import { detectParentAgent } from "@neuve/shared/launched-from";
 import type { AgentBackend } from "@neuve/agent";
@@ -35,7 +28,6 @@ interface HeadlessRunOptions {
   timeoutMs: Option.Option<number>;
   output: "text" | "json";
   baseUrl?: string;
-  plannerMode?: PlannerMode;
 }
 
 export const runHeadless = (options: HeadlessRunOptions) =>
@@ -136,7 +128,6 @@ export const runHeadless = (options: HeadlessRunOptions) =>
               isHeadless: !options.headed,
               cookieBrowserKeys: [],
               baseUrl: options.baseUrl,
-              plannerMode: options.plannerMode,
             })
             .pipe(
               Stream.tap((executed) => Effect.sync(() => printNewEvents(executed))),
