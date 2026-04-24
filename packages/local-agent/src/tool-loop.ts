@@ -47,30 +47,6 @@ export interface ToolLoopOptions {
   signal: AbortSignal;
 }
 
-const tryParseJson = (raw: string): Record<string, unknown> | undefined => {
-  try {
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    return undefined;
-  }
-};
-
-const repairAndParseJson = (raw: string): Record<string, unknown> => {
-  const direct = tryParseJson(raw);
-  if (direct) return direct;
-
-  const trimmed = raw.trim();
-  const withoutTrailing = trimmed.replace(/,\s*([}\]])/g, "$1");
-  const repaired = tryParseJson(withoutTrailing);
-  if (repaired) return repaired;
-
-  const singleToDouble = withoutTrailing.replace(/'/g, '"');
-  const repairedSingle = tryParseJson(singleToDouble);
-  if (repairedSingle) return repairedSingle;
-
-  return {};
-};
-
 interface ToolCallFingerprint {
   toolName: string;
   argsHash: string;
@@ -157,7 +133,12 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
 
       const functionName = toolCall.function.name;
       const rawArgs = toolCall.function.arguments;
-      const args = repairAndParseJson(rawArgs);
+      // Post-Q9-fix: Ollama emits structured `tool_calls` where `arguments`
+      // is a valid JSON string per OpenAI spec. If parsing fails here, the
+      // upstream emitted malformed JSON — we want that surfaced (the fiber
+      // dies, the eval run records the failure) rather than papered over
+      // with regex repairs that silently swallow the real signal.
+      const args = JSON.parse(rawArgs) as Record<string, unknown>;
 
       const argsHash = JSON.stringify(args);
       const lastCall = recentCalls[recentCalls.length - 1];
