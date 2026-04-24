@@ -18,6 +18,7 @@ import {
 import { Agent, SessionId } from "@neuve/agent";
 import { Executor, Git, GitRepoRoot, PlanDecomposer } from "@neuve/supervisor";
 import { runRealTask, type RealRunContext } from "../src/runners/real";
+import { extractUrlFromToolInput, extractUrlFromToolResult } from "../src/runners/url-extraction";
 import {
   StatusMarkerEvent,
   StreamTerminatedEvent,
@@ -373,5 +374,158 @@ describe("real runner", () => {
     const terminated = decodeStreamTerminated(raw[raw.length - 1]);
     assert.strictEqual(terminated.reason, "run_finished:failed");
     assert.strictEqual(terminated.remainingSteps, 0);
+  });
+
+  // F5: Wave 2.A consolidated browser tools (interact/observe/trace) ship
+  // `args: {}` at the top level — the navigated URL is returned inside the
+  // MCP text payload of ToolResult.result, not in ToolCall.input. These
+  // tests lock in the two-pronged extraction (input + result) so the scorer
+  // can see reachedUrls under the consolidated tool surface.
+  it("extractUrlFromToolResult parses 'Successfully navigated to <url>' MCP payloads", () => {
+    const rawOutput = JSON.stringify([
+      {
+        type: "text",
+        text:
+          "Successfully navigated to https://docs.python.org/3/.\n" +
+          "## Pages\n1: https://docs.python.org/3/ [selected]",
+      },
+    ]);
+    assert.strictEqual(extractUrlFromToolResult(rawOutput), "https://docs.python.org/3/");
+  });
+
+  it("extractUrlFromToolResult parses 'URL: <url>' headers from trace start payloads", () => {
+    const rawOutput = JSON.stringify([
+      {
+        type: "text",
+        text:
+          "The performance trace has been stopped.\n" +
+          "## Summary of Performance trace findings:\n" +
+          "URL: https://www.bbc.com/news\n" +
+          "Trace bounds: {min: 0, max: 1}",
+      },
+    ]);
+    assert.strictEqual(extractUrlFromToolResult(rawOutput), "https://www.bbc.com/news");
+  });
+
+  it("extractUrlFromToolResult parses the root-frame URL from observe snapshot payloads", () => {
+    const rawOutput = JSON.stringify([
+      {
+        type: "text",
+        text:
+          '## Latest page snapshot\nuid=1_0 RootWebArea "Example Domain" url="https://example.com/"\n' +
+          '  uid=1_1 link "More info" url="https://www.iana.org/"',
+      },
+    ]);
+    assert.strictEqual(extractUrlFromToolResult(rawOutput), "https://example.com/");
+  });
+
+  it("extractUrlFromToolResult returns undefined when no URL marker is present", () => {
+    const rawOutput = JSON.stringify([
+      { type: "text", text: "## Console messages\n<no console messages found>" },
+    ]);
+    assert.strictEqual(extractUrlFromToolResult(rawOutput), undefined);
+  });
+
+  it("extractUrlFromToolInput keeps reading pre-Wave-2.A { url } / { action: { url } } shapes", () => {
+    assert.strictEqual(
+      extractUrlFromToolInput(JSON.stringify({ url: "https://example.com/" })),
+      "https://example.com/",
+    );
+    assert.strictEqual(
+      extractUrlFromToolInput(
+        JSON.stringify({ action: { command: "navigate", url: "https://docs.python.org/3/" } }),
+      ),
+      "https://docs.python.org/3/",
+    );
+    assert.strictEqual(extractUrlFromToolInput(JSON.stringify({})), undefined);
+  });
+
+  it("records reachedUrls from Wave 2.A tool-result payloads (args: {} + navigated-URL result)", async () => {
+    const traceDir = makeTempTraceDir();
+    const context: RealRunContext = {
+      runnerName: "real-test",
+      traceDir,
+      plannerMode: "frontier",
+      isHeadless: true,
+      baseUrl: undefined,
+    };
+
+    const plan = makeSamplePlan();
+    const toolCallUpdate = new AcpToolCall({
+      sessionUpdate: "tool_call",
+      toolCallId: "call-1",
+      title: "mcp__browser__interact",
+      rawInput: {},
+    });
+    const toolResultUpdate = new AcpToolCallUpdate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "call-1",
+      title: "mcp__browser__interact",
+      status: "completed",
+      rawOutput: [
+        {
+          type: "text",
+          text:
+            "Successfully navigated to https://example.com/.\n" +
+            "## Pages\n1: https://example.com/ [selected]",
+        },
+      ],
+    });
+    const updates: AcpSessionUpdate[] = [
+      messageChunk("Navigating.\n"),
+      thoughtChunk("."),
+      toolCallUpdate,
+      toolResultUpdate,
+      ...markerMessage([
+        `STEP_START|${plan.steps[0].id}|${plan.steps[0].title}`,
+        `STEP_DONE|${plan.steps[0].id}|landed`,
+      ]),
+      ...markerMessage(["RUN_COMPLETED|passed|done"]),
+    ];
+
+    const trace = await Effect.runPromise(runTestEffect(plan, updates, context));
+
+    assert.strictEqual(trace.toolCalls.length, 1);
+    assert.strictEqual(trace.toolCalls[0].name, "mcp__browser__interact");
+    assert.strictEqual(trace.toolCalls[0].arguments["input"], "{}");
+    assert.strictEqual(trace.reachedKeyNodes.length, 1);
+    assert.strictEqual(trace.finalUrl, "https://example.com/");
+  });
+
+  it("does not record reachedUrls from error tool-results", async () => {
+    const traceDir = makeTempTraceDir();
+    const context: RealRunContext = {
+      runnerName: "real-test",
+      traceDir,
+      plannerMode: "frontier",
+      isHeadless: true,
+      baseUrl: undefined,
+    };
+
+    const plan = makeSamplePlan();
+    const toolCallUpdate = new AcpToolCall({
+      sessionUpdate: "tool_call",
+      toolCallId: "call-1",
+      title: "mcp__browser__interact",
+      rawInput: {},
+    });
+    const toolResultUpdate = new AcpToolCallUpdate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "call-1",
+      title: "mcp__browser__interact",
+      status: "failed",
+      rawOutput: [{ type: "text", text: "Successfully navigated to https://example.com/." }],
+    });
+    const updates: AcpSessionUpdate[] = [
+      messageChunk("Trying.\n"),
+      thoughtChunk("."),
+      toolCallUpdate,
+      toolResultUpdate,
+      ...markerMessage(["RUN_COMPLETED|failed|errored"]),
+    ];
+
+    const trace = await Effect.runPromise(runTestEffect(plan, updates, context));
+    assert.strictEqual(trace.reachedKeyNodes.length, 0);
+    assert.strictEqual(trace.finalUrl, "");
   });
 });
