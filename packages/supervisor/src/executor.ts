@@ -9,6 +9,7 @@ import {
 import { Effect, Layer, Option, Schema, ServiceMap, Stream } from "effect";
 import {
   type AcpConfigOption,
+  type AnalysisStep,
   type ChangesFor,
   type ChangedFile,
   type CommitSummary,
@@ -39,8 +40,6 @@ import {
   EXECUTION_CONTEXT_FILE_LIMIT,
   EXECUTION_RECENT_COMMIT_LIMIT,
 } from "./constants";
-import { PlanDecomposer } from "./plan-decomposer";
-import { DecomposeError, type PlannerMode } from "./errors";
 
 export class ExecutionError extends Schema.ErrorClass<ExecutionError>("@supervisor/ExecutionError")(
   {
@@ -50,7 +49,6 @@ export class ExecutionError extends Schema.ErrorClass<ExecutionError>("@supervis
       AcpSessionCreateError,
       AcpProviderUnauthenticatedError,
       AcpProviderUsageLimitError,
-      DecomposeError,
     ]),
   },
 ) {
@@ -71,7 +69,13 @@ export interface ExecuteOptions {
   readonly onConfigOptions?: (configOptions: readonly AcpConfigOption[]) => void;
   readonly modelPreference?: { configId: string; value: string };
   readonly devServerHints?: readonly DevServerHint[];
-  readonly plannerMode?: PlannerMode;
+  /**
+   * Pre-decomposed plan steps for the Executor to seed its initial plan with.
+   * Runtime callers always omit this — Gemma plans and executes in a single
+   * loop. Only the @neuve/evals A:B harness uses this to feed an oracle plan
+   * decomposed by the frontier planner upstream of `execute`.
+   */
+  readonly initialSteps?: readonly AnalysisStep[];
 }
 
 interface ExecutorAccumState {
@@ -118,7 +122,6 @@ export class Executor extends ServiceMap.Service<Executor>()("@supervisor/Execut
   make: Effect.gen(function* () {
     const agent = yield* Agent;
     const git = yield* Git;
-    const planDecomposer = yield* PlanDecomposer;
     const tokenUsageBus = yield* TokenUsageBus;
 
     const gatherContext = Effect.fn("Executor.gatherContext")(function* (changesFor: ChangesFor) {
@@ -187,48 +190,27 @@ export class Executor extends ServiceMap.Service<Executor>()("@supervisor/Execut
         devServerHints: options.devServerHints,
       });
 
-      const plannerMode: PlannerMode = options.plannerMode ?? "none";
+      const initialSteps = options.initialSteps ?? [];
 
-      const decomposedPlan =
-        plannerMode === "none"
-          ? undefined
-          : yield* planDecomposer
-              .decompose(options.instruction, plannerMode, {
-                changesFor: options.changesFor,
-                currentBranch: context.currentBranch,
-                diffPreview: context.diffPreview,
-                baseUrl: options.baseUrl,
-                isHeadless: options.isHeadless,
-                cookieBrowserKeys: options.cookieBrowserKeys,
-              })
-              .pipe(
-                Effect.catchTag("DecomposeError", (error) =>
-                  new ExecutionError({ reason: error }).asEffect(),
-                ),
-              );
-
-      const initialPlan =
-        decomposedPlan ??
-        new PerfPlan({
-          id: PlanId.makeUnsafe(crypto.randomUUID()),
-          changesFor: options.changesFor,
-          currentBranch: context.currentBranch,
-          diffPreview: context.diffPreview,
-          fileStats: [],
-          instruction: options.instruction,
-          baseUrl: options.baseUrl ? Option.some(options.baseUrl) : Option.none(),
-          isHeadless: options.isHeadless,
-          cookieBrowserKeys: options.cookieBrowserKeys,
-          targetUrls: [],
-          perfBudget: Option.none(),
-          title: options.instruction,
-          rationale: "Direct execution",
-          steps: [],
-        });
+      const initialPlan = new PerfPlan({
+        id: PlanId.makeUnsafe(crypto.randomUUID()),
+        changesFor: options.changesFor,
+        currentBranch: context.currentBranch,
+        diffPreview: context.diffPreview,
+        fileStats: [],
+        instruction: options.instruction,
+        baseUrl: options.baseUrl ? Option.some(options.baseUrl) : Option.none(),
+        isHeadless: options.isHeadless,
+        cookieBrowserKeys: options.cookieBrowserKeys,
+        targetUrls: [],
+        perfBudget: Option.none(),
+        title: options.instruction,
+        rationale: initialSteps.length > 0 ? "Seeded with pre-decomposed steps" : "Direct execution",
+        steps: initialSteps,
+      });
 
       yield* Effect.logInfo("Execution plan prepared", {
         planId: initialPlan.id,
-        plannerMode,
         stepCount: initialPlan.steps.length,
       });
 

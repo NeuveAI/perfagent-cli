@@ -9,14 +9,12 @@ import {
   AnalysisStep,
   ChangesFor,
   ExecutedPerfPlan,
-  PerfPlan,
   PlanId,
   StepId,
 } from "@neuve/shared/models";
 import { TokenUsageBus } from "@neuve/shared/token-usage-bus";
 import { Agent } from "@neuve/agent";
 import { Executor } from "../src/executor";
-import { PlanDecomposer } from "../src/plan-decomposer";
 import { Git, GitRepoRoot } from "../src/git/git";
 
 const VOLVO_TRACE_PATH = path.resolve(
@@ -42,30 +40,14 @@ const makeStep = (id: string, title: string): AnalysisStep =>
     endedAt: Option.none(),
   });
 
-const makeVolvoPlan = (): PerfPlan =>
-  new PerfPlan({
-    id: PlanId.makeUnsafe("plan-volvo-01"),
-    title: "Volvo EX90 configurator journey",
-    rationale: "Decomposed via frontier planner",
-    steps: [
-      makeStep("step-01", "Navigate to volvocars.com"),
-      makeStep("step-02", "Open Buy menu"),
-      makeStep("step-03", "Click Build your Volvo"),
-      makeStep("step-04", "Select EX90 model"),
-      makeStep("step-05", "Pick spec options"),
-      makeStep("step-06", "Reach the order request form"),
-    ],
-    changesFor: ChangesFor.makeUnsafe({ _tag: "WorkingTree" }),
-    currentBranch: "main",
-    diffPreview: "",
-    fileStats: [],
-    instruction: "go to volvocars.com and build an ex90",
-    baseUrl: Option.none(),
-    isHeadless: true,
-    cookieBrowserKeys: [],
-    targetUrls: [],
-    perfBudget: Option.none(),
-  });
+const makeVolvoSteps = (): readonly AnalysisStep[] => [
+  makeStep("step-01", "Navigate to volvocars.com"),
+  makeStep("step-02", "Open Buy menu"),
+  makeStep("step-03", "Click Build your Volvo"),
+  makeStep("step-04", "Select EX90 model"),
+  makeStep("step-05", "Pick spec options"),
+  makeStep("step-06", "Reach the order request form"),
+];
 
 const messageChunk = (text: string): AcpSessionUpdate =>
   new AcpAgentMessageChunk({
@@ -83,14 +65,6 @@ const markerMessage = (lines: readonly string[]): AcpSessionUpdate[] => [
   messageChunk(lines.join("\n") + "\n"),
   thoughtChunk("."),
 ];
-
-const planDecomposerLayer = (plan: PerfPlan) =>
-  Layer.succeed(
-    PlanDecomposer,
-    PlanDecomposer.of({
-      decompose: () => Effect.succeed(plan),
-    }),
-  );
 
 const gitStubLayer = Layer.succeed(
   Git,
@@ -135,18 +109,16 @@ const scriptedAgentLayer = (updates: readonly AcpSessionUpdate[]) =>
     }),
   );
 
-const buildLayer = (updates: readonly AcpSessionUpdate[], plan: PerfPlan) =>
+const buildLayer = (updates: readonly AcpSessionUpdate[]) =>
   Layer.provideMerge(
     Executor.layer,
-    Layer.mergeAll(
-      scriptedAgentLayer(updates),
-      gitStubLayer,
-      planDecomposerLayer(plan),
-      TokenUsageBus.layerNoop,
-    ),
+    Layer.mergeAll(scriptedAgentLayer(updates), gitStubLayer, TokenUsageBus.layerNoop),
   );
 
-const runExecutor = (updates: readonly AcpSessionUpdate[], plan: PerfPlan) =>
+const runExecutor = (
+  updates: readonly AcpSessionUpdate[],
+  initialSteps: readonly AnalysisStep[],
+) =>
   Effect.gen(function* () {
     const executor = yield* Executor;
     const stream = executor.execute({
@@ -154,10 +126,10 @@ const runExecutor = (updates: readonly AcpSessionUpdate[], plan: PerfPlan) =>
       instruction: "go to volvocars.com and build an ex90",
       isHeadless: true,
       cookieBrowserKeys: [],
-      plannerMode: "frontier",
+      initialSteps,
     });
     return yield* stream.pipe(Stream.runCollect);
-  }).pipe(Effect.provide(buildLayer(updates, plan)));
+  }).pipe(Effect.provide(buildLayer(updates)));
 
 const lastPlanOf = (plans: readonly ExecutedPerfPlan[]): ExecutedPerfPlan => {
   if (plans.length === 0) throw new Error("expected at least one emitted plan");
@@ -200,7 +172,7 @@ describe("Executor adherence gate", () => {
     const logCapture = Logger.layer([warningLogger]);
 
     const emitted = await Effect.runPromise(
-      runExecutor(updates, makeVolvoPlan()).pipe(Effect.provide(logCapture)),
+      runExecutor(updates, makeVolvoSteps()).pipe(Effect.provide(logCapture)),
     );
 
     const finalPlan = lastPlanOf(emitted);
@@ -216,9 +188,9 @@ describe("Executor adherence gate", () => {
   });
 
   it("terminates cleanly when all plan steps are terminal before RUN_COMPLETED", async () => {
-    const plan = makeVolvoPlan();
+    const steps = makeVolvoSteps();
     const updates: AcpSessionUpdate[] = [];
-    plan.steps.forEach((step, index) => {
+    steps.forEach((step, index) => {
       updates.push(
         ...markerMessage([
           `STEP_START|${step.id}|${step.title}`,
@@ -228,7 +200,7 @@ describe("Executor adherence gate", () => {
     });
     updates.push(...markerMessage(["RUN_COMPLETED|passed|all six steps complete"]));
 
-    const emitted = await Effect.runPromise(runExecutor(updates, plan));
+    const emitted = await Effect.runPromise(runExecutor(updates, steps));
     const finalPlan = lastPlanOf(emitted);
 
     expect(finalPlan.hasRunFinished).toBe(true);
@@ -237,24 +209,24 @@ describe("Executor adherence gate", () => {
   });
 
   it("terminates cleanly when ASSERTION_FAILED category=abort precedes RUN_COMPLETED", async () => {
-    const plan = makeVolvoPlan();
+    const steps = makeVolvoSteps();
     const updates: AcpSessionUpdate[] = [
       ...markerMessage([
-        `STEP_START|${plan.steps[0].id}|${plan.steps[0].title}`,
-        `STEP_DONE|${plan.steps[0].id}|landed`,
+        `STEP_START|${steps[0].id}|${steps[0].title}`,
+        `STEP_DONE|${steps[0].id}|landed`,
       ]),
       ...markerMessage([
-        `STEP_START|${plan.steps[1].id}|${plan.steps[1].title}`,
-        `STEP_DONE|${plan.steps[1].id}|menu opened`,
+        `STEP_START|${steps[1].id}|${steps[1].title}`,
+        `STEP_DONE|${steps[1].id}|menu opened`,
       ]),
       ...markerMessage([
-        `STEP_START|${plan.steps[2].id}|${plan.steps[2].title}`,
-        `ASSERTION_FAILED|${plan.steps[2].id}|category=abort; domain=general; abort_reason=blocked-by-captcha; expected=submenu-visible; actual=captcha-overlay`,
+        `STEP_START|${steps[2].id}|${steps[2].title}`,
+        `ASSERTION_FAILED|${steps[2].id}|category=abort; domain=general; abort_reason=blocked-by-captcha; expected=submenu-visible; actual=captcha-overlay`,
         "RUN_COMPLETED|failed|aborted due to captcha",
       ]),
     ];
 
-    const emitted = await Effect.runPromise(runExecutor(updates, plan));
+    const emitted = await Effect.runPromise(runExecutor(updates, steps));
     const finalPlan = lastPlanOf(emitted);
 
     expect(finalPlan.hasRunFinished).toBe(true);
@@ -264,19 +236,11 @@ describe("Executor adherence gate", () => {
       expect(runFinished.abort).toBeDefined();
       expect(runFinished.abort?.reason).toBe("blocked-by-captcha");
     }
-    const abortedStep = finalPlan.steps.find((step) => step.id === plan.steps[2].id);
+    const abortedStep = finalPlan.steps.find((step) => step.id === steps[2].id);
     expect(abortedStep?.status).toBe("failed");
   });
 
-  it("terminates cleanly on RUN_COMPLETED with plannerMode=none (empty plan back-compat)", async () => {
-    const neverCalledDecomposer = Layer.succeed(
-      PlanDecomposer,
-      PlanDecomposer.of({
-        decompose: () =>
-          Effect.die("PlanDecomposer.decompose must not be called when plannerMode=none"),
-      }),
-    );
-
+  it("terminates cleanly on RUN_COMPLETED with empty initialSteps (runtime default)", async () => {
     const updates: AcpSessionUpdate[] = [
       messageChunk("Inspecting the target page...\n"),
       thoughtChunk("..."),
@@ -294,28 +258,7 @@ describe("Executor adherence gate", () => {
     });
     const logCapture = Logger.layer([capturingLogger]);
 
-    const testLayer = Layer.provideMerge(
-      Executor.layer,
-      Layer.mergeAll(
-        scriptedAgentLayer(updates),
-        gitStubLayer,
-        neverCalledDecomposer,
-        TokenUsageBus.layerNoop,
-      ),
-    );
-
-    const program = Effect.gen(function* () {
-      const executor = yield* Executor;
-      return yield* executor
-        .execute({
-          changesFor: ChangesFor.makeUnsafe({ _tag: "WorkingTree" }),
-          instruction: "analyze the homepage",
-          isHeadless: true,
-          cookieBrowserKeys: [],
-          plannerMode: "none",
-        })
-        .pipe(Stream.runCollect);
-    }).pipe(Effect.provide(testLayer), Effect.provide(logCapture));
+    const program = runExecutor(updates, []).pipe(Effect.provide(logCapture));
 
     const emitted = await Effect.runPromise(program);
     const finalPlan = lastPlanOf(emitted);
@@ -331,10 +274,25 @@ describe("Executor adherence gate", () => {
   });
 
   it("auto-synthesizes RunFinished via the grace-period safety net", () => {
-    const plan = makeVolvoPlan();
-    const baseInitial = new ExecutedPerfPlan({ ...plan, events: [] });
-    let current = baseInitial;
-    for (const step of plan.steps) {
+    const steps = makeVolvoSteps();
+    let current = new ExecutedPerfPlan({
+      id: PlanId.makeUnsafe("plan-volvo-01"),
+      changesFor: ChangesFor.makeUnsafe({ _tag: "WorkingTree" }),
+      currentBranch: "main",
+      diffPreview: "",
+      fileStats: [],
+      instruction: "go to volvocars.com and build an ex90",
+      baseUrl: Option.none(),
+      isHeadless: true,
+      cookieBrowserKeys: [],
+      targetUrls: [],
+      perfBudget: Option.none(),
+      title: "Volvo EX90 configurator journey",
+      rationale: "Seeded with pre-decomposed steps",
+      steps,
+      events: [],
+    });
+    for (const step of steps) {
       current = current.addEvent(
         new AcpAgentMessageChunk({
           sessionUpdate: "agent_message_chunk",

@@ -257,7 +257,6 @@ export const runRealTask = Effect.fn("RealRunner.run")(function* (
     isHeadless: context.isHeadless,
     cookieBrowserKeys: [],
     baseUrl: context.baseUrl,
-    plannerMode: context.plannerMode,
   });
 
   const finalAcc = yield* stream.pipe(

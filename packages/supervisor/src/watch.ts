@@ -262,7 +262,6 @@ export class Watch extends ServiceMap.Service<Watch>()("@supervisor/Watch", {
           isHeadless: options.isHeadless,
           cookieBrowserKeys: options.cookieBrowserKeys,
           baseUrl: options.baseUrl,
-          plannerMode: options.plannerMode,
         };
 
         const finalExecuted = yield* executor.execute(executeOptions).pipe(
