@@ -1,9 +1,9 @@
 import type { ExecutedTrace, ToolCall } from "../task";
+import { REDACTED_KEY_PATTERN } from "../redaction";
 
 const MAX_TRAJECTORY_CHARS = 2048;
 const MAX_TOOL_NAME_CHARS = 40;
 const MAX_ARG_VALUE_CHARS = 120;
-const REDACTED_KEY_PATTERN = /api[_-]?key|token|password|secret|authorization/i;
 const TRUNCATION_SUFFIX = "…[truncated]";
 
 const summarizeArgs = (call: ToolCall): string => {
