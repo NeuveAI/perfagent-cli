@@ -321,6 +321,15 @@ importers:
 
   packages/evals:
     dependencies:
+      '@ai-sdk/google':
+        specifier: 4.0.0-beta.45
+        version: 4.0.0-beta.45(zod@4.3.6)
+      '@ai-sdk/provider':
+        specifier: 4.0.0-beta.12
+        version: 4.0.0-beta.12
+      '@effect/platform-node':
+        specifier: 4.0.0-beta.35
+        version: 4.0.0-beta.35(effect@4.0.0-beta.35)(ioredis@5.10.0)
       '@neuve/agent':
         specifier: workspace:*
         version: link:../agent
@@ -330,15 +339,24 @@ importers:
       '@neuve/supervisor':
         specifier: workspace:*
         version: link:../supervisor
+      ai:
+        specifier: 7.0.0-beta.111
+        version: 7.0.0-beta.111(zod@4.3.6)
+      dotenv:
+        specifier: ^17.0.0
+        version: 17.3.1
       effect:
         specifier: 4.0.0-beta.35
         version: 4.0.0-beta.35
       evalite:
         specifier: 1.0.0-beta.16
-        version: 1.0.0-beta.16
+        version: 1.0.0-beta.16(ai@7.0.0-beta.111(zod@4.3.6))
       vitest:
         specifier: npm:@voidzero-dev/vite-plus-test@^0.1.12
         version: '@voidzero-dev/vite-plus-test@0.1.12(@opentelemetry/api@1.9.0)(@types/node@22.19.15)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(typescript@5.9.3)(vite@7.3.1(@types/node@22.19.15)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.2))(yaml@2.8.2)'
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -522,8 +540,30 @@ packages:
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
 
+  '@ai-sdk/gateway@4.0.0-beta.62':
+    resolution: {integrity: sha512-gqv1nBV3XVK16NGMO2ea3OAYV2LPYzdIA3xXbF1m6rvPB4O7ZNX22jtQ39YRaVVksxfbj87soYDJ+SHPQBYIaQ==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/google@4.0.0-beta.45':
+    resolution: {integrity: sha512-HMXuec731vtMKjU7z+NZ+w9+9pfJPxsX2kbjgps44tzxNzZscaciVqUFABCwBdcZDcs8f3/07wEVIzILvnwe/w==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/provider-utils@5.0.0-beta.26':
+    resolution: {integrity: sha512-nZAB5bvc4wFQnl6JiS8cLYftEqfnPKV0tZEztpX1y7B3XY4fpSD5ReYWGJWThQM3WFcnCw6jqj5wtcQsRSQ1gg==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
   '@ai-sdk/provider@3.0.8':
     resolution: {integrity: sha512-oGMAgGoQdBXbZqNG0Ze56CHjDZ1IDYOwGYxYjO5KLSlz5HiNQ9udIXsPZ61VWaHGZ5XW/jyjmr6t2xz2jGVwbQ==}
+    engines: {node: '>=18'}
+
+  '@ai-sdk/provider@4.0.0-beta.12':
+    resolution: {integrity: sha512-/lm60YW/8LJEOmRlKf55is8cXn7eAIgTNN2T/nGnFOaVS5GPvGpUfAVezUfvIZ6hLbUeFuaMNEZLhxXQijHNEQ==}
     engines: {node: '>=18'}
 
   '@alcalzone/ansi-tokenize@0.2.5':
@@ -2518,6 +2558,10 @@ packages:
     resolution: {integrity: sha512-K9evb5u4QmH3Xv2XUg9OWUETYMrIX1C7Hls1ce8DW+Nlbb26NnQ5SPQCt8fGq4FGqZ9BodMwfane1pTd+BWYwQ==}
     hasBin: true
 
+  '@vercel/oidc@3.2.0':
+    resolution: {integrity: sha512-UycprH3T6n3jH0k44NHMa7pnFHGu/N05MjojYr+Mc6I7obkoLIJujSWwin1pCvdy/eOxrI/l3uDLQsmcrOb4ug==}
+    engines: {node: '>= 20'}
+
   '@vitest/pretty-format@4.1.5':
     resolution: {integrity: sha512-7I3q6l5qr03dVfMX2wCo9FxwSJbPdwKjy2uu/YPpU3wfHvIL4QHwVRp57OfGrDFeUJ8/8QdfBKIV12FTtLn00g==}
 
@@ -2653,6 +2697,9 @@ packages:
   '@webgpu/types@0.1.69':
     resolution: {integrity: sha512-RPmm6kgRbI8e98zSD3RVACvnuktIja5+yLgDAkTmxLr90BEwdTXRQWNLF3ETTTyH/8mKhznZuN5AveXYFEsMGQ==}
 
+  '@workflow/serde@4.1.0':
+    resolution: {integrity: sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ==}
+
   '@xterm/headless@5.5.0':
     resolution: {integrity: sha512-5xXB7kdQlFBP82ViMJTwwEc3gKCLGKR/eoxQm4zge7GPBl86tCdI0IdPJjoKd8mUSFXz5V7i/25sfsEkP4j46g==}
 
@@ -2728,6 +2775,12 @@ packages:
   agentkeepalive@4.6.0:
     resolution: {integrity: sha512-kja8j7PjmncONqaTsB8fQ+wE2mSU2DJ9D4XKoJ5PFWIdRMa6SLSN1ff4mOr4jCbfRSsxR4keIiySJU0N9T5hIQ==}
     engines: {node: '>= 8.0.0'}
+
+  ai@7.0.0-beta.111:
+    resolution: {integrity: sha512-dtXAmja2Atwu/0HocfGmMfeuXlFdKmzeFcDup6R621qnKshIRAOLTiABkp/Bs3sXA6yRjJHJzFYlSIF47z/HQQ==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
 
   ajv-formats@3.0.1:
     resolution: {integrity: sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ==}
@@ -5986,7 +6039,32 @@ snapshots:
     dependencies:
       zod: 4.3.6
 
+  '@ai-sdk/gateway@4.0.0-beta.62(zod@4.3.6)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.0-beta.12
+      '@ai-sdk/provider-utils': 5.0.0-beta.26(zod@4.3.6)
+      '@vercel/oidc': 3.2.0
+      zod: 4.3.6
+
+  '@ai-sdk/google@4.0.0-beta.45(zod@4.3.6)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.0-beta.12
+      '@ai-sdk/provider-utils': 5.0.0-beta.26(zod@4.3.6)
+      zod: 4.3.6
+
+  '@ai-sdk/provider-utils@5.0.0-beta.26(zod@4.3.6)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.0-beta.12
+      '@standard-schema/spec': 1.1.0
+      '@workflow/serde': 4.1.0
+      eventsource-parser: 3.0.6
+      zod: 4.3.6
+
   '@ai-sdk/provider@3.0.8':
+    dependencies:
+      json-schema: 0.4.0
+
+  '@ai-sdk/provider@4.0.0-beta.12':
     dependencies:
       json-schema: 0.4.0
 
@@ -8190,6 +8268,8 @@ snapshots:
       '@typescript/native-preview-win32-arm64': 7.0.0-dev.20260319.1
       '@typescript/native-preview-win32-x64': 7.0.0-dev.20260319.1
 
+  '@vercel/oidc@3.2.0': {}
+
   '@vitest/pretty-format@4.1.5':
     dependencies:
       tinyrainbow: 3.1.0
@@ -8338,6 +8418,8 @@ snapshots:
   '@webgpu/types@0.1.69':
     optional: true
 
+  '@workflow/serde@4.1.0': {}
+
   '@xterm/headless@5.5.0': {}
 
   '@zed-industries/codex-acp-darwin-arm64@0.10.0':
@@ -8395,6 +8477,13 @@ snapshots:
   agentkeepalive@4.6.0:
     dependencies:
       humanize-ms: 1.2.1
+
+  ai@7.0.0-beta.111(zod@4.3.6):
+    dependencies:
+      '@ai-sdk/gateway': 4.0.0-beta.62(zod@4.3.6)
+      '@ai-sdk/provider': 4.0.0-beta.12
+      '@ai-sdk/provider-utils': 5.0.0-beta.26(zod@4.3.6)
+      zod: 4.3.6
 
   ajv-formats@3.0.1(ajv@8.18.0):
     optionalDependencies:
@@ -9034,7 +9123,7 @@ snapshots:
 
   etag@1.8.1: {}
 
-  evalite@1.0.0-beta.16:
+  evalite@1.0.0-beta.16(ai@7.0.0-beta.111(zod@4.3.6)):
     dependencies:
       '@fastify/static': 8.3.0
       '@fastify/websocket': 11.2.0
@@ -9050,6 +9139,8 @@ snapshots:
       js-levenshtein: 1.1.6
       table: 6.9.0
       tinyrainbow: 3.1.0
+    optionalDependencies:
+      ai: 7.0.0-beta.111(zod@4.3.6)
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate

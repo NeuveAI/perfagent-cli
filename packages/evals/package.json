@@ -16,12 +16,18 @@
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/google": "4.0.0-beta.45",
+    "@ai-sdk/provider": "4.0.0-beta.12",
+    "@effect/platform-node": "4.0.0-beta.35",
     "@neuve/agent": "workspace:*",
     "@neuve/shared": "workspace:*",
     "@neuve/supervisor": "workspace:*",
+    "ai": "7.0.0-beta.111",
+    "dotenv": "^17.0.0",
     "effect": "4.0.0-beta.35",
     "evalite": "1.0.0-beta.16",
-    "vitest": "^4.0.18"
+    "vitest": "^4.0.18",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
