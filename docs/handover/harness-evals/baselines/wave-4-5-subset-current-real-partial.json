@@ -1,0 +1,418 @@
+{
+  "run": {
+    "id": 1,
+    "runType": "full",
+    "createdAt": "2026-04-24T05:26:59.288Z"
+  },
+  "suites": [
+    {
+      "id": 1,
+      "name": "wave-4-5 subset real-runner (real)",
+      "filepath": "/Users/vinicius/code/perfagent-cli/packages/evals/evals/wave-4-5-subset.eval.ts",
+      "duration": 0,
+      "status": "fail",
+      "createdAt": "2026-04-24T05:26:59.289Z",
+      "averageScore": 0.25,
+      "evals": [
+        {
+          "id": 1,
+          "duration": 69130,
+          "input": {
+            "task": {
+              "id": "calibration-1-single-nav-python-docs",
+              "prompt": "Open the official Python 3 documentation landing page and confirm the home page rendered.",
+              "keyNodes": [
+                {
+                  "urlPattern": "^https://docs\\.python\\.org/3/?$",
+                  "domAssertion": "h1",
+                  "perfCapture": "optional"
+                }
+              ],
+              "expectedFinalState": {
+                "urlPattern": "^https://docs\\.python\\.org/3/?$",
+                "domAssertion": "Python"
+              }
+            }
+          },
+          "output": {
+            "reachedKeyNodes": [],
+            "toolCalls": [
+              {
+                "name": "ToolSearch",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-000"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__interact",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-001"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__observe",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-002"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__trace",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-003"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__trace",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-004"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__trace",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-005"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__observe",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-006"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__observe",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-007"
+                },
+                "wellFormed": true
+              }
+            ],
+            "finalUrl": "",
+            "finalDom": ""
+          },
+          "expected": {
+            "id": "calibration-1-single-nav-python-docs",
+            "prompt": "Open the official Python 3 documentation landing page and confirm the home page rendered.",
+            "keyNodes": [
+              {
+                "urlPattern": "^https://docs\\.python\\.org/3/?$",
+                "domAssertion": "h1",
+                "perfCapture": "optional"
+              }
+            ],
+            "expectedFinalState": {
+              "urlPattern": "^https://docs\\.python\\.org/3/?$",
+              "domAssertion": "Python"
+            }
+          },
+          "status": "success",
+          "colOrder": 0,
+          "renderedColumns": [
+            {
+              "label": "task",
+              "value": "calibration-1-single-nav-python-docs"
+            },
+            {
+              "label": "reached",
+              "value": "0"
+            },
+            {
+              "label": "tools",
+              "value": "8"
+            },
+            {
+              "label": "final",
+              "value": "-"
+            }
+          ],
+          "createdAt": "2026-04-24T05:26:59.289Z",
+          "averageScore": 0.25,
+          "scores": [
+            {
+              "id": 1,
+              "name": "step-coverage",
+              "score": 0,
+              "description": "Fraction of expected KeyNodes reached",
+              "metadata": null,
+              "createdAt": "2026-04-24T05:28:08.421Z"
+            },
+            {
+              "id": 2,
+              "name": "final-state",
+              "score": 0,
+              "description": "Final URL+DOM matches expected final state",
+              "metadata": null,
+              "createdAt": "2026-04-24T05:28:08.421Z"
+            },
+            {
+              "id": 3,
+              "name": "tool-call-validity",
+              "score": 1,
+              "description": "Ratio of well-formed tool calls",
+              "metadata": null,
+              "createdAt": "2026-04-24T05:28:08.421Z"
+            },
+            {
+              "id": 4,
+              "name": "furthest-key-node",
+              "score": 0,
+              "description": "Deepest expected KeyNode reached, normalized to [0,1]",
+              "metadata": null,
+              "createdAt": "2026-04-24T05:28:08.421Z"
+            }
+          ],
+          "traces": []
+        },
+        {
+          "id": 2,
+          "duration": 143017,
+          "input": {
+            "task": {
+              "id": "calibration-2-single-nav-news",
+              "prompt": "Visit the BBC News homepage and verify the top story is visible on the landing page.",
+              "keyNodes": [
+                {
+                  "urlPattern": "^https://www\\.bbc\\.com/news/?$",
+                  "domAssertion": "main[role='main'] h2",
+                  "perfCapture": "required"
+                }
+              ],
+              "expectedFinalState": {
+                "urlPattern": "^https://www\\.bbc\\.com/news/?$",
+                "domAssertion": "News"
+              },
+              "perfBudget": {
+                "lcpMs": 2500,
+                "clsScore": 0.1
+              }
+            }
+          },
+          "output": {
+            "reachedKeyNodes": [],
+            "toolCalls": [
+              {
+                "name": "ToolSearch",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-000"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__interact",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-001"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__observe",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-002"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__interact",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-003"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__interact",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-004"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__trace",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-005"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__trace",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-006"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__trace",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-007"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__trace",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-008"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__trace",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-009"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__observe",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-010"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__observe",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-011"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__observe",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-012"
+                },
+                "wellFormed": true
+              },
+              {
+                "name": "mcp__browser__trace",
+                "arguments": {
+                  "input": "{}",
+                  "id": "tc-013"
+                },
+                "wellFormed": true
+              }
+            ],
+            "finalUrl": "",
+            "finalDom": ""
+          },
+          "expected": {
+            "id": "calibration-2-single-nav-news",
+            "prompt": "Visit the BBC News homepage and verify the top story is visible on the landing page.",
+            "keyNodes": [
+              {
+                "urlPattern": "^https://www\\.bbc\\.com/news/?$",
+                "domAssertion": "main[role='main'] h2",
+                "perfCapture": "required"
+              }
+            ],
+            "expectedFinalState": {
+              "urlPattern": "^https://www\\.bbc\\.com/news/?$",
+              "domAssertion": "News"
+            },
+            "perfBudget": {
+              "lcpMs": 2500,
+              "clsScore": 0.1
+            }
+          },
+          "status": "success",
+          "colOrder": 1,
+          "renderedColumns": [
+            {
+              "label": "task",
+              "value": "calibration-2-single-nav-news"
+            },
+            {
+              "label": "reached",
+              "value": "0"
+            },
+            {
+              "label": "tools",
+              "value": "14"
+            },
+            {
+              "label": "final",
+              "value": "-"
+            }
+          ],
+          "createdAt": "2026-04-24T05:28:08.422Z",
+          "averageScore": 0.25,
+          "scores": [
+            {
+              "id": 5,
+              "name": "step-coverage",
+              "score": 0,
+              "description": "Fraction of expected KeyNodes reached",
+              "metadata": null,
+              "createdAt": "2026-04-24T05:30:31.455Z"
+            },
+            {
+              "id": 6,
+              "name": "final-state",
+              "score": 0,
+              "description": "Final URL+DOM matches expected final state",
+              "metadata": null,
+              "createdAt": "2026-04-24T05:30:31.455Z"
+            },
+            {
+              "id": 7,
+              "name": "tool-call-validity",
+              "score": 1,
+              "description": "Ratio of well-formed tool calls",
+              "metadata": null,
+              "createdAt": "2026-04-24T05:30:31.455Z"
+            },
+            {
+              "id": 8,
+              "name": "furthest-key-node",
+              "score": 0,
+              "description": "Deepest expected KeyNode reached, normalized to [0,1]",
+              "metadata": null,
+              "createdAt": "2026-04-24T05:30:31.455Z"
+            }
+          ],
+          "traces": []
+        },
+        {
+          "id": 3,
+          "duration": 0,
+          "input": "",
+          "output": null,
+          "expected": "",
+          "status": "fail",
+          "colOrder": 2,
+          "renderedColumns": [],
+          "createdAt": "2026-04-24T05:30:31.457Z",
+          "averageScore": 0,
+          "scores": [],
+          "traces": []
+        }
+      ]
+    }
+  ]
+}
