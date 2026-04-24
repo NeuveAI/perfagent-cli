@@ -1,6 +1,9 @@
-import { Effect, Layer, Option, Schema, ServiceMap, Stream } from "effect";
+import { Config, Effect, Layer, Option, Redacted, Schema, ServiceMap } from "effect";
+import { generateObject } from "ai";
+import type { LanguageModel } from "ai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { z } from "zod";
 import {
-  AcpAgentMessageChunk,
   AnalysisStep,
   ChangesFor,
   DraftId,
@@ -9,19 +12,11 @@ import {
   PlanId,
   StepId,
 } from "@neuve/shared/models";
-import {
-  Agent,
-  AgentStreamOptions,
-  type AcpProviderUnauthenticatedError,
-  type AcpProviderUsageLimitError,
-  type AcpSessionCreateError,
-  type AcpStreamError,
-} from "@neuve/agent";
-import { DecomposeError, type PlannerMode } from "./errors";
+import { DecomposeError, PlannerCallError, PlannerConfigError, type PlannerMode } from "./errors";
 import {
   PLAN_DECOMPOSER_MAX_STEPS,
-  PLAN_DECOMPOSER_MODEL_CONFIG_ID,
   PLAN_DECOMPOSER_MODEL_ID,
+  PLAN_DECOMPOSER_TEMPERATURE,
   buildPlannerSystemPrompt,
   buildPlannerUserPrompt,
 } from "./planner-prompt";
@@ -29,17 +24,30 @@ import {
 const MIN_CLAUSE_CHARS = 8;
 const DEFAULT_ROUTE_HINT_LIMIT = 80;
 
-const FrontierStep = Schema.Struct({
-  title: Schema.String,
-  instruction: Schema.String,
-  expectedOutcome: Schema.String,
-  routeHint: Schema.optional(Schema.String),
+const FrontierStepSchema = z.object({
+  title: z.string().describe("Short imperative label for this step (<=60 chars recommended)."),
+  instruction: z
+    .string()
+    .describe("Single sentence describing the action or navigation for this step."),
+  expectedOutcome: z
+    .string()
+    .describe("Observable state after this step (URL, visible element, captured metric)."),
+  routeHint: z
+    .string()
+    .optional()
+    .describe("Optional URL fragment or path if known; omit if unknown."),
 });
-type FrontierStep = typeof FrontierStep.Type;
 
-const FrontierPlan = Schema.Struct({
-  steps: Schema.Array(FrontierStep),
+const FrontierPlanSchema = z.object({
+  steps: z
+    .array(FrontierStepSchema)
+    .min(1)
+    .max(PLAN_DECOMPOSER_MAX_STEPS)
+    .describe("Ordered list of sub-goals the browser-driving agent must execute."),
 });
+
+export type FrontierPlan = z.infer<typeof FrontierPlanSchema>;
+export type FrontierStep = z.infer<typeof FrontierStepSchema>;
 
 const CONNECTIVE_SPLIT_PATTERN =
   /\s*(?:,?\s*(?:and\s+then|then|next|after\s+that|afterwards|,\s*and)\s+|;\s+|\.\s+(?=[A-Z]))/i;
@@ -137,7 +145,7 @@ const cleanClause = (clause: string): string =>
 const clauseTitle = (clause: string): string => {
   const normalized = clause.replace(/\s+/g, " ").trim();
   if (normalized.length <= 60) return capitalize(normalized);
-  return capitalize(normalized.slice(0, 57)) + "\u2026";
+  return capitalize(normalized.slice(0, 57)) + "…";
 };
 
 export const splitByConnectives = (prompt: string): string[] => {
@@ -150,22 +158,6 @@ export const splitByConnectives = (prompt: string): string[] => {
     .filter((part) => part.length >= MIN_CLAUSE_CHARS);
 
   return parts;
-};
-
-const stripMarkdownFence = (raw: string): string => {
-  const trimmed = raw.trim();
-  if (!trimmed.startsWith("```")) return trimmed;
-  const withoutOpen = trimmed.replace(/^```(?:json)?\s*/i, "");
-  return withoutOpen.replace(/```\s*$/i, "").trim();
-};
-
-const extractJsonObject = (raw: string): string => {
-  const sanitized = stripMarkdownFence(raw);
-  const firstBrace = sanitized.indexOf("{");
-  if (firstBrace === -1) return sanitized;
-  const lastBrace = sanitized.lastIndexOf("}");
-  if (lastBrace <= firstBrace) return sanitized;
-  return sanitized.slice(firstBrace, lastBrace + 1);
 };
 
 const frontierStepsToAnalysisSteps = (steps: readonly FrontierStep[]): AnalysisStep[] =>
@@ -202,28 +194,127 @@ const buildTemplateSteps = (prompt: string): AnalysisStep[] => {
   return clauses.map((clause, index) => makeEmptyStep(index, clauseTitle(clause), clause));
 };
 
-export class PlannerAgent extends ServiceMap.Service<
-  PlannerAgent,
-  {
-    readonly stream: (
-      options: AgentStreamOptions,
-    ) => Stream.Stream<
-      import("@neuve/shared/models").AcpSessionUpdate,
-      | AcpStreamError
-      | AcpSessionCreateError
-      | AcpProviderUnauthenticatedError
-      | AcpProviderUsageLimitError
-    >;
-  }
->()("@supervisor/PlannerAgent") {
-  static layerFromAgent = Layer.effect(PlannerAgent)(
-    Effect.gen(function* () {
-      const agent = yield* Agent;
-      return PlannerAgent.of({ stream: agent.stream });
-    }),
-  );
+export interface PlannerAgentOptions {
+  readonly temperature?: number;
+}
 
-  static layerFromGemini = this.layerFromAgent.pipe(Layer.provide(Agent.layerGemini));
+// Sibling counterpart for `PERF_AGENT_LOCAL_MODEL` used by the Gemma runner
+// (see packages/evals/src/runners/gemma.ts). Both env vars follow the same
+// `PERF_AGENT_<ROLE>_MODEL` naming convention.
+const PlannerModelIdSchema = Schema.String.check(Schema.isStartsWith("gemini-"));
+const decodePlannerModelId = Schema.decodeUnknownEffect(PlannerModelIdSchema);
+
+const makePlannerAgentService = (
+  getModel: Effect.Effect<LanguageModel, PlannerConfigError>,
+  temperature: number,
+) => {
+  const planFrontier = Effect.fn("PlannerAgent.planFrontier")(function* (userPrompt: string) {
+    yield* Effect.annotateCurrentSpan({ promptLength: userPrompt.length });
+    const model = yield* getModel;
+    const result = yield* Effect.tryPromise({
+      try: () =>
+        generateObject({
+          model,
+          schema: FrontierPlanSchema,
+          schemaName: "PerfAgentFrontierPlan",
+          schemaDescription:
+            "Ordered sub-goals for a browser-driving agent to execute the user's performance-testing instruction.",
+          temperature,
+          system: buildPlannerSystemPrompt(),
+          prompt: buildPlannerUserPrompt(userPrompt),
+        }),
+      catch: (cause) =>
+        new PlannerCallError({
+          cause: cause instanceof Error ? cause.message : String(cause),
+        }),
+    });
+    yield* Effect.logInfo("Frontier plan generated", {
+      stepCount: result.object.steps.length,
+      finishReason: result.finishReason,
+    });
+    return result.object satisfies FrontierPlan;
+  });
+
+  return { planFrontier } as const;
+};
+
+/**
+ * PlannerAgent — Gemini 3 Flash preview-backed frontier planner. Wraps
+ * `generateObject` from the AI SDK with a fixed Zod schema (`FrontierPlanSchema`)
+ * and a domain-specific system prompt. Structured output mode is used so the
+ * model is constrained at the API level to return schema-conformant JSON —
+ * no markdown fences, no preamble prose, no chain-of-thought leakage.
+ *
+ * Wiring:
+ *   - Production `static layer` builds an always-succeeding service whose
+ *     `planFrontier` method lazily reads `Config.redacted("GOOGLE_GENERATIVE_AI_API_KEY")`
+ *     (and `Config.string("PERF_AGENT_PLANNER_MODEL")`) on FIRST call and
+ *     memoizes the result. Layer build never fails for missing API key —
+ *     `--planner template` and `--planner none` paths build the layer but
+ *     never call `planFrontier`, so they work without the key. A missing or
+ *     empty key surfaces as `PlannerConfigError` only at the first frontier
+ *     decompose call, with an actionable message directing the user to set
+ *     the key or switch to `--planner template`.
+ *   - `static layerFromModel(model, options)` bypasses provider construction
+ *     entirely and takes a pre-built `LanguageModel`. Tests pass
+ *     `MockLanguageModelV4` from `ai/test`. Production code never uses this.
+ *
+ * This mirrors the `@evals/LlmJudge` pattern so production and test code paths
+ * are identical past the model boundary (both go through `generateObject`),
+ * keeping test coverage representative of production behavior.
+ */
+export class PlannerAgent extends ServiceMap.Service<PlannerAgent>()("@supervisor/PlannerAgent", {
+  make: Effect.gen(function* () {
+    const loadModel = Effect.gen(function* () {
+      const apiKeyOption = yield* Config.option(Config.redacted("GOOGLE_GENERATIVE_AI_API_KEY"));
+      if (!Option.isSome(apiKeyOption)) {
+        return yield* new PlannerConfigError({
+          reason: "GOOGLE_GENERATIVE_AI_API_KEY is unset",
+        });
+      }
+      const apiKey = Redacted.value(apiKeyOption.value);
+      if (apiKey.trim().length === 0) {
+        return yield* new PlannerConfigError({
+          reason: "GOOGLE_GENERATIVE_AI_API_KEY is empty",
+        });
+      }
+      const rawModelIdOption = yield* Config.option(Config.string("PERF_AGENT_PLANNER_MODEL"));
+      const rawModelId = Option.isSome(rawModelIdOption)
+        ? rawModelIdOption.value
+        : PLAN_DECOMPOSER_MODEL_ID;
+      const modelId = yield* decodePlannerModelId(rawModelId).pipe(
+        Effect.catchTag("SchemaError", (schemaError) =>
+          new PlannerConfigError({
+            reason: `PERF_AGENT_PLANNER_MODEL value "${rawModelId}" is invalid (expected prefix "gemini-"): ${schemaError.message}`,
+          }).asEffect(),
+        ),
+      );
+      const provider = createGoogleGenerativeAI({ apiKey });
+      const model = provider(modelId) satisfies LanguageModel;
+      yield* Effect.logInfo("PlannerAgent ready", { modelId });
+      return model;
+    }).pipe(
+      // Config.option swallows MissingKey for both reads above; any remaining
+      // ConfigError would be a ConfigProvider bug, so die on it.
+      Effect.catchTag("ConfigError", Effect.die),
+    );
+    // Memoize across planFrontier calls: first call reads Config + builds the
+    // provider; subsequent calls replay the cached model (or the cached error
+    // if the key was missing/empty on first call).
+    const getModel = yield* Effect.cached(loadModel);
+    return makePlannerAgentService(getModel, PLAN_DECOMPOSER_TEMPERATURE);
+  }),
+}) {
+  static layer = Layer.effect(this)(this.make);
+
+  static layerFromModel = (model: LanguageModel, options: PlannerAgentOptions = {}) =>
+    Layer.succeed(
+      this,
+      makePlannerAgentService(
+        Effect.succeed(model),
+        options.temperature ?? PLAN_DECOMPOSER_TEMPERATURE,
+      ),
+    );
 }
 
 export class PlanDecomposer extends ServiceMap.Service<PlanDecomposer>()(
@@ -232,68 +323,23 @@ export class PlanDecomposer extends ServiceMap.Service<PlanDecomposer>()(
     make: Effect.gen(function* () {
       const plannerAgent = yield* PlannerAgent;
 
-      const callFrontier = Effect.fn("PlanDecomposer.callFrontier")(function* (userPrompt: string) {
-        const streamOptions = new AgentStreamOptions({
-          cwd: process.cwd(),
-          sessionId: Option.none(),
-          prompt: buildPlannerUserPrompt(userPrompt),
-          systemPrompt: Option.some(buildPlannerSystemPrompt()),
-          mcpEnv: [],
-          modelPreference: {
-            configId: PLAN_DECOMPOSER_MODEL_CONFIG_ID,
-            value: PLAN_DECOMPOSER_MODEL_ID,
-          },
-        });
-
-        const responseText = yield* plannerAgent.stream(streamOptions).pipe(
-          Stream.filter(
-            (update): update is AcpAgentMessageChunk =>
-              update.sessionUpdate === "agent_message_chunk",
-          ),
-          Stream.map((update) => (update.content.type === "text" ? update.content.text : "")),
-          Stream.runFold(
-            () => "",
-            (accumulated: string, chunk: string) => accumulated + chunk,
-          ),
-        );
-
-        return responseText;
-      });
-
       const decomposeFrontier = Effect.fn("PlanDecomposer.decomposeFrontier")(function* (
         prompt: string,
       ) {
-        const raw = yield* callFrontier(prompt).pipe(
-          Effect.catchTags({
-            AcpStreamError: (error) =>
-              new DecomposeError({ mode: "frontier", cause: String(error.cause) }).asEffect(),
-            AcpSessionCreateError: (error) =>
-              new DecomposeError({ mode: "frontier", cause: String(error.cause) }).asEffect(),
-            AcpProviderUnauthenticatedError: (error) =>
-              new DecomposeError({ mode: "frontier", cause: error.message }).asEffect(),
-            AcpProviderUsageLimitError: (error) =>
-              new DecomposeError({ mode: "frontier", cause: error.message }).asEffect(),
-          }),
-        );
-
-        const jsonText = extractJsonObject(raw);
-        const decoded = yield* Schema.decodeEffect(Schema.fromJsonString(FrontierPlan))(
-          jsonText,
-        ).pipe(
-          Effect.catchTag("SchemaError", (schemaError) =>
-            new DecomposeError({
-              mode: "frontier",
-              cause: `Failed to decode planner response: ${schemaError.message}`,
-            }).asEffect(),
+        const plan = yield* plannerAgent.planFrontier(prompt).pipe(
+          Effect.catchTag("PlannerCallError", (error) =>
+            new DecomposeError({ mode: "frontier", cause: error.cause }).asEffect(),
+          ),
+          Effect.catchTag("PlannerConfigError", (error) =>
+            new DecomposeError({ mode: "frontier", cause: error.message }).asEffect(),
           ),
         );
 
         yield* Effect.logInfo("Frontier plan decomposed", {
-          rawLength: raw.length,
-          stepCount: decoded.steps.length,
+          stepCount: plan.steps.length,
         });
 
-        return frontierStepsToAnalysisSteps(decoded.steps);
+        return frontierStepsToAnalysisSteps(plan.steps);
       });
 
       const decompose = Effect.fn("PlanDecomposer.decompose")(function* (
@@ -349,5 +395,8 @@ export class PlanDecomposer extends ServiceMap.Service<PlanDecomposer>()(
     }),
   },
 ) {
-  static layer = Layer.effect(this)(this.make).pipe(Layer.provide(PlannerAgent.layerFromGemini));
+  static layer = Layer.effect(this)(this.make).pipe(Layer.provide(PlannerAgent.layer));
+
+  static layerWithPlannerAgent = (plannerAgentLayer: Layer.Layer<PlannerAgent>) =>
+    Layer.effect(this)(this.make).pipe(Layer.provide(plannerAgentLayer));
 }

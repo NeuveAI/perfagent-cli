@@ -1,5 +1,5 @@
-export const PLAN_DECOMPOSER_MODEL_ID = "gemini-2.5-flash";
-export const PLAN_DECOMPOSER_MODEL_CONFIG_ID = "model";
+export const PLAN_DECOMPOSER_MODEL_ID = "gemini-3-flash-preview";
+export const PLAN_DECOMPOSER_TEMPERATURE = 0.1;
 export const PLAN_DECOMPOSER_MIN_STEPS = 1;
 export const PLAN_DECOMPOSER_MAX_STEPS = 12;
 

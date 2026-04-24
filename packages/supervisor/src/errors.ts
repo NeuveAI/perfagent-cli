@@ -26,3 +26,23 @@ export class DecomposeError extends Schema.ErrorClass<DecomposeError>("@supervis
   displayName = `Plan decomposition failed`;
   message = `Plan decomposition (${this.mode}) failed: ${this.cause}`;
 }
+
+export class PlannerConfigError extends Schema.ErrorClass<PlannerConfigError>(
+  "@supervisor/PlannerConfigError",
+)({
+  _tag: Schema.tag("PlannerConfigError"),
+  reason: Schema.String,
+}) {
+  displayName = `Frontier planner not configured`;
+  message = `Frontier planner not configured: ${this.reason}. Set GOOGLE_GENERATIVE_AI_API_KEY in your shell (or a dotenv file loaded by perf-agent), or rerun with --planner template to skip the Gemini planner.`;
+}
+
+export class PlannerCallError extends Schema.ErrorClass<PlannerCallError>(
+  "@supervisor/PlannerCallError",
+)({
+  _tag: Schema.tag("PlannerCallError"),
+  cause: Schema.String,
+}) {
+  displayName = `Frontier planner call failed`;
+  message = `Frontier planner call failed: ${this.cause}`;
+}
