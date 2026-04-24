@@ -31,8 +31,8 @@ export class PlannerConfigError extends Schema.ErrorClass<PlannerConfigError>(
   _tag: Schema.tag("PlannerConfigError"),
   reason: Schema.String,
 }) {
-  displayName = `Frontier planner not configured`;
-  message = `Frontier planner not configured: ${this.reason}. Set GOOGLE_GENERATIVE_AI_API_KEY in your shell (or a dotenv file loaded by perf-agent) before running the eval harness with EVAL_PLANNER=frontier.`;
+  displayName = `Oracle planner not configured`;
+  message = `Oracle planner not configured: ${this.reason}. Set GOOGLE_GENERATIVE_AI_API_KEY in your shell (or a dotenv file loaded by perf-agent) before running the eval harness with EVAL_PLANNER=oracle-plan.`;
 }
 
 export class PlannerCallError extends Schema.ErrorClass<PlannerCallError>(
@@ -41,6 +41,6 @@ export class PlannerCallError extends Schema.ErrorClass<PlannerCallError>(
   _tag: Schema.tag("PlannerCallError"),
   cause: Schema.String,
 }) {
-  displayName = `Frontier planner call failed`;
-  message = `Frontier planner call failed: ${this.cause}`;
+  displayName = `Oracle planner call failed`;
+  message = `Oracle planner call failed: ${this.cause}`;
 }
