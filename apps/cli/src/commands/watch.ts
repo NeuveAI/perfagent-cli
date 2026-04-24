@@ -1,5 +1,4 @@
 import type { AgentBackend } from "@neuve/agent";
-import { parsePlannerMode } from "@neuve/supervisor";
 import { resolveAgentProvider } from "@neuve/shared/infer-agent";
 import { resolveChangesFor } from "../utils/resolve-changes-for";
 import { useNavigationStore, Screen } from "../stores/use-navigation";
@@ -19,7 +18,6 @@ interface WatchCommandOpts {
   profile?: string;
   noCookies?: boolean;
   url?: string[];
-  planner?: string;
 }
 
 export const runWatchCommand = async (opts: WatchCommandOpts) => {
@@ -38,7 +36,6 @@ export const runWatchCommand = async (opts: WatchCommandOpts) => {
     browserHeaded: browserMode !== "headless",
     browserProfile: opts.profile,
     cdpUrl: opts.cdp,
-    plannerMode: parsePlannerMode(opts.planner),
   });
 
   useNavigationStore.setState({

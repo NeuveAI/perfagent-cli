@@ -1,12 +1,11 @@
 import { render } from "@opentui/solid";
 import { Command } from "commander";
-import { parsePlannerMode, type PlannerMode } from "@neuve/supervisor";
 import App from "./app";
 import { installSignalHandlers } from "./lifecycle/shutdown";
 
 const TARGET_FPS = 60;
 
-const launch = async (options: { agent: string; url?: string[]; planner: PlannerMode }) => {
+const launch = async (options: { agent: string; url?: string[] }) => {
   installSignalHandlers();
 
   await render(
@@ -14,7 +13,6 @@ const launch = async (options: { agent: string; url?: string[]; planner: Planner
       App({
         agent: options.agent,
         urls: options.url,
-        plannerMode: options.planner,
       }),
     {
       targetFps: TARGET_FPS,
@@ -27,9 +25,7 @@ const launch = async (options: { agent: string; url?: string[]; planner: Planner
   );
 };
 
-const program = new Command()
-  .name("perf-agent")
-  .description("Performance analysis CLI");
+const program = new Command().name("perf-agent").description("Performance analysis CLI");
 
 program
   .command("tui")
@@ -39,17 +35,9 @@ program
     "agent provider to use (claude, codex, copilot, gemini, cursor, opencode, droid, pi, or local)",
     "claude",
   )
-  .option(
-    "-u, --url <urls...>",
-    "base URL(s) for the dev server — skips port picker",
-  )
-  .option(
-    "-p, --planner <mode>",
-    "pre-planner mode: frontier (Gemini Flash 3), template (rule-based), or none",
-    "frontier",
-  )
-  .action(async (opts: { agent: string; url?: string[]; planner: string }) => {
-    await launch({ agent: opts.agent, url: opts.url, planner: parsePlannerMode(opts.planner) });
+  .option("-u, --url <urls...>", "base URL(s) for the dev server — skips port picker")
+  .action(async (opts: { agent: string; url?: string[] }) => {
+    await launch({ agent: opts.agent, url: opts.url });
   });
 
 program.parse();
