@@ -12,3 +12,4 @@ tsup.config.bundled_*
 .cursor/plans
 .repos
 packages/evals/data/distill/out/
+cli-infra/
