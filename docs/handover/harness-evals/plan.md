@@ -4,7 +4,7 @@
 
 The perf-agent CLI's agent harness stops short on multi-step user journeys. Two real runs of "go to volvocars.com → navigate buy → build → configure EX90 → reach the order form → report web vitals" both emitted `RUN_COMPLETED` after a single homepage trace. The agent never navigated past the landing page.
 
-Production target model is **Gemma 3n E4B** (4B effective params, multimodal, via Ollama — see `.specs/local-gemma4-agent.md`). Frontier models (Claude, GPT-4 class) are dev-time scaffolding only. Every decision in this plan is gated by "will a 4B model actually do this well?"
+Production target model is **Gemma 4 E4B** (4B effective params, multimodal, via Ollama — see `.specs/local-gemma4-agent.md`). Frontier models (Claude, GPT-4 class) are dev-time scaffolding only. Every decision in this plan is gated by "will a 4B model actually do this well?"
 
 We also have no measurable way to A/B-test prompt/harness changes. Improvements today are anecdotal.
 
@@ -41,7 +41,7 @@ PlanDecomposer (hybrid: frontier-LLM | template)
   ▼
 Executor loop (per sub_goal)
   │
-  ├─ Agent turn (Gemma 3n E4B)
+  ├─ Agent turn (Gemma 4 E4B)
   │    observes: current page screenshot (Set-of-Mark overlay) + prior state
   │    emits: tool_call | STEP_DONE | ASSERTION_FAILED | RUN_COMPLETED
   │
@@ -68,7 +68,7 @@ All agent turns and tool I/O are captured in a structured trace format (`evals/t
 | 3 | Eval integration | Wire real agent into evalite runner; score Gemma + Claude on 5 tasks; regression dashboards | 4 |
 | 4 | Online-Mind2Web subset | BrowserGym-style adapter; filtered ≤5-key-node subset; baseline scores | 5 |
 | 4.5 | Baseline vs current regression eval | Post-hoc revert of prompt/decomposer commits; run eval on reverted tree AND on HEAD; commit diff report | 5 |
-| 4.6 | Rolling context window (conditional) | Only if Wave 4.5 shows context-window blowup on Gemma 3n E4B. Keep system prompt + current sub-goal + last-N turns; summarize older turns; drop stale screenshots | 5 |
+| 4.6 | Rolling context window (conditional) | Only if Wave 4.5 shows context-window blowup on Gemma 4 E4B. Urgency lowered vs original draft: Gemma 4 E4B has 128K context (not the 32K that the pre-2026-04-24 "Gemma 3n" historical label assumed — see `project_target_model_gemma.md` memory), so budget pressure is much smaller — but trajectory-rolling plumbing still useful for per-turn inference cost on long journeys. Keep system prompt + current sub-goal + last-N turns; summarize older turns; drop stale screenshots | 5 |
 | 5 | Distillation pipeline | Trace capture format finalised; teacher-data exporter; fine-tune stub (no training yet) | — |
 
 Phases 0 and 1 overlap partially (disjoint files). Phase 2 blocks on 1. Phase 3 blocks on 1+2. Phase 4 blocks on 3. Phase 5 blocks on 4.
@@ -263,7 +263,7 @@ Run Claude (frontier baseline) + Gemma (production target) against the filtered 
 
 ## Wave 4.6 — Rolling context window (conditional)
 
-**Conditional on Wave 4.5.** Only implement if baseline scoring shows Gemma 3n E4B hitting context-window limits. Signals to watch: truncation warnings, sudden accuracy cliff on tasks with >N turns, OOM on the Ollama side.
+**Conditional on Wave 4.5.** Only implement if baseline scoring shows Gemma 4 E4B hitting context-window limits. Gemma 4 E4B's 128K context window (confirmed via `ollama show gemma4:e4b`, 2026-04-24) makes hard overflow unlikely on typical journeys — the original 4.6 urgency assumed a 32K ceiling under the pre-2026-04-24 "Gemma 3n E4B" historical label (corrected to Gemma 4 E4B; see `project_target_model_gemma.md` memory). Signals still worth watching: truncation warnings, sudden accuracy cliff on tasks with >N turns, OOM on the Ollama side, per-turn latency regressions on long trajectories.
 
 If triggered, scope:
 - System prompt (fixed) + current sub-goal block (fixed) stay always.

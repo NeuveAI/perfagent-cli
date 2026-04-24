@@ -1,14 +1,16 @@
 # Architecture PRD — Gemma-owns-plan + ReAct single-agent runtime
 
-Date: 2026-04-24
+Date: 2026-04-24 (revised 2026-04-24 — target model corrected from Gemma 3n E4B → Gemma 4 E4B)
 Status: Draft for user review; not yet approved for team orchestration.
 Companion: `research-brief.md`, `assessment.md`, `open-questions.md`.
 
 ## 1. Goal
 
-Collapse the current Gemini-planner + Gemma-executor two-model pipeline into **a single Gemma 3n E4B agent** running a ReAct loop (Thought → Action → Observation → Thought …) that **owns plan decomposition, mid-run course correction, and termination discipline**. Frontier models (Gemini 3 Flash) stay external to the production runtime — used only for eval A:B comparisons, teacher-data generation, and LLM-as-judge scoring.
+Collapse the current Gemini-planner + Gemma-executor two-model pipeline into **a single Gemma 4 E4B agent** (Ollama tag `gemma4:e4b`; 4.5B effective / 8B with embeddings; 128K context; native `tools`, `thinking`, `vision`, `audio` capabilities) running a ReAct loop (Thought → Action → Observation → Thought …) that **owns plan decomposition, mid-run course correction, and termination discipline**. Frontier models (Gemini 3 Flash) stay external to the production runtime — used only for eval A:B comparisons, teacher-data generation, and LLM-as-judge scoring.
 
 The user framing that motivates this: *"browsing is not just clicking around, it has the reasoning and goal assessment."* The production model must do the reasoning; otherwise we're shipping a frontier model's reasoning capability as a fixed pipeline and pretending it's the small model.
+
+**Model-correction note (2026-04-24).** The original draft assumed Gemma 3n E4B (MatFormer, 32K context, no native tool use). The authoritative target — confirmed via `ollama show gemma4:e4b`, Google's 2026-04-02 launch post, and the Gemma 4 model card — is **Gemma 4 E4B**: a dense hybrid-attention architecture (not MatFormer) with **128K context**, **native function calling via `<|tool_call>…<tool_call|>` tokens**, and a native `thinking` mode. The revised PRD below adjusts context-budget math, relaxes the Wave 4.6 urgency, accounts for Gemma 4's native tool-call wire format, and adds a new R0 reconciliation wave covering the Ollama/OpenAI-compat tool-call parser gap surfaced by the 2026-04-24 calibration (see `assessment.md` §3).
 
 ## 2. Non-goals
 
@@ -157,19 +159,21 @@ const AgentTurn = Schema.Union(
 
 (Real implementation uses `Schema.TaggedClass` where appropriate; this sketch shows shape.)
 
-### 3.4 Per-turn prompt budget
+### 3.4 Per-turn prompt budget (revised — 128K context + configurable image budgets)
 
 | Block | Typical tokens | Notes |
 |-------|----------------|-------|
-| `<system>` (static) | ≈600 | Wave 2.B-derived, +THOUGHT/PLAN_UPDATE extension |
+| `<system>` (static) | ≈600 | Wave 2.B-derived, +THOUGHT/PLAN_UPDATE extension; `<|think|>` token prepended if thinking mode enabled |
 | `<plan>` | ≈150 | Up to 12 steps |
 | `<current_sub_goal>` | ≈80 | Title + instruction |
 | `<observed_state>` (SOM text) | ≈1500 | Snapshot + ref list |
-| SOM image | 256 | Encoded as 256 tokens on Gemma 3n |
-| `<trajectory>` (last 5 turns) | ≈2000 | Thought + action + abbreviated result |
+| SOM image | **280** | Gemma 4 configurable image budget; default 280 (between 140 low-detail and 560 high-detail per model card guidance) |
+| `<trajectory>` (last 10 turns) | ≈4000 | Thought + action + abbreviated result; per JetBrains 10-turn sliding window; Gemma-4 `<|channel>thought>` from historical turns is stripped |
 | `<environment>` + `<developer_request>` | ≈200 | Existing |
-| **Total input** | **≈4800** | Well under 28K cap |
-| Gemma output budget | ≈800 | One AgentTurn JSON |
+| **Total input** | **≈6800** | Well under 120K cap (93.75% of 128K) and under 96K warn threshold |
+| Gemma output budget | ≈4000 | One AgentTurn JSON/envelope + optional `<|channel>thought>` block if thinking enabled |
+
+Change vs prior draft: trajectory window expanded N=5 → N=10 (JetBrains optimum, affordable at 128K), image budget "256 tokens fixed" → "280 tokens configurable", warn/abort thresholds 20K/28K → 96K/120K.
 
 ## 4. Design decisions (picks + rationale; one-liners, full justification in `assessment.md`)
 
@@ -177,11 +181,11 @@ const AgentTurn = Schema.Union(
 |---|----------|------|-----------|
 | 1 | ReAct format | Pipe-delimited envelope reusing existing markers + new THOUGHT/PLAN_UPDATE | Reuses Wave 1.B parser contract, 4B-friendly uniform syntax |
 | 2 | Plan authorship | Gemma emits initial plan via PLAN_UPDATE on turn 1; template fallback if absent | Respects `feedback_avoid_prompt_overfitting`; safety net for the 4B failure case |
-| 3 | Tool reliability | Ollama `format: <AgentTurn JSON Schema>` constraint | BFCL evidence Gemma needs grammar constraint; no new deps |
+| 3 | Tool reliability | R2 spike decides: (A) Gemma-4 native `<|tool_call>` tokens via fixed Ollama/llama.cpp pipeline OR (B) Ollama `format: <AgentTurn JSON Schema>` grammar override | Gemma 4 E4B advertises native tool-use (model card), but 2026-04-24 calibration hit the OpenAI-compat parser gap (Ollama #15315, mlx-lm #1096, OpenCode #20995). Need empirical A/B. |
 | 4 | Replan trigger | Reactive (2 consecutive failures) + self-triggered via PLAN_UPDATE | Cheaper than Voyager-style GPT-4-critic; matches Reflexion's post-trial pattern |
 | 5 | Termination discipline | Wave 1.B gate + extra "no unresolved ASSERTION_FAILED in last 3 turns on RUN_COMPLETED=passed" rule | Premature-termination is the canonical 4B failure mode (Cemri 2025) |
-| 6 | Context window | Activate Wave 4.6 now: last-5 verbatim, older rule-summarized, drop old images | Gemma's 32K context, JetBrains study endorses 10-turn sliding window |
-| 7 | SOM + ReAct | THOUGHT references SOM ref + label ("I see [5] 'Build your Volvo'") | SeeAct textual-choice grounding beats raw image annotation |
+| 6 | Context window | Wave 4.6 plumbing built in R4 but tuned to 128K: last-10 verbatim, older rule-summarized, drop old images | Gemma 4 E4B's 128K context (4× the earlier 32K Gemma 3n premise) relaxes urgency; JetBrains 10-turn sliding window is now affordable. Strip `<|channel>thought>` from historical turns per Gemma 4 model card. |
+| 7 | SOM + ReAct | THOUGHT references SOM ref + label ("I see [5] 'Build your Volvo'") + 280-token image budget (configurable) | SeeAct textual-choice grounding beats raw image annotation; Gemma 4's image budget is per-call (70/140/280/560/1120), not fixed — 280 is the default, 560 for dense-menu regressions |
 | 8 | Eval runners | gemma-react (production) + gemini-react (A:B) + gemma-oracle-plan (debug ablation) | Apples-to-apples A:B, oracle ablation isolates planning vs execution failures |
 | 9 | Distillation | ReAct trajectories via Gemini-react runner → JSONL teacher data for `browsing-gemma` LoRA | AgentTrek/WebLlama pattern proven at 7B–8B |
 | 10 | Backward compat | Keep `--planner frontier` flag 2 releases; template fallback stays | Avoid user-visible breakage during validation phase |
@@ -212,8 +216,18 @@ Five phases, each a potential wave for `/team-orchestration`. Dependencies are s
 - Update golden-file tests in `packages/shared/tests/prompts.test.ts` to pin the new shape.
 
 **Dependencies:** R1.
-**Effort:** 1 engineer, 2 days.
-**DoD — Behavior:** Running Gemma 3n E4B through the local-agent tool-loop with the new prompt produces schema-valid `AgentTurn` JSON on every turn. The prompt stays ≤80 lines.
+**Effort:** 1 engineer, 2 days — plus a **head-to-head calibration spike** (see "R2 spike" below) before committing to path A or path B.
+
+**R2 spike (adds ~1 day):** Run the 3 calibration tasks + 2 trivial tasks (`calibration-1..3`, `trivial-1`, `trivial-2`) twice on Gemma 4 E4B:
+- **Variant A (native tokens)**: local-agent uses Ollama `/api/chat` with `tools: [...]`, parses `<|tool_call>…<tool_call|>` tokens at the ACP boundary with a Gemma-4-aware decoder. If Ollama's parser is still broken at test time (issue #15315 still open), swap Ollama for llama.cpp with the PR #21326 template fix for the spike.
+- **Variant B (grammar override)**: local-agent passes `format: <AgentTurn JSON Schema>` to Ollama on every completion, parses the flat JSON envelope directly.
+Score: tool-call rate, schema-validity rate, per-turn latency, turnCount > 1. Whichever wins ships in the full R2.
+
+**DoD — Behavior:**
+- Running Gemma 4 E4B through local-agent with the winning variant produces schema-valid `AgentTurn` output on ≥80% of turns on the 3 calibration tasks (i.e., no regression from ordinary structured output).
+- The tool-call rate is ≥1 per turn on at least 4 of 5 spike tasks (fixes the 2026-04-24 calibration's 0-tool-call baseline).
+- The prompt stays ≤80 lines.
+- R2 spike report committed to `docs/handover/harness-evals/diary/` with raw numbers + variant decision.
 
 ### Phase R3 — Executor ReAct reducer
 **Scope:**
@@ -232,19 +246,20 @@ Five phases, each a potential wave for `/team-orchestration`. Dependencies are s
 - REFLECT injection test: 2 ASSERTION_FAILEDs → next turn's `<observed_state>` contains the REFLECT directive.
 - All Wave 1.B adherence tests still pass.
 
-### Phase R4 — Context window rolling (Wave 4.6 activation)
+### Phase R4 — Context window rolling (Wave 4.6 plumbing)
 **Scope:**
-- `packages/shared/src/prompts.ts` `buildExecutionPrompt`: add `<trajectory>` block populated from last N=5 turns.
-- `packages/supervisor/src/executor.ts`: the reducer tracks trajectory state; older turns rolled into one-line summaries (`<event>TOOL action → outcome</event>`).
-- Drop old screenshots (keep SOM text for older snapshots, drop image bytes).
-- Token budget monitor: warn at 20K, abort at 28K with `context-budget-exceeded`.
+- `packages/shared/src/prompts.ts` `buildExecutionPrompt`: add `<trajectory>` block populated from last **N=10** turns (JetBrains optimum; affordable at 128K).
+- `packages/supervisor/src/executor.ts`: the reducer tracks trajectory state; older turns rolled into one-line summaries (`<event>TOOL action → outcome</event>`). Trajectory renderer strips Gemma 4's `<|channel>thought…<channel|>` content from historical `agent_message` events per the Gemma 4 model card's multi-turn guidance (keep final response only).
+- Drop old screenshots (keep SOM text for older snapshots, drop image bytes). SOM image budget configurable per call (default 280 tokens; see §3.4).
+- Token budget monitor: warn at **96K** (75% of 128K), abort at **120K** (93.75%) with `context-budget-exceeded`.
 
 **Dependencies:** R3.
 **Effort:** 1 engineer, 2 days.
 **DoD — Behavior:**
-- Long-trajectory test (20-step synthetic run): prompt stays under 28K total tokens.
+- Long-trajectory test (20-step synthetic run): prompt stays under 120K total tokens.
 - Screenshot retention: only last turn's image bytes included; older snapshots reduced to text summary.
-- Abort test: synthesized 30K-token accumulation triggers `context-budget-exceeded` abort, which flows through the adherence gate as a `category=abort` RUN_COMPLETED.
+- Thought-channel stripping test: a historical `agent_message` with `<|channel>thought\nI'll click X\n<channel|>Click element 5` renders in the trajectory as `Click element 5` only.
+- Abort test: synthesized 125K-token accumulation triggers `context-budget-exceeded` abort, which flows through the adherence gate as a `category=abort` RUN_COMPLETED.
 
 ### Phase R5 — Eval runners + trace schema
 **Scope:**
@@ -306,19 +321,21 @@ See `open-questions.md` for the user-gate list. Summary:
 
 | Risk | Likelihood | Severity | Mitigation |
 |------|------------|----------|-----------|
-| Gemma can't emit schema-valid JSON at 4B despite Ollama `format` | Medium | High | Phase R2 includes early smoke test; fallback: prompt-only ReAct + `parseAgentTurn` tolerance for minor deviations |
-| Gemma's PLAN_UPDATE quality is too low and runs regress vs current Gemini-plan | Medium | High | Oracle-plan ablation runner isolates planning vs execution quality; user manual tests; `--planner frontier` flag kept for 2 releases |
-| Context window blows up on long journeys despite rolling | Low | Medium | Phase R4 monitors + aborts at 28K; Wave 4.5 baseline data already captured |
-| REFLECT loops degenerate into replanning loops | Low | Medium | Cap both PLAN_UPDATE (5) and REFLECT (2) per run; log warnings |
-| Constrained decoding latency regresses user TUI responsiveness | Low | Low | Ollama grammar overhead is typically 5-15%; measurable; if severe, fall back to JSON-mode-only |
-| Teacher data generation cost (Gemini API $) balloons | Low | Low | Target 20 tasks × ≤15 turns × ≤5K tokens = ~1.5M tokens per full pass; Gemini Flash pricing ~$0.10/run |
+| Ollama's Gemma 4 tool-call parser (OpenAI-compat path) is still broken at ship time (issue #15315 open 2026-04-24) | **High** | **High** | R2 spike explicitly tests both the native-token path (A) and the grammar-override path (B); whichever is green ships. If Ollama path A remains broken, swap to llama.cpp with PR #21326 / #21343 fixes for local-agent's inference backend. |
+| Gemma 4 can't emit schema-valid output under grammar override despite native `<|tool_call>` training | Medium | High | R2 spike comparison catches this; fallback is native-token path with a Gemma-4-aware decoder at the ACP boundary. |
+| Gemma 4's PLAN_UPDATE quality is too low and runs regress vs current Gemini-plan | Medium | High | Oracle-plan ablation runner isolates planning vs execution quality; user manual tests; `--planner frontier` flag kept for 2 releases. |
+| Context window blows up on long journeys despite rolling | Low | Low | Gemma 4's 128K context gives 4× the headroom over the prior 32K assumption; R4 monitors + aborts at 120K; Wave 4.5 baseline data already captured. |
+| REFLECT loops degenerate into replanning loops | Low | Medium | Cap both PLAN_UPDATE (5) and REFLECT (2) per run; log warnings. |
+| Constrained decoding latency regresses user TUI responsiveness | Low | Low | Ollama grammar overhead is typically 5-15%; measurable; if severe, fall back to native-token path. |
+| Teacher data generation cost (Gemini API $) balloons | Low | Low | Target 20 tasks × ≤15 turns × ≤5K tokens = ~1.5M tokens per full pass; Gemini Flash pricing ~$0.10/run. |
+| Gemma 4's `<|channel>thought>` content leaks into trajectory and poisons multi-turn generation | Medium | Medium | R4 trajectory renderer strips thought-channel spans from historical turns per the Gemma 4 model card's explicit multi-turn rule ("Thoughts from previous model turns must not be added before the next user turn begins"). Unit-tested in R4 DoD. |
 
 ### Rollback plan
 
 If Phase R3 fails the Volvo replay test twice after debugging:
 1. Revert the executor changes (keep Phase R1 + R2 schema work — they're additive).
 2. Default `plannerMode` stays at `"frontier"` (current default).
-3. Reopen research on whether Gemma 3n E4B needs a distilled LoRA first (inverting the plan order: distill first, ReAct second).
+3. Reopen research on whether Gemma 4 E4B needs a distilled LoRA first (inverting the plan order: distill first, ReAct second) — and whether the pipeline-parser fix from R2 is itself the dominant lever (the 2026-04-24 calibration suggests it might be).
 
 If Phase R5 eval shows gemma-react >30% regression vs current gemini-plans-gemma-executes:
 1. Retain `gemma-react` as the default **only** for `--planner gemma-react`; keep `--planner frontier` (current hybrid) as the CLI default.
@@ -354,7 +371,7 @@ If Phase R5 eval shows gemma-react >30% regression vs current gemini-plans-gemma
 - [x] Respects `feedback_avoid_prompt_overfitting.md`: ReAct prompt teaches reasoning framework (THOUGHT + PLAN_UPDATE + SOM ref grounding), not site-specific patterns. Site specificity stays in distillation data.
 - [x] Respects `feedback_types_over_regex.md`: `AgentTurn` is a Schema discriminated union, parsed via `Schema.decodeEffect`. No regex anywhere in the envelope parser.
 - [x] Respects `feedback_no_test_only_injection_seams.md`: `gemma-oracle-plan` runner is explicitly a debug-only path, not shipped to production CLI.
-- [x] Respects `project_target_model_gemma.md`: production model is Gemma 3n E4B. Frontier models only in eval / teacher / judge paths.
+- [x] Respects `project_target_model_gemma.md` (updated 2026-04-24): production model is **Gemma 4 E4B** (Ollama tag `gemma4:e4b`). Frontier models only in eval / teacher / judge paths.
 - [x] Respects Effect v4 idioms per CLAUDE.md: new services use `ServiceMap.Service`, errors use `Schema.ErrorClass`, no `Effect.mapError` / `catchAll` anywhere in the new code.
 - [x] Respects `feedback_dod_behavior_vs_verification.md`: DoDs above describe runtime behavior, not "function exists".
 - [x] Respects `feedback_commit_guidelines.md`: no Co-Authored-By footer; commits will be granular per wave after reviewer APPROVE.

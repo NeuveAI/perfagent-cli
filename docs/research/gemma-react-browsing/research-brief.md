@@ -1,9 +1,11 @@
 # Research Brief — Gemma-owns-plan + ReAct single-agent browsing runtime
 
-Date: 2026-04-24
-Scope: `perf-agent-cli` shift from frontier-planner + Gemma-executor to Gemma 3n E4B as sole runtime agent running a ReAct loop (Thought → Action → Observation) with optional mid-run replanning.
+Date: 2026-04-24 (revised 2026-04-24 to correct target model from Gemma 3n E4B → Gemma 4 E4B)
+Scope: `perf-agent-cli` shift from frontier-planner + Gemma-executor to **Gemma 4 E4B** (Ollama tag `gemma4:e4b`) as sole runtime agent running a ReAct loop (Thought → Action → Observation) with optional mid-run replanning.
 
 This brief collects the primary literature and sources cited in `assessment.md` and `architecture-prd.md`. Each entry is ~100 words with the key insight.
+
+**Note on the model correction (2026-04-24).** The original brief was authored against Gemma 3n E4B specs (MatFormer, 32K context, no documented function calling). The actual production target — confirmed via `ollama show gemma4:e4b` and cross-checked against Google's 2026-04-02 Gemma 4 launch — is **Gemma 4 E4B**, a different architecture (dense hybrid-attention, NOT MatFormer), with 128K context and **native function-calling support**. Sections below marked "(revised)" reflect the corrected target. Several Gemma-3n citations are retained for historical context but **do not govern** architecture decisions for this pivot.
 
 ## Theme 1 — ReAct and interleaved reasoning
 
@@ -77,49 +79,80 @@ ChatGLM3-6B fine-tuned via HTML simplification + curriculum learning (single-ste
 ### Xu et al. 2025, AgentTrek: Agent Trajectory Synthesis via Guiding Replay with Web Tutorials (ICLR 2025 Spotlight)
 Paper: https://arxiv.org/abs/2412.09605 · Code: https://github.com/xlang-ai/AgentTrek · Model: https://huggingface.co/xlangai/AgentTrek-1.0-32B
 
-Three-stage pipeline: (1) harvest tutorials from internet via classifier, (2) convert to task specs, (3) VLM agent replays, VLM evaluator verifies. Produces 10,398 trajectories at ~$0.55/trajectory. Trains Qwen-2.5 7B/32B students. Relevant for Wave 5+: shows teacher-trajectory generation can scale cheaply if the evaluator is also a VLM. Our path is closer to WebLLM — teacher = Gemini 3 Pro / Claude on production sites, student = Gemma 3n E4B.
+Three-stage pipeline: (1) harvest tutorials from internet via classifier, (2) convert to task specs, (3) VLM agent replays, VLM evaluator verifies. Produces 10,398 trajectories at ~$0.55/trajectory. Trains Qwen-2.5 7B/32B students. Relevant for Wave 5+: shows teacher-trajectory generation can scale cheaply if the evaluator is also a VLM. Our path is closer to WebLLM — teacher = Gemini 3 Pro / Claude on production sites, student = Gemma 4 E4B.
 
 ### Lù et al. 2024, WebLINX (ICML 2024) — referenced via WebLlama
 Dataset/benchmark: https://mcgill-nlp.github.io/weblinx/
 
 969 human-demonstrated trajectories, 18.8 avg steps per trajectory. Bigger average steps than AgentTrek (12.1) — the benchmark is **more dialogue-heavy and longer-horizon**. Informs our trajectory target: the Volvo EX90 journey we care about is ~10 steps, well within the WebLINX distribution.
 
-## Theme 3 — Small-model agents + function calling
+## Theme 3 — Small-model agents + function calling (revised for Gemma 4)
 
-### Artificial Analysis 2026, Gemma 3n E4B Provider Benchmarks
-URL: https://artificialanalysis.ai/models/gemma-3n-e4b/providers
+### Google 2026, Gemma 4 launch post (Google blog)
+URL: https://blog.google/innovation-and-ai/technology/developers-tools/gemma-4/ (retrieved 2026-04-24)
 
-Provider latency + price telemetry. Informs the cost/latency envelope of running Gemma 3n E4B at scale. Not a capability benchmark.
+Announces Gemma 4 family (released 2026-04-02): **E2B, E4B, 26B-A4B MoE, 31B dense**. Launch claims include "Native support for function-calling, structured JSON output, and native system instructions" enabling "autonomous agents that can interact with different tools and APIs." Edge models (E2B, E4B) ship with **128K context**; larger models up to 256K. All models natively process video+images; E2B/E4B additionally support audio input. License: Apache 2.0. 31B ranks #3 on Arena open-source leaderboard at launch; 26B "outcompetes models 20x its size."
 
-### Google 2024, Gemma 3n E4B-it model card (HuggingFace)
-URL: https://huggingface.co/google/gemma-3n-E4B-it
+### Google AI for Developers 2026, Gemma 4 model card (authoritative)
+URL: https://ai.google.dev/gemma/docs/core/model_card_4 (retrieved 2026-04-24) · HF mirror: https://huggingface.co/google/gemma-4-E4B-it · HF blog: https://huggingface.co/blog/gemma4
 
-Authoritative card for our production model. **Critical findings**: 32K context window (input + output combined), multimodal input (text + image + audio + video), images normalized to 256/512/768 and encoded at ≈256 tokens each, MMLU 64.9%, HumanEval 75%, MBPP 63.6%, BIG-Bench-Hard 52.9%. **Crucially: the model card does NOT mention function calling / tool use capability**. The card explicitly lists "real-time information retrieval, web browsing, or tasks requiring current knowledge" as **not suitable** use cases. This is the single most load-bearing research finding in this brief — Gemma 3n E4B was not designed as an agent. Any ReAct behavior we need must come from either (a) prompt engineering, (b) constrained decoding, or (c) distillation.
+**Authoritative card for our production model** (replaces the Gemma 3n model card previously cited here). Confirmed specs for **Gemma 4 E4B-it**:
+- **Architecture**: Dense (**not** MoE, **not** MatFormer — a break from Gemma 3n). 42 layers. Hybrid attention interleaving local sliding-window (512 tokens) with full global attention; final layer is always global.
+- **Parameters**: 4.5B effective, 8B with embeddings; vocabulary 262K. Vision encoder ≈150M params, audio encoder ≈300M params.
+- **Context length**: **128K tokens** (quadruple Gemma 3n's 32K).
+- **Modalities**: Text + Image + Audio (max 30s). "Interleaved Multimodal Input — Freely mix text and images in any order within a single prompt."
+- **Image token budget**: configurable per request among **70 / 140 / 280 / 560 / 1120** tokens. Lower for classification/captioning; higher for OCR/document parsing. This replaces the "256 tokens per image" assumption from Gemma 3n.
+- **Thinking mode**: native, toggled by placing the special `<|think|>` token at the start of the system prompt. Output wrapped in `<|channel>thought\n…<channel|>`. Per the model card: *"In multi-turn conversations, the historical model output should only include the final response. Thoughts from previous model turns must not be added before the next user turn begins."* Special note: E2B and E4B **always emit thought tags** even if thinking is disabled; other Gemma 4 sizes emit an empty thought block.
+- **Function calling (native)**: *"Native support for structured tool use, enabling agentic workflows."* Wire format uses special Gemma 4 tokens: `<|tool_call>call:NAME{arg:<|"|>VALUE<|"|>}<tool_call|>` (responses symmetric with `<|tool_response>…<tool_response|>`). Tools are passed via `processor.apply_chat_template(..., tools=[schema])`.
+- **Benchmarks (E4B-it)**: MMLU Pro **69.4%**, AIME 2026 (no tools) **42.5%**, LiveCodeBench v6 **52.0%**, GPQA Diamond **58.6%**, BigBench Extra Hard **33.1%**, Codeforces ELO **940**, MMMU Pro (vision) **52.6%**, MATH-Vision **59.5%**, CoVoST (audio) **35.54**, FLEURS (audio, lower better) **0.08**.
+- **Sampling defaults**: temperature=1.0, top_p=0.95, top_k=64.
+- **Limitations** (model card verbatim): may struggle with "subtle nuances, sarcasm, or figurative language," "may generate incorrect or outdated factual statements," open-ended / highly complex tasks and common-sense reasoning are called out as weaker. *No "not suitable" section explicitly prohibits web browsing* (a change from Gemma 3n's card, which explicitly listed "real-time information retrieval, web browsing" as not suitable).
+
+**Note on published benchmarks we care about but the card doesn't list**: BFCL (Berkeley Function Calling Leaderboard), Mind2Web, Online-Mind2Web, WebArena. As of 2026-04-24 these scores are **not** in Google's official card and were not found on BFCL's public leaderboard by WebSearch. We will have to measure these ourselves via our existing eval harness.
+
+### Gemma 4 prompt & chat-template format
+URL: https://ai.google.dev/gemma/docs/core/prompt-formatting-gemma4 + https://ai.google.dev/gemma/docs/capabilities/text/function-calling-gemma4 (retrieved 2026-04-24)
+
+Chat-template turn format: `<|turn>ROLE\nCONTENT<turn|>` with roles `system`, `user`, `model`. No BOS marker documented. Multimodal placeholders `<|image|>` and `<|audio|>`. Tool-use wire format uses the custom `<|tool_call>…<tool_call|>` tokens above. The docs explicitly advise: *"Always validate function names and arguments before execution."* For our pipeline, this means: when constraining output via grammar, we must either (a) preserve the native token format (preferred — matches training distribution) or (b) override with a JSON schema via Ollama's `format` and accept the distributional shift.
+
+### Ollama `gemma4:e4b` library card
+URL: https://ollama.com/library/gemma4:e4b (retrieved 2026-04-24)
+
+Confirmed capabilities from `ollama show gemma4:e4b`: `completion, vision, audio, tools, thinking`. Q4_K_M quantization, 9.6 GB download. Requires Ollama ≥ 0.20.0. Context 131,072 (128K). Matches `ollama show` output in our environment.
+
+### Known integration issues — Ollama + Gemma 4 tool calls (critical for calibration explanation)
+URLs (retrieved 2026-04-24):
+- https://github.com/ollama/ollama/issues/15315 — *"gemma4:e4b with ollama 0.20.1 still has tool parsing errors"* (open). Parser produces `invalid character '` looking for beginning of value` for `call:write{...}` output; the custom `<|tool_call>` token stream is not round-tripped through Ollama's OpenAI-compat `tool_calls` field.
+- https://github.com/ml-explore/mlx-lm/issues/1096 — mlx-lm's `_infer_tool_parser()` lacks detection logic for Gemma 4's markers. Result: *"the OpenAI-compatible `tool_calls` field is never populated and the raw tool call text is returned in `message.content` instead."*
+- https://github.com/anomalyco/opencode/issues/20995 — OpenCode + Ollama + gemma4:e4b: OpenAI-compat streaming drops `tool_calls`. **Root cause attributed to the client**: *"The AI SDK (`@ai-sdk/openai-compatible`) or opencode is not properly parsing/recognizing the tool calls from gemma4 in streaming mode."* Qwen3 works in the same pipeline; issue is Gemma-4-specific to the custom token format.
+- https://docs.vllm.ai/projects/recipes/en/latest/Google/Gemma4.html — vLLM requires explicit `--tool-call-parser gemma4 --reasoning-parser gemma4 --chat-template examples/tool_chat_template_gemma4.jinja --enable-auto-tool-choice` to parse Gemma 4 tool calls correctly. Inference without those flags → tool calls end up as raw tokens in `content`.
+
+**Why this matters for us**: our empirical calibration (Wave 4.5-subset, 2026-04-24) showed Gemma 4 E4B returning text-only responses with `turnCount=1`, `0 tool calls`. Across the above sources, that is the **signature failure mode** of an OpenAI-compat pipeline that doesn't know about Gemma 4's `<|tool_call>…<tool_call|>` special tokens. The model likely *is* emitting tool-call tokens, but Ollama's OpenAI-compat layer (or our AI SDK consumer) is dropping them into `content` as raw text, leaving the `tool_calls` array empty. Our tool-loop counts that as "no tool call" and ends the turn.
 
 ### Patil et al. 2025, The Berkeley Function Calling Leaderboard (BFCL) V4 (ICML 2025)
 Paper: https://openreview.net/pdf?id=2GmDdhBdDk · Site: https://gorilla.cs.berkeley.edu/leaderboard.html · Repo: https://github.com/ShishirPatil/gorilla
 
-De-facto standard for LLM tool use evaluation. 2000+ question-function-answer pairs. Key insight highlighted by authors: **top models ace single-turn function calls but stumble on memory, multi-turn, and "when not to act" decisions** — exactly our premature-termination failure mode. BFCL-v4 adds agentic evaluation covering these multi-turn cases. **Gemma 3 1B scores ~31% on BFCL**. A 4B model should score higher but likely nowhere near the frontier numbers.
+De-facto standard for LLM tool use evaluation. 2000+ question-function-answer pairs. Key insight highlighted by authors: **top models ace single-turn function calls but stumble on memory, multi-turn, and "when not to act" decisions** — exactly our premature-termination failure mode. BFCL-v4 adds agentic evaluation covering these multi-turn cases. **No public BFCL score for Gemma 4 E4B as of 2026-04-24** (WebSearch 2026-04-24). Gemma 3 1B historically scored ~31%; Gemma 4 E4B's native tool-call training should beat that, but we need to verify ourselves.
 
 ### Google Developer Blog 2024, FunctionGemma
 URL: https://blog.google/technology/developers/functiongemma/ · Guide: https://ai.google.dev/gemma/docs/capabilities/function-calling
 
-Gemma-3 270M variant specifically tuned for function-calling. **Out-of-box accuracy 58%, post-finetune 85%**. Direct evidence for the claim "base Gemma needs specific training to be reliable at tool use." For us: we cannot rely on Gemma 3n E4B's zero-shot function calling to be reliable. We must either fine-tune on browsing trajectories (Wave 5 / `browsing-gemma`) OR constrain output with grammar.
+Gemma-3 270M variant specifically tuned for function-calling. **Out-of-box accuracy 58%, post-finetune 85%**. **Relevance to Gemma 4 E4B is reduced**: FunctionGemma was the *workaround* for base Gemma 3's lack of native tool support. Gemma 4 E4B advertises native function-calling in the base model, making FunctionGemma-style specialization less critical as a starting point. Still useful as a reference point: even with native tool support, fine-tuning on domain trajectories typically adds another 10–30% to function-calling accuracy on narrow distributions — which remains the motivation for the `browsing-gemma` LoRA (Wave 5).
 
 ### Qwen 2024 docs, Function Calling
 URL: https://qwen.readthedocs.io/en/latest/framework/function_call.html
 
-Qwen-3 uses Hermes-style tool-use format natively and supports parallel function calls. Qwen2.5-Coder-7B has documented tool-call hallucination cases (HuggingFace discussion): https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct/discussions/22. Reinforces that **7B models still hallucinate tool calls without grammar constraints**.
+Qwen-3 uses Hermes-style tool-use format natively and supports parallel function calls. Qwen2.5-Coder-7B has documented tool-call hallucination cases (HuggingFace discussion): https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct/discussions/22. Reinforces that **small instruction-tuned models still hallucinate tool calls without grammar constraints or parser support for their specific wire format**.
 
 ### Llamacpp / Outlines / Ollama structured outputs
 Ollama docs: https://docs.ollama.com/capabilities/structured-outputs · Ollama blog: https://ollama.com/blog/structured-outputs · Outlines: https://dottxt-ai.github.io/outlines/
 
-Ollama v0.5+ accepts a JSON Schema via the `format` field and generates the grammar on the fly (llama.cpp GBNF under the hood). Constrained decoding guarantees schema-valid output at some latency cost. Outlines uses character-DFA → token-DFA. XGrammar / llguidance support recursive CFGs; Outlines does not. For us: **Ollama's `format: <schema>` is the pragmatic choice** — single config flag, zero new deps, works for ReAct's Thought+Action shape.
+Ollama v0.5+ accepts a JSON Schema via the `format` field and generates the grammar on the fly (llama.cpp GBNF under the hood). Constrained decoding guarantees schema-valid output at some latency cost. Outlines uses character-DFA → token-DFA. XGrammar / llguidance support recursive CFGs; Outlines does not. For us: **Ollama's `format: <schema>` remains viable** for forcing structured output, but it forces Gemma 4 away from its native `<|tool_call>…<tool_call|>` format. Two paths, to be decided empirically in Phase R2: (a) **native-tokens path** — fix Ollama tool parsing / swap to llama.cpp with PR #21326 template fix so Gemma 4's native format is round-tripped correctly, (b) **grammar-override path** — use `format: <AgentTurn JSON Schema>` and accept the distributional shift away from training format. Path (a) is closer to how Gemma 4 was trained; path (b) is more portable but relies on Gemma 4 generalizing to JSON output despite `<|tool_call>` being the RLHF-favored shape.
 
 ### AI SDK (Vercel) Core docs, generateObject + ai-sdk-ollama provider
 generateObject: https://ai-sdk.dev/v4/docs/reference/ai-sdk-core/generate-object · ai-sdk-ollama: https://github.com/jagreehal/ai-sdk-ollama
 
-The provider we're already using (`@ai-sdk/google`) plus its Ollama sibling supports structured output via Zod schemas. V4 supports `mode: "tool" | "json" | "auto"`. V5 has known breakage (GitHub #7791). For us: stay on V4 semantics or pin to an Ollama-specific provider that handles Gemma 3n's structured output without the V5 regression.
+The provider we're already using (`@ai-sdk/google`) plus its Ollama sibling supports structured output via Zod schemas. V4 supports `mode: "tool" | "json" | "auto"`. V5 has known breakage (GitHub #7791). **Additional caveat (from OpenCode issue #20995)**: `@ai-sdk/openai-compatible`'s streaming tool-call parser does not recognize Gemma 4's `<|tool_call>` markers, so streaming mode drops tool calls into content. For our ReAct pivot, either (a) use non-streaming `generateObject` with `mode: "json"` and our own schema (grammar-override path), or (b) ship a Gemma-4-aware streaming tool-call decoder.
 
 ## Theme 4 — Self-verification, replanning triggers, and error handling
 
@@ -152,7 +185,7 @@ Key rule: prompts teach reasoning frameworks, NOT site-specific heuristics. Site
 Prefer imported types/schemas over regex. We parse ReAct output via `Schema.decodeEffect` on a typed ReAct envelope, not regex line matching.
 
 ### perfagent-cli memory: project_target_model_gemma.md + project_lora_name.md
-Production target = Gemma 3n E4B. Distilled LoRA = `browsing-gemma`. Frontier models are dev-only (eval A:B + teacher data + LLM-judge).
+Production target = **Gemma 4 E4B** (Ollama tag `gemma4:e4b`, corrected 2026-04-24). Distilled LoRA = `browsing-gemma`. Frontier models are dev-only (eval A:B vs Gemini 3 Flash + teacher data + LLM-judge).
 
 ### perfagent-cli memory: project_post_plan_continuation.md
 Current post-plan sequence: baseline provision → manual test → A:B vs Gemini Flash 3 → cleanup → distill. The ReAct pivot slots in **before distill** because distill depends on the trajectory shape the new runtime produces.
@@ -198,8 +231,19 @@ Current post-plan sequence: baseline provision → manual test → A:B vs Gemini
 - [AgentTrek code](https://github.com/xlang-ai/AgentTrek)
 - [AgentTuning paper](https://huggingface.co/papers/2310.12823)
 - [Agent-FLAN paper](https://arxiv.org/html/2403.12881v1)
-- [Gemma 3n E4B-it model card](https://huggingface.co/google/gemma-3n-E4B-it)
-- [Gemma 3n Artificial Analysis](https://artificialanalysis.ai/models/gemma-3n-e4b/providers)
+- [Gemma 4 launch post (Google)](https://blog.google/innovation-and-ai/technology/developers-tools/gemma-4/)
+- [Gemma 4 model card (ai.google.dev)](https://ai.google.dev/gemma/docs/core/model_card_4)
+- [Gemma 4 E4B-it HuggingFace card](https://huggingface.co/google/gemma-4-E4B-it)
+- [Welcome Gemma 4 (HF blog)](https://huggingface.co/blog/gemma4)
+- [Gemma 4 DeepMind page](https://deepmind.google/models/gemma/gemma-4/)
+- [Agentic Skills on the edge with Gemma 4 (Google Dev blog)](https://developers.googleblog.com/bring-state-of-the-art-agentic-skills-to-the-edge-with-gemma-4/)
+- [Gemma 4 function calling docs](https://ai.google.dev/gemma/docs/capabilities/text/function-calling-gemma4)
+- [Gemma 4 prompt formatting docs](https://ai.google.dev/gemma/docs/core/prompt-formatting-gemma4)
+- [Ollama gemma4:e4b library card](https://ollama.com/library/gemma4:e4b)
+- [Ollama tool-parsing bug for gemma4:e4b (issue #15315)](https://github.com/ollama/ollama/issues/15315)
+- [mlx-lm Gemma 4 tool-call parser missing (issue #1096)](https://github.com/ml-explore/mlx-lm/issues/1096)
+- [OpenCode + Ollama Gemma 4 streaming drops tool_calls (issue #20995)](https://github.com/anomalyco/opencode/issues/20995)
+- [vLLM Gemma 4 recipe (parser flags)](https://docs.vllm.ai/projects/recipes/en/latest/Google/Gemma4.html)
 - [Berkeley Function Calling Leaderboard site](https://gorilla.cs.berkeley.edu/leaderboard.html)
 - [BFCL paper](https://openreview.net/pdf?id=2GmDdhBdDk)
 - [FunctionGemma blog](https://blog.google/technology/developers/functiongemma/)

@@ -1,13 +1,15 @@
 # Assessment — Gemma-owns-plan + ReAct, applied to perf-agent-cli
 
-Date: 2026-04-24
+Date: 2026-04-24 (revised 2026-04-24 for actual target Gemma 4 E4B — earlier draft assumed Gemma 3n E4B)
 Companion docs: `research-brief.md` (citations), `architecture-prd.md` (proposal), `open-questions.md` (user gates).
 
 This doc answers the ten assessment dimensions in the task scope. Each section gives **Recommendation + Evidence + Tradeoffs + Risks**. Citations are short-form; full sources in `research-brief.md`.
 
+**Model-correction summary (2026-04-24).** Where the original assessment reasoned from Gemma 3n E4B (MatFormer, 32K context, no native tool use, 256-tok image encoding), the authoritative target is now **Gemma 4 E4B** (dense hybrid-attention, **128K context**, **native function-calling with `<|tool_call>…<tool_call|>` tokens**, configurable image budgets 70/140/280/560/1120 tokens, `thinking` mode). Calibration data (2026-04-24) showed Gemma 4 E4B returning 25% / `turnCount=1` / zero tool calls on the wave-4-5-subset — **not** a capability gap (the model card advertises tools) but a signature of the known Ollama-OpenAI-compat parser gap for Gemma 4's custom tool tokens (see Theme 3 citations). Sections below have been revised accordingly.
+
 ---
 
-## 1. ReAct prompt format for Gemma 3n E4B
+## 1. ReAct prompt format for Gemma 4 E4B
 
 ### Recommendation
 Use a **lightweight, pipe-delimited ReAct envelope that piggy-backs on the existing status-marker parser**. Specifically: per turn, Gemma emits **one** of the following shapes, exactly as today's status markers do, parseable by a schema-validated transformer:
@@ -36,8 +38,9 @@ Target line-count for the extended system prompt: **≤80 lines**, the same budg
 - Focused ReAct (see research brief Theme 3 / small-model row): reiterating the sub-goal at the top of each turn + early-stop heuristics improves 3.8B–8B models' tool-use accuracy. We already reiterate the sub-goal via `<current_sub_goal>`.
 
 ### Tradeoffs
-- **Verbalized thought costs tokens** (~20–40 per turn). On a 10-step journey this is ~400 tokens of overhead. Acceptable within Gemma's 32K context.
-- The pipe-delimited envelope is less "natural" for Gemma than Markdown ReAct. But uniformity with today's markers is worth more than stylistic parity with the ReAct paper, and small models benefit from **consistent syntax across all emitted content** (mixed English + structured markers degrade parser reliability).
+- **Verbalized thought costs tokens** (~20–40 per turn). On a 10-step journey this is ~400 tokens of overhead. Trivially acceptable within Gemma 4 E4B's **128K context** — and largely duplicative of Gemma 4's native `<|channel>thought…<channel|>` thinking-mode output, which we need to reconcile (see §6).
+- The pipe-delimited envelope is less "natural" for Gemma 4 than its trained-in `<|tool_call>…<tool_call|>` tokens. Uniformity with today's status markers is worth some distributional shift, but we should **measure** schema adherence and output quality with vs without the override against Gemma 4's native tool-call format — this is exactly what Phase R2 calibration is for.
+- Small models benefit from **consistent syntax across all emitted content**; mixed English + structured markers degrade parser reliability.
 
 ### Risks
 - Gemma might emit THOUGHT and ACTION on the same line or merge them. Mitigation: golden-file tests in `packages/shared/tests/prompts.test.ts` and parser robustness to whitespace; the Wave 1.B parser already tolerates `;`-separated tokens in any order.
@@ -69,31 +72,32 @@ Target line-count for the extended system prompt: **≤80 lines**, the same budg
 
 ---
 
-## 3. Tool-use reliability at 4B
+## 3. Tool-use reliability at 4B (revised — Gemma 4 has native tool support)
 
 ### Recommendation
-**Constrain the agent's tool-call output with Ollama's `format` schema parameter** (JSON-Schema-to-GBNF). Define a single `AgentTurn` schema that encodes the ReAct envelope as a discriminated union (THOUGHT, ACTION, PLAN_UPDATE, STEP_DONE, ASSERTION_FAILED, RUN_COMPLETED) and pass it on every Ollama completion. Keep the Wave 2.A interaction tools (click, fill, hover, select, wait_for) as the named tools inside the ACTION variant.
+**Two-path decision to be made in Phase R2 (spike), both with the same `AgentTurn` schema surface:**
 
-Currently `packages/local-agent/src/ollama-client.ts` uses the OpenAI-compat `/v1/chat/completions` endpoint. We have two options:
-- **(A)** Keep the OpenAI-compat endpoint, pass `format` through the `response_format` parameter (Ollama maps it).
-- **(B)** Switch to Ollama's native `/api/chat` endpoint directly, which has first-class `format` support.
+- **Path A — Native Gemma 4 tool-call tokens (preferred if pipeline gap is fixable).** Keep Gemma 4's trained-in `<|tool_call>…<tool_call|>` wire format. Move local-agent off Ollama's OpenAI-compat `/v1/chat/completions` and onto Ollama's native `/api/chat` with `tools: [...]` parameter, OR swap Ollama for llama.cpp with the Gemma-4 template fix (PR #21326). Add a Gemma-4-aware tool-call decoder at the ACP/session boundary so our `ToolCall` events round-trip cleanly. Constrain only the arguments JSON shape (via the existing Zod validation per tool), not the full turn envelope.
+- **Path B — Grammar-override via Ollama `format`.** Pass a flat JSON Schema for the `AgentTurn` discriminated union (THOUGHT, ACTION, PLAN_UPDATE, STEP_DONE, ASSERTION_FAILED, RUN_COMPLETED) on every completion. This forces Gemma 4 away from its native `<|tool_call>` format into a JSON envelope. Portable but relies on Gemma 4 generalizing well despite `<|tool_call>` being the RLHF-favored format.
 
-Pick **(B)** for production reliability; keep (A) as a fallback behind a config flag for eval parity with `gemini` (A:B) runs which use OpenAI-compat.
+Keep the Wave 2.A interaction tools (click, fill, hover, select, wait_for) as the named tools regardless of path. Decide A vs B in R2 based on a head-to-head on the 3 calibration tasks + 2 trivial tasks: whichever produces higher tool-call rate and schema-valid output wins.
 
 ### Evidence
-- Gemma 3n E4B model card does not mention function calling. It was trained for multimodal text/image/audio generation, not agent use (research-brief Theme 3).
-- Gemma 3 1B scored **~31% on BFCL**; FunctionGemma (270M, specifically tuned) scored 58% → 85% post-finetune (FunctionGemma blog). Direct evidence that **base Gemma is unreliable at tool calls without grammar constraints or fine-tuning**.
-- Qwen2.5-Coder-7B has open tool-call-hallucination reports (HuggingFace discussion thread cited in research brief). Small models routinely emit tool calls in wrong XML/JSON shapes without constraints.
-- Ollama supports structured outputs via JSON Schema since v0.5 (Ollama blog). No new dep required.
+- **Gemma 4 E4B model card advertises native function calling**: *"Native support for structured tool use, enabling agentic workflows."* Wire format uses special tokens `<|tool_call>call:NAME{arg:<|"|>VALUE<|"|>}<tool_call|>` and `<|tool_response>…<tool_response|>` (function-calling-gemma4 docs, retrieved 2026-04-24). Also advertised in `ollama show gemma4:e4b` as the `tools` capability. This is a direct break from the prior assessment's Gemma 3n premise.
+- **But our empirical calibration (2026-04-24) shows zero tool calls** on the wave-4-5-subset: text-only responses, turnCount=1, 25% scores. Across three independent bug reports (Ollama #15315, mlx-lm #1096, OpenCode #20995) this is the signature of OpenAI-compat clients **not recognizing Gemma 4's custom tool-call tokens in streaming mode**. The tokens drop into `message.content` as raw text and `tool_calls` arrives empty. Root cause is **pipeline/parser**, not capability.
+- vLLM documents the flags needed for correct parsing: `--tool-call-parser gemma4 --reasoning-parser gemma4 --chat-template examples/tool_chat_template_gemma4.jinja --enable-auto-tool-choice`. Ollama exposes less surface but requires equivalent internal parsers.
+- BFCL note: no official BFCL score for Gemma 4 E4B is published as of 2026-04-24. We measure ourselves.
+- FunctionGemma (270M fine-tuned, 58% → 85% post-finetune) demonstrates fine-tuning-for-tools still pays off even when base models advertise tool support — reinforces the `browsing-gemma` LoRA plan.
+- Ollama supports structured outputs via JSON Schema since v0.5 (Ollama blog); still a viable Path B enabler.
 
 ### Tradeoffs
-- Constrained decoding adds ~5–15% latency per turn depending on schema depth (see Outlines vs llama.cpp benchmarks in research brief).
-- Schema-constrained output **cannot produce free-form English for THOUGHT**. Mitigation: THOUGHT is a string field inside the JSON, not free prose. Acceptable.
-- Tight schema means introducing a new tool requires a schema update. This is actually a feature: it forces the agent interface to stay thin.
+- **Path A (native tokens)** keeps Gemma 4 in its training distribution, should maximize tool-call quality, but requires a Gemma-4-aware parser on our side (either Ollama ≥ version-that-fixes-#15315, or llama.cpp). Shipping time hostage to upstream fixes.
+- **Path B (JSON grammar override)** is portable and unblocks us today, but measurably pushes the model away from training format. Added latency 5–15% per turn from constrained decoding. Schema-constrained output **cannot produce free-form English for THOUGHT**; THOUGHT becomes a string field inside the JSON, not free prose (same as before). Tight schema means introducing a new tool requires a schema update — a feature, keeps tool surface thin.
 
 ### Risks
-- Ollama's grammar engine has historically had bugs on recursive schemas (research brief, Outlines note). Our `AgentTurn` schema is flat (no recursion) so this shouldn't bite, but test early.
-- Different Ollama versions diverge on `format` behavior. Mitigation: pin Ollama version in `.specs/` and CI.
+- **Path A**: Ollama tool-call parser for Gemma 4 remains broken across multiple v0.20.x releases (issue #15315 still open 2026-04-24). If upstream doesn't fix in our window, we must fall back to Path B or ship llama.cpp in place of Ollama.
+- **Path B**: Gemma 4's native reasoning+tools training may degrade when forced to a non-trained JSON envelope. Risk is empirical — requires the R2 spike's head-to-head.
+- **Either path**: the existing calibration data is not a capability claim about Gemma 4 — it's an integration-stack measurement. The baseline analysis (Task #4) must explicitly flag this and should not be used as a Gemma 4 capability floor.
 
 ---
 
@@ -141,28 +145,35 @@ Keep the Wave 1.B adherence gate verbatim. **Add two layers on top**:
 
 ---
 
-## 6. Context window strategy
+## 6. Context window strategy (revised — 128K context relaxes urgency)
 
 ### Recommendation
-Wave 4.6 (dormant) **activates now**. Specifically:
+**Downgrade Wave 4.6 from "activate now" to "build the trajectory plumbing but tune budgets to 128K"**:
 - **Always keep**: system prompt (≤80 lines), current `<plan>` block, current `<current_sub_goal>`, current `<observed_state>` (latest snapshot text only).
-- **Rolling**: last **N=5 agent turns verbatim** (thoughts + action args + tool results).
+- **Rolling**: last **N=10 agent turns verbatim** (thoughts + action args + tool results). The JetBrains optimum is 10-turn sliding window — at 128K that's well within budget for most journeys, so we match their sweet spot rather than forcing a tighter 5-turn cap.
 - **Summarize**: older turns compressed to `<event>TOOL ACTION → short-outcome</event>` one-liners (rule-based, no LLM summarizer in v1).
 - **Drop**: all screenshot image bytes except the most recent (keep alt-text / snapshot text for older ones).
-- **Cap**: warn at 20K token budget (62.5% of Gemma's 32K), abort with `context-budget-exceeded` assertion at 28K (87.5%).
+- **Cap**: warn at 96K token budget (75% of 128K), abort with `context-budget-exceeded` assertion at 120K (93.75%). Leaves ~8K output budget plus safety margin.
+
+The Wave 4.6 plumbing (trajectory block, rule-based rollup, screenshot drop policy) is still worth building — it's protection for Online-Mind2Web hard journeys and defense-in-depth — but the **urgency** of shipping it to avoid per-turn context overflow is much lower than under the Gemma 3n / 32K premise.
+
+### Reconcile with Gemma 4's thinking mode
+Gemma 4 E4B emits thought content (`<|channel>thought…<channel|>`) as part of normal output. Per the model card: *"In multi-turn conversations, the historical model output should only include the final response. Thoughts from previous model turns must not be added before the next user turn begins."* Our trajectory block must therefore **strip thought-channel content from historical turns** when constructing the per-turn prompt, keeping only the actions + observations. The current-turn THOUGHT (our ReAct envelope's) is distinct from Gemma 4's private thinking-mode output and is preserved in the trajectory as an audit trail; the model's own `<|channel>thought>` is not.
 
 ### Evidence
-- Gemma 3n E4B has a **32K combined input + output context** (HuggingFace model card). That's less than appears — a 4K output reserve leaves 28K for input.
-- SOM screenshots at 768px JPEG q70 serialize to ≈50-80KB = 50-80K chars on base64, but images are **encoded at 256 tokens each** on Gemma 3n. So screenshots themselves aren't the blowup — tool-result text (snapshots are usually 2K-10K tokens as text) is.
-- JetBrains context management study: 10-turn sliding window beat summarization for coding agents; when summarizing, 21-older + 10-latest was optimal. Our 5-latest verbatim + rule-based one-line older is a conservative subset of that.
-- Cemri 2025 notes "infinite loops" and "context overflow" as adjacent failure modes to premature termination — the same class of bugs.
+- Gemma 4 E4B has a **128K context window** (model card + `ollama show gemma4:e4b`). 4× the Gemma 3n E4B premise. A ~4K output reserve leaves ~124K for input.
+- Gemma 4 image token budget is **configurable: 70 / 140 / 280 / 560 / 1120 tokens per image** (model card, image budgets). At 280 tokens per image × 20 turns with a 1-image-retained-per-turn policy, image tokens are trivially affordable in 128K. Tool-result text is still the dominant term.
+- JetBrains context management study: 10-turn sliding window beat summarization for coding agents; when summarizing, 21-older + 10-latest was optimal. With 128K headroom we can afford the full JetBrains-recommended 10-turn verbatim window without squeezing.
+- Cemri 2025 notes "infinite loops" and "context overflow" as adjacent failure modes to premature termination — still worth defensive engineering, just lower P0 than under 32K.
 
 ### Tradeoffs
-- Rule-based older-turn summary loses detail. If Gemma needs to revisit an old observation (rare), it can't. Acceptable loss for 32K budget.
-- Dropping older screenshots breaks visual-grounding-by-recall ("the image from 4 turns ago showed the menu"). Acceptable: SOM refs are ephemeral anyway (Wave 2.C `RefStaleError` contract).
+- Rule-based older-turn summary still loses detail. Less painful at 128K because we rarely hit the ceiling, but still used on long journeys to keep per-turn inference cost down (fewer tokens = faster turn).
+- Dropping older screenshots still breaks visual-grounding-by-recall. Acceptable: SOM refs are ephemeral anyway (Wave 2.C `RefStaleError` contract).
+- 10-turn verbatim costs 2× the token spend per turn vs N=5 at low trajectory depths. For a 10-step Volvo journey we're paying ~5K extra tokens per turn × 10 turns = ~50K extra in Gemma-side latency terms. At Gemma 4 E4B's ~57 tok/s (per `.specs/local-gemma4-agent.md`) this is real but within budget.
 
 ### Risks
-- Rule-based summaries may drop a tool_result that contained the key navigation token. Mitigation: always preserve tool_result for `performance_stop_trace` (CWV payload = the deliverable) and for navigate_page (URL state).
+- Rule-based summaries may drop a tool_result that contained the key navigation token. Mitigation: always preserve tool_result for `performance_stop_trace` (CWV payload = the deliverable) and for navigate_page (URL state). Unchanged from prior draft.
+- Gemma 4's thinking-mode tokens leak into trajectory if we don't strip them. New concern. Mitigation: the trace recorder already distinguishes agent turn content from tool-call content; add a parse step that removes `<|channel>thought…<channel|>` spans from historical `agent_message` events before injection.
 
 ---
 
@@ -179,12 +190,12 @@ Do NOT change the SOM rendering pipeline (Wave 2.C's module is correct). The cha
 - Our Wave 2.C SOM module already returns `SomRef { id, role, accessibleName, selector, bounds }` per element. We can expose the ref list as text without changing the module.
 
 ### Tradeoffs
-- More text in `<observed_state>` = more context consumed. Cap: ≤25 refs per snapshot (truncate closest-to-viewport-top); Wave 2.C diary already flagged this as a potential knob.
-- Image bytes still need to be attached for multimodal grounding on Gemma 3n E4B. Yes — but we already cap at 768px JPEG q70 (SOM module constant). Encoding stays at 256 tokens per image on Gemma.
+- More text in `<observed_state>` = more context consumed. Cap: ≤25 refs per snapshot (truncate closest-to-viewport-top); Wave 2.C diary already flagged this as a potential knob. Low pressure with 128K context.
+- Image bytes still need to be attached for multimodal grounding on Gemma 4 E4B. We already cap at 768px JPEG q70 (SOM module constant). **Gemma 4's image token budget is configurable per call: 70 / 140 / 280 / 560 / 1120 tokens.** Default recommendation: **280 tokens per SOM snapshot** (between low-detail captioning and high-detail OCR on the model card's guidance, appropriate for SOM refs which are visually salient boxes, not fine text). Bump to 560 if Phase R2 shows click-accuracy regressions on dense menus; drop to 140 for known-simple pages. This replaces the prior "256 tokens fixed" assumption from Gemma 3n.
 
 ### Risks
 - Verbalizing ref + label adds latency. Acceptable — it's one sentence.
-- Gemma's multimodal grounding at 4B on dense menus may still hallucinate ref→label mappings (SeeAct found this even with GPT-4V). Mitigation: the `RefResolver` is authoritative; when `click(ref)` fails with `RefStaleError`, the adherence gate triggers the REFLECT path from dimension 4.
+- Gemma 4's multimodal grounding at 4.5B effective params on dense menus may still hallucinate ref→label mappings (SeeAct found this even with GPT-4V; Gemma 4 E4B's MMMU Pro score is 52.6% per model card — below frontier). Mitigation: the `RefResolver` is authoritative; when `click(ref)` fails with `RefStaleError`, the adherence gate triggers the REFLECT path from dimension 4.
 
 ---
 
