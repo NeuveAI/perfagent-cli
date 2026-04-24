@@ -1,0 +1,54 @@
+{
+  "wave": "wave-4",
+  "capturedAt": "2026-04-24",
+  "status": "pending-hf-auth",
+  "reason": "Online-Mind2Web dataset is gated on HuggingFace. The engineer's env had GOOGLE_GENERATIVE_AI_API_KEY (for the LLM-as-judge) but no HUGGINGFACE_TOKEN (required to download the 300-task JSON the first time). Run the following on a provisioned box to replace this placeholder:",
+  "reproduceWith": [
+    "1. Accept the dataset terms at https://huggingface.co/datasets/osunlp/Online-Mind2Web",
+    "2. Create a HuggingFace read token at https://huggingface.co/settings/tokens",
+    "3. Add to packages/evals/.env.local: HUGGINGFACE_TOKEN=hf_...",
+    "4. Start an ACP-compatible Claude backend (packages/agent/src/acp-client.ts)",
+    "5. Run: EVAL_RUNNER=real EVAL_BACKEND=claude pnpm --filter @neuve/evals eval:mind2web",
+    "6. Copy the evalite scoreboard JSON into this file; replace `status` with \"captured\"; re-run `pnpm format`."
+  ],
+  "placeholder": true,
+  "tasks": {
+    "total": 0,
+    "perfAgentCompleted": 0,
+    "perfAgentPartial": 0,
+    "perfAgentFailed": 0
+  },
+  "scorers": {
+    "step-coverage": null,
+    "final-state": null,
+    "tool-call-validity": null,
+    "furthest-key-node": null,
+    "llm-judge-completion": null
+  },
+  "judgeSmokeResults": [
+    {
+      "label": "clean completion (volvo ex90 configurator)",
+      "score": 1.0,
+      "completed": true,
+      "confidence": 1.0,
+      "reasoning": "The agent successfully navigated through the specified path (Buy -> Build -> EX90) and reached the final order request form URL as evidenced by the trajectory and final summary."
+    },
+    {
+      "label": "stopped at landing page",
+      "score": 0.0,
+      "completed": false,
+      "confidence": 1.0,
+      "reasoning": "The agent only navigated to the homepage and failed to perform any of the required steps to configure the vehicle or reach the order request form."
+    },
+    {
+      "label": "malformed tools, no progress",
+      "score": 0.0,
+      "completed": false,
+      "confidence": 1.0,
+      "reasoning": "The agent failed to execute any valid tool calls, reached no key nodes, and did not provide a final URL, indicating it never even reached the starting website."
+    }
+  ],
+  "judgeSmokeNote": "The judgeSmokeResults block was captured via `packages/evals/scripts/smoke-judge.ts` against real Gemini 3 Flash Preview (model id `gemini-3-flash-preview`) at temperature 0.1. All three synthetic trajectories got the expected verdict. This proves the LLM-as-judge wiring end-to-end; the per-task numbers block above stays empty until a real Mind2Web run lands.",
+  "gemmaBaseline": "deferred-to-wave-4.5",
+  "notes": "Wave 4.5 is the baseline-diff wave per plan.md:241. That wave will (a) populate the HF cache once, (b) run the real Claude runner, (c) run the Gemma runner, (d) run the same three against the baseline-b1/b2 branches for regression diffing, then commit a `regression-report.md`. Holding this placeholder as a sentinel so the baselines/ directory exists with a known-shape schema."
+}
