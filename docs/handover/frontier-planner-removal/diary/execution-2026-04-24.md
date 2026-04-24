@@ -34,6 +34,7 @@ Execute **Option B** of the frontier-planner removal audit:
 | C9 | `e71f5329` | docs(frontier-planner-removal): CHANGELOG, regression tests, diary |
 | P2 | `35d2ff44` | fix(evals): update PlannerConfigError guidance to EVAL_PLANNER=oracle-plan (backend-lane Major M2) |
 | P1 | `21637939` | test(evals): port plan-decomposer suite to @neuve/evals (backend-lane Major M1) |
+| P1-fix | `af7c6ecd` | fix(evals): widen plan-decomposer test helper types to TokenUsageBus (P1 follow-up) |
 
 ## Final invariant checks
 
@@ -254,3 +255,13 @@ ordering suggestion) + P1 (larger test-port, committed second).
   CRITICAL-1 no-API-key path, and `splitByConnectives`. Verified:
   `pnpm --filter @neuve/evals test` → 148 passed across 14 files (was 132
   across 13 before the port).
+- **P1-fix (`af7c6ecd`) — fix(evals): widen plan-decomposer test helper
+  types to TokenUsageBus.** A latent type narrow surfaced only after the
+  port: supervisor's `tsconfig.json` included `"src"` only, so the test
+  was NEVER type-checked in-tree; evals' `tsconfig.json` includes
+  `"tests"`, so `tsgo --noEmit` in evals now sees the file. The helpers
+  declared `Effect<A, E, PlanDecomposer>` but the actual effect carries
+  `PlanDecomposer | TokenUsageBus` (`PlannerAgent.planFrontier` yields
+  `TokenUsageBus`). Widening both helper type parameters to the union
+  matches reality — the test layers already merge `TokenUsageBus.layerNoop`
+  alongside the decomposer, so runtime is unchanged.
