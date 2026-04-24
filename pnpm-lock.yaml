@@ -361,6 +361,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.15
+      chrome-devtools-mcp:
+        specifier: ^0.21.0
+        version: 0.21.0
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
@@ -7397,7 +7400,7 @@ snapshots:
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
       zod: 4.3.6
-      zod-to-json-schema: 3.25.1(zod@3.25.76)
+      zod-to-json-schema: 3.25.1(zod@4.3.6)
     transitivePeerDependencies:
       - supports-color
 
@@ -11882,6 +11885,10 @@ snapshots:
   zod-to-json-schema@3.25.1(zod@3.25.76):
     dependencies:
       zod: 3.25.76
+
+  zod-to-json-schema@3.25.1(zod@4.3.6):
+    dependencies:
+      zod: 4.3.6
 
   zod@3.25.76: {}
 

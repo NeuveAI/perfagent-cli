@@ -33,6 +33,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "chrome-devtools-mcp": "^0.21.0",
     "typescript": "^5.7.0"
   }
 }
