@@ -7,7 +7,13 @@ import type {
 const OLLAMA_BASE_URL = "http://localhost:11434/v1/";
 const DEFAULT_MODEL = "gemma4:e4b";
 const DEFAULT_TEMPERATURE = 0.1;
-const DEFAULT_NUM_CTX = 32768;
+// Gemma 4 E4B's native context window is 131072 tokens (verified via
+// `ollama show gemma4:e4b`). We were previously capped at 32768 — 25% of
+// the real window — which left no headroom once the system prompt + 8
+// tool schemas pushed the prompt past ~4 KB. Bump to the full model
+// context so long trajectories (observe → trace → analyze loops) don't
+// silently truncate.
+const DEFAULT_NUM_CTX = 131072;
 
 export interface OllamaCompletionOptions {
   messages: ChatCompletionMessageParam[];
