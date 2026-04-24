@@ -83,14 +83,18 @@ const decomposerLayerFromModel = (model: MockLanguageModelV4) =>
     TokenUsageBus.layerNoop,
   );
 
+// `PlanDecomposer.decompose` transitively requires `TokenUsageBus` through
+// `PlannerAgent.planFrontier`. Both test layers (`decomposerLayerFromModel` +
+// `decomposerLayerNoKey`) merge `TokenUsageBus.layerNoop` alongside the
+// decomposer, so the helper signatures advertise the union.
 const runWithLayer = <A, E>(
-  effect: Effect.Effect<A, E, PlanDecomposer>,
-  layer: Layer.Layer<PlanDecomposer>,
+  effect: Effect.Effect<A, E, PlanDecomposer | TokenUsageBus>,
+  layer: Layer.Layer<PlanDecomposer | TokenUsageBus>,
 ): Promise<A> => Effect.runPromise(effect.pipe(Effect.provide(layer)));
 
 const runExitWithLayer = <A, E>(
-  effect: Effect.Effect<A, E, PlanDecomposer>,
-  layer: Layer.Layer<PlanDecomposer>,
+  effect: Effect.Effect<A, E, PlanDecomposer | TokenUsageBus>,
+  layer: Layer.Layer<PlanDecomposer | TokenUsageBus>,
 ) => Effect.runPromiseExit(effect.pipe(Effect.provide(layer)));
 
 const catalogCheckoutPlan: FrontierPlan = {
