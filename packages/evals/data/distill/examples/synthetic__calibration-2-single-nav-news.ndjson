@@ -1,0 +1,10 @@
+{"type":"agent_message","ts":1777000100000,"turn":1,"content":"I'll navigate to the BBC News homepage and confirm it rendered."}
+{"type":"status_marker","ts":1777000101000,"marker":"STEP_START","payload":["1","Navigate to BBC News"]}
+{"type":"tool_call","ts":1777000102000,"turn":1,"id":"tc-000","name":"mcp__browser__interact","args":"{\"action\":{\"command\":\"navigate\",\"url\":\"https://www.bbc.com/news\"}}"}
+{"type":"tool_result","ts":1777000103000,"id":"tc-000","result":"[{\"type\":\"text\",\"text\":\"Successfully navigated to https://www.bbc.com/news.\\n## Pages\\n1: https://www.bbc.com/news [selected]\"}]","ok":true}
+{"type":"tool_call","ts":1777000104000,"turn":2,"id":"tc-001","name":"mcp__browser__trace","args":"{\"action\":{\"command\":\"start\",\"reload\":true,\"autoStop\":true}}"}
+{"type":"tool_result","ts":1777000105000,"id":"tc-001","result":"[{\"type\":\"text\",\"text\":\"The performance trace has been stopped.\\n## Summary of Performance trace findings:\\nURL: https://www.bbc.com/news\\n- LCP: 1820 ms\\n- CLS: 0.02\"}]","ok":true}
+{"type":"status_marker","ts":1777000106000,"marker":"STEP_DONE","payload":["1","BBC News loaded; LCP 1820ms, CLS 0.02 — within budget."]}
+{"type":"agent_message","ts":1777000107000,"turn":3,"content":"BBC News landing page loaded within Core Web Vitals budget."}
+{"type":"status_marker","ts":1777000108000,"marker":"RUN_COMPLETED","payload":["passed","Single-nav calibration complete."]}
+{"type":"stream_terminated","ts":1777000109000,"reason":"run_finished:passed","remainingSteps":0}

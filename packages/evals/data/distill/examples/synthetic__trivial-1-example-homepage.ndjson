@@ -1,0 +1,10 @@
+{"type":"agent_message","ts":1777000000000,"turn":1,"content":"I'll navigate to example.com and report the page title."}
+{"type":"status_marker","ts":1777000001000,"marker":"STEP_START","payload":["1","Navigate to example.com"]}
+{"type":"tool_call","ts":1777000002000,"turn":1,"id":"tc-000","name":"mcp__browser__interact","args":"{\"action\":{\"command\":\"navigate\",\"url\":\"https://example.com\"}}"}
+{"type":"tool_result","ts":1777000003000,"id":"tc-000","result":"[{\"type\":\"text\",\"text\":\"Successfully navigated to https://example.com.\\n## Pages\\n1: https://example.com/ [selected]\"}]","ok":true}
+{"type":"tool_call","ts":1777000004000,"turn":2,"id":"tc-001","name":"mcp__browser__observe","args":"{\"action\":{\"command\":\"snapshot\"}}"}
+{"type":"tool_result","ts":1777000005000,"id":"tc-001","result":"[{\"type\":\"text\",\"text\":\"## Latest page snapshot\\nuid=1_0 RootWebArea \\\"Example Domain\\\" url=\\\"https://example.com/\\\"\\n  uid=1_1 heading \\\"Example Domain\\\" level=\\\"1\\\"\\n  uid=1_2 paragraph\\n    uid=1_3 StaticText \\\"This domain is for use in illustrative examples in documents.\\\"\"}]","ok":true}
+{"type":"status_marker","ts":1777000006000,"marker":"STEP_DONE","payload":["1","Navigated to example.com; page title is \"Example Domain\"."]}
+{"type":"agent_message","ts":1777000007000,"turn":3,"content":"The page title is \"Example Domain\"."}
+{"type":"status_marker","ts":1777000008000,"marker":"RUN_COMPLETED","payload":["passed","Reported the page title successfully."]}
+{"type":"stream_terminated","ts":1777000009000,"reason":"run_finished:passed","remainingSteps":0}
