@@ -1,4 +1,4 @@
-import { Effect, Layer, Option, Predicate, Schema, Stream } from "effect";
+import { Effect, Layer, Option, Schema, Stream } from "effect";
 import { Agent, type AgentBackend } from "@neuve/agent";
 import { Executor, Git, PlanDecomposer, type PlannerMode } from "@neuve/supervisor";
 import { ChangesFor, type ExecutedPerfPlan, type ExecutionEvent } from "@neuve/shared/models";
@@ -12,6 +12,7 @@ import {
   type TraceEvent,
 } from "./trace-recorder";
 import { keyNodeMatches } from "../scorers/key-node-matches";
+import { extractUrlFromToolInput, extractUrlFromToolResult } from "./url-extraction";
 
 export interface RealRunnerOptions {
   readonly agentBackend: AgentBackend;
@@ -35,24 +36,6 @@ const DEFAULT_TRACE_DIR = "evals/traces";
 
 const UnknownJsonShape = Schema.fromJsonString(Schema.Unknown);
 const decodeJsonOption = Schema.decodeUnknownOption(UnknownJsonShape);
-
-const readString = (record: Record<string, unknown>, key: string): string | undefined => {
-  const value = record[key];
-  return typeof value === "string" ? value : undefined;
-};
-
-const extractUrlFromToolInput = (input: unknown): string | undefined => {
-  if (typeof input !== "string") return undefined;
-  const parsedOption = decodeJsonOption(input);
-  if (Option.isNone(parsedOption)) return undefined;
-  const parsed = parsedOption.value;
-  if (!Predicate.isObject(parsed)) return undefined;
-  const topUrl = readString(parsed, "url");
-  if (topUrl !== undefined) return topUrl;
-  const action = parsed["action"];
-  if (!Predicate.isObject(action)) return undefined;
-  return readString(action, "url");
-};
 
 const isWellFormedToolCall = (toolName: string, input: unknown): boolean => {
   if (typeof toolName !== "string" || toolName.length === 0) return false;
@@ -211,7 +194,9 @@ const applyExecutionEvent = Effect.fn("RealRunner.applyExecutionEvent")(function
       result: event.result,
       ok: !event.isError,
     });
-    return acc;
+    const resultUrl = event.isError ? undefined : extractUrlFromToolResult(event.result);
+    if (resultUrl === undefined) return acc;
+    return { ...acc, reachedUrls: [...acc.reachedUrls, resultUrl] };
   }
   const marker = statusMarkerForEvent(event);
   if (marker === undefined) return acc;
