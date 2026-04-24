@@ -22,6 +22,7 @@ import { extractUrlFromToolInput, extractUrlFromToolResult } from "../src/runner
 import {
   StatusMarkerEvent,
   StreamTerminatedEvent,
+  ToolResultEvent,
   TraceEventSchema,
   TraceRecorderFactory,
 } from "../src/runners/trace-recorder";
@@ -531,6 +532,182 @@ describe("real runner", () => {
     assert.strictEqual(trace.toolCalls[0].arguments["input"], "{}");
     assert.strictEqual(trace.reachedKeyNodes.length, 1);
     assert.strictEqual(trace.finalUrl, "https://example.com/");
+  });
+
+  // Gemini CLI's ACP adapter emits tool_call updates with `title` carrying
+  // the stringified tool arguments (via `invocation.getDescription()`) and
+  // no `rawInput` field at all — and the matching tool_call_update arrives
+  // with only `content` (an array of wrapped ACP content blocks) instead
+  // of `rawOutput`. Without this post-compact fix the trace writes
+  // `name: "{\"action\":{\"command\":\"...\"}}"`, `args: "{}"`, and
+  // `result: "undefined"`, so downstream URL extraction cannot see the
+  // navigated URL even though the agent succeeded. These tests lock in
+  // the two recovery paths (decode title JSON + unwrap content[]) so the
+  // Gemini live runner stays green.
+  it("recovers input from title JSON when rawInput is absent (Gemini tool_call shape)", async () => {
+    const traceDir = makeTempTraceDir();
+    const context: RealRunContext = {
+      runnerName: "real-test",
+      traceDir,
+      plannerMode: "frontier",
+      isHeadless: true,
+      baseUrl: undefined,
+    };
+
+    const plan = makeSamplePlan();
+    const geminiToolCall = new AcpToolCall({
+      sessionUpdate: "tool_call",
+      toolCallId: "call-gemini-1",
+      title: JSON.stringify({ action: { command: "navigate", url: "https://example.com/" } }),
+    });
+    const geminiToolResult = new AcpToolCallUpdate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "call-gemini-1",
+      status: "completed",
+      content: [
+        {
+          type: "content",
+          content: {
+            type: "text",
+            text:
+              "Successfully navigated to https://example.com/.\n" +
+              "## Pages\n1: https://example.com/ [selected]",
+          },
+        },
+      ],
+    });
+    const updates: AcpSessionUpdate[] = [
+      messageChunk("Navigating.\n"),
+      thoughtChunk("."),
+      geminiToolCall,
+      geminiToolResult,
+      ...markerMessage([
+        `STEP_START|${plan.steps[0].id}|${plan.steps[0].title}`,
+        `STEP_DONE|${plan.steps[0].id}|landed`,
+      ]),
+      ...markerMessage(["RUN_COMPLETED|passed|done"]),
+    ];
+
+    const trace = await Effect.runPromise(runTestEffect(plan, updates, context));
+
+    assert.strictEqual(trace.toolCalls.length, 1);
+    const input = trace.toolCalls[0].arguments["input"];
+    assert.ok(typeof input === "string", "tool-call input should be a JSON string");
+    assert.deepEqual(JSON.parse(input), {
+      action: { command: "navigate", url: "https://example.com/" },
+    });
+    assert.strictEqual(trace.toolCalls[0].wellFormed, true);
+    assert.strictEqual(trace.reachedKeyNodes.length, 1);
+    assert.strictEqual(trace.finalUrl, "https://example.com/");
+  });
+
+  it("recovers result from content[] when rawOutput is absent (Gemini tool_call_update shape)", async () => {
+    const traceDir = makeTempTraceDir();
+    const context: RealRunContext = {
+      runnerName: "real-test",
+      traceDir,
+      plannerMode: "frontier",
+      isHeadless: true,
+      baseUrl: undefined,
+    };
+
+    const plan = makeSamplePlan();
+    // Simulate Gemini's confirmation-free tool_call_update (status=completed
+    // with only content[]) landing without a matching prior tool_call. The
+    // adapter still emits a ToolResult whose URL is recoverable from the
+    // inner text block.
+    const geminiToolCall = new AcpToolCall({
+      sessionUpdate: "tool_call",
+      toolCallId: "call-gemini-2",
+      title: JSON.stringify({ action: { command: "snapshot" } }),
+    });
+    const geminiToolResult = new AcpToolCallUpdate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "call-gemini-2",
+      status: "completed",
+      content: [
+        {
+          type: "content",
+          content: {
+            type: "text",
+            text:
+              "## Latest page snapshot\n" +
+              'uid=1_0 RootWebArea "Example Domain" url="https://example.com/"\n',
+          },
+        },
+      ],
+    });
+    const updates: AcpSessionUpdate[] = [
+      messageChunk("Observing.\n"),
+      thoughtChunk("."),
+      geminiToolCall,
+      geminiToolResult,
+      ...markerMessage([
+        `STEP_START|${plan.steps[0].id}|${plan.steps[0].title}`,
+        `STEP_DONE|${plan.steps[0].id}|observed`,
+      ]),
+      ...markerMessage(["RUN_COMPLETED|passed|done"]),
+    ];
+
+    const trace = await Effect.runPromise(runTestEffect(plan, updates, context));
+
+    assert.strictEqual(trace.toolCalls.length, 1);
+    assert.strictEqual(trace.reachedKeyNodes.length, 1);
+    assert.strictEqual(trace.finalUrl, "https://example.com/");
+  });
+
+  // Round-2 review Minor 1 lock-in: even when BOTH rawOutput AND content
+  // are absent, the ToolResult must emit a decodable-but-empty envelope
+  // (`"[]"`) instead of the literal string `"undefined"` that
+  // `serializeToolResult(undefined)` would produce. Prevents the regression
+  // from recurring in the degenerate edge.
+  it("emits empty-array result when both rawOutput and content are absent", async () => {
+    const traceDir = makeTempTraceDir();
+    const context: RealRunContext = {
+      runnerName: "real-test",
+      traceDir,
+      plannerMode: "frontier",
+      isHeadless: true,
+      baseUrl: undefined,
+    };
+
+    const plan = makeSamplePlan();
+    const toolCallUpdate = new AcpToolCall({
+      sessionUpdate: "tool_call",
+      toolCallId: "call-empty",
+      title: "mcp__browser__observe",
+      rawInput: {},
+    });
+    // Minimal tool_call_update — no rawOutput, no content. Agents should
+    // not normally send this, but we must not produce the literal string
+    // "undefined" if they do.
+    const toolResultUpdate = new AcpToolCallUpdate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "call-empty",
+      title: "mcp__browser__observe",
+      status: "completed",
+    });
+    const updates: AcpSessionUpdate[] = [
+      messageChunk("Trying.\n"),
+      thoughtChunk("."),
+      toolCallUpdate,
+      toolResultUpdate,
+      ...markerMessage([
+        `STEP_START|${plan.steps[0].id}|${plan.steps[0].title}`,
+        `STEP_DONE|${plan.steps[0].id}|no-data`,
+      ]),
+      ...markerMessage(["RUN_COMPLETED|passed|done"]),
+    ];
+
+    await Effect.runPromise(runTestEffect(plan, updates, context));
+
+    const files = fs.readdirSync(traceDir).filter((name) => name.endsWith(".ndjson"));
+    const raw = parseTraceFile(path.join(traceDir, files[0]));
+    const rawToolResult = raw.find((event) => decodeWireEnvelope(event).type === "tool_result");
+    assert.ok(rawToolResult !== undefined, "tool_result event should be emitted");
+    const toolResult = Schema.decodeUnknownSync(ToolResultEvent)(rawToolResult);
+    assert.strictEqual(toolResult.result, "[]");
+    assert.notStrictEqual(toolResult.result, "undefined");
   });
 
   it("does not record reachedUrls from error tool-results", async () => {

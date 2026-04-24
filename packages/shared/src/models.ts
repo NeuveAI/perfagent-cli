@@ -724,6 +724,66 @@ const serializeToolResult = (value: unknown): string => {
   }
 };
 
+// ACP decodes structured input into `rawInput`, but some adapters (notably
+// Gemini CLI) omit `rawInput` entirely and instead stuff the stringified
+// tool arguments into `title` via `invocation.getDescription()`. We decode
+// that JSON via Schema so extractors downstream see real structured data
+// instead of an empty object. For Claude's shape (rawInput present),
+// rawInput is preferred even when `{}` because that carries intent.
+const StructuredToolInput = Schema.fromJsonString(Schema.Unknown);
+const decodeStructuredToolInput = Schema.decodeUnknownOption(StructuredToolInput);
+
+const deriveToolCallInput = (update: AcpToolCall | AcpToolCallUpdate): string => {
+  if (update.rawInput !== undefined) {
+    return JSON.stringify(update.rawInput);
+  }
+  const title = update.title;
+  if (typeof title === "string" && title.length > 0) {
+    const decoded = decodeStructuredToolInput(title);
+    if (Option.isSome(decoded) && Predicate.isObject(decoded.value)) {
+      return JSON.stringify(decoded.value);
+    }
+  }
+  return JSON.stringify({});
+};
+
+// ACP carries tool output either in `rawOutput` (Claude) or in an array of
+// `AcpToolCallContent` entries (Gemini, when the adapter only forwards
+// user-facing content). The content entries wrap an ACP content block at
+// `entry.content`; we unwrap those to the shape url-extraction already
+// understands (`[{type:"text", text:"..."}]`) so the same decoder path
+// that works for rawOutput works for Gemini's content-only shape too.
+type AcpToolCallContentEntry = typeof AcpToolCallContent.Type;
+
+const unwrapToolCallContent = (
+  content: ReadonlyArray<AcpToolCallContentEntry>,
+): ReadonlyArray<unknown> => {
+  const unwrapped: unknown[] = [];
+  for (const entry of content) {
+    if (entry.type === "content") {
+      unwrapped.push(entry.content);
+      continue;
+    }
+    unwrapped.push(entry);
+  }
+  return unwrapped;
+};
+
+const deriveToolCallResult = (update: AcpToolCallUpdate): string => {
+  if (update.rawOutput !== undefined) {
+    return serializeToolResult(update.rawOutput);
+  }
+  const content = update.content;
+  if (content !== undefined && content !== null && content.length > 0) {
+    return serializeToolResult(unwrapToolCallContent(content));
+  }
+  // Both rawOutput and content absent — emit an empty JSON array so
+  // downstream extractors see a decodable-but-empty envelope instead of
+  // the literal string "undefined" that `serializeToolResult(undefined)`
+  // would produce.
+  return "[]";
+};
+
 interface AssertionTokens {
   readonly category: string | undefined;
   readonly abortReason: string | undefined;
@@ -949,7 +1009,7 @@ export class ExecutedPerfPlan extends PerfPlan.extend<ExecutedPerfPlan>(
           ...result.events,
           new ToolCall({
             toolName: update.title,
-            input: JSON.stringify(update.rawInput ?? {}),
+            input: deriveToolCallInput(update),
           }),
         ],
       });
@@ -959,13 +1019,14 @@ export class ExecutedPerfPlan extends PerfPlan.extend<ExecutedPerfPlan>(
       let base: ExecutedPerfPlan | undefined;
 
       if (update.rawInput !== undefined) {
+        const updatedInput = deriveToolCallInput(update);
         const updatedEvents = [...this.events];
         for (let index = updatedEvents.length - 1; index >= 0; index--) {
           const event = updatedEvents[index];
           if (event._tag === "ToolCall" && event.toolName === (update.title ?? "")) {
             updatedEvents[index] = new ToolCall({
               toolName: event.toolName,
-              input: JSON.stringify(update.rawInput),
+              input: updatedInput,
             });
             break;
           }
@@ -982,14 +1043,16 @@ export class ExecutedPerfPlan extends PerfPlan.extend<ExecutedPerfPlan>(
             ...current.events,
             new ToolResult({
               toolName: update.title ?? "",
-              result: serializeToolResult(update.rawOutput),
+              result: deriveToolCallResult(update),
               isError: update.status === "failed",
             }),
           ],
         });
       }
-      if (update.rawOutput !== undefined) {
-        const outputSize = serializeToolResult(update.rawOutput).length;
+      const hasContent =
+        update.content !== undefined && update.content !== null && update.content.length > 0;
+      if (update.rawOutput !== undefined || hasContent) {
+        const outputSize = deriveToolCallResult(update).length;
         return new ExecutedPerfPlan({
           ...current,
           events: [
