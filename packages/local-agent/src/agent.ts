@@ -4,7 +4,10 @@ import { createMcpBridge, type McpBridge } from "./mcp-bridge.js";
 import { runToolLoop } from "./tool-loop.js";
 import { log } from "./log.js";
 import { buildLocalAgentSystemPrompt } from "@neuve/shared/prompts";
-import type { ChatCompletionMessageParam, ChatCompletionTool } from "openai/resources/chat/completions";
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionTool,
+} from "openai/resources/chat/completions";
 
 interface Session {
   id: string;
@@ -25,9 +28,7 @@ export class LocalAgent implements acp.Agent {
     this.ollamaClient = createOllamaClient();
   }
 
-  async initialize(
-    _params: acp.InitializeRequest,
-  ): Promise<acp.InitializeResponse> {
+  async initialize(_params: acp.InitializeRequest): Promise<acp.InitializeResponse> {
     log("initialize", { model: this.ollamaClient.model });
     return {
       protocolVersion: 1,
@@ -35,9 +36,7 @@ export class LocalAgent implements acp.Agent {
     };
   }
 
-  async newSession(
-    params: acp.NewSessionRequest,
-  ): Promise<acp.NewSessionResponse> {
+  async newSession(params: acp.NewSessionRequest): Promise<acp.NewSessionResponse> {
     const sessionId = Array.from(crypto.getRandomValues(new Uint8Array(16)))
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
@@ -92,9 +91,7 @@ export class LocalAgent implements acp.Agent {
     return { sessionId };
   }
 
-  async authenticate(
-    _params: acp.AuthenticateRequest,
-  ): Promise<acp.AuthenticateResponse | void> {
+  async authenticate(_params: acp.AuthenticateRequest): Promise<acp.AuthenticateResponse | void> {
     return {};
   }
 

@@ -1,5 +1,8 @@
 import OpenAI from "openai";
-import type { ChatCompletionMessageParam, ChatCompletionTool } from "openai/resources/chat/completions";
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionTool,
+} from "openai/resources/chat/completions";
 
 const OLLAMA_BASE_URL = "http://localhost:11434/v1/";
 const DEFAULT_MODEL = "gemma4:e4b";
@@ -13,7 +16,9 @@ export interface OllamaCompletionOptions {
 }
 
 export interface OllamaClient {
-  readonly complete: (options: OllamaCompletionOptions) => Promise<OpenAI.Chat.Completions.ChatCompletion>;
+  readonly complete: (
+    options: OllamaCompletionOptions,
+  ) => Promise<OpenAI.Chat.Completions.ChatCompletion>;
   readonly model: string;
 }
 

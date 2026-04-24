@@ -2,10 +2,10 @@
   "name": "@neuve/local-agent",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "bin": {
     "neuve-local-agent": "./dist/main.js"
   },
+  "type": "module",
   "exports": {
     ".": "./src/main.ts"
   },
