@@ -6,6 +6,8 @@ import { stepCoverage } from "../src/scorers/step-coverage";
 import { toolCallValidity } from "../src/scorers/tool-call-validity";
 import { MockScenario, runMock } from "../src/runners/mock";
 import { makeRealRunner, type RealRunnerOptions } from "../src/runners/real";
+import { makeGemmaRunner, type GemmaRunnerOptions } from "../src/runners/gemma";
+import { makeDualRunner } from "../src/runners/dual";
 import type { EvalRunner } from "../src/runners/types";
 import { ExecutedTrace, EvalTask } from "../src/task";
 import { calibration1SingleNavPythonDocs } from "../tasks/calibration-1-single-nav-python-docs";
@@ -78,7 +80,7 @@ const stringWithSchemaDefault = <T, E>(
 
 const RUNNER_CONFIG = stringWithSchemaDefault(
   "EVAL_RUNNER",
-  Schema.Literals(["mock", "real"] as const),
+  Schema.Literals(["mock", "real", "gemma", "dual"] as const),
   "mock",
 );
 
@@ -112,6 +114,18 @@ const BASE_URL_CONFIG = Config.option(Config.string("EVAL_BASE_URL"));
 // surfaces a ConfigError rather than silently falling back to false.
 const HEADED_CONFIG = stringWithSchemaDefault("EVAL_HEADED", Config.Boolean, "false");
 
+const GEMMA_MODEL_CONFIG = Config.string("EVAL_GEMMA_MODEL").pipe(Config.withDefault("gemma4:e4b"));
+
+const GEMMA_BASE_URL_CONFIG = Config.string("EVAL_OLLAMA_URL").pipe(
+  Config.withDefault("http://localhost:11434/v1/"),
+);
+
+const GEMMA_PLANNER_CONFIG = stringWithSchemaDefault(
+  "EVAL_GEMMA_PLANNER",
+  Schema.Literals(["frontier", "template", "none"] as const),
+  "template",
+);
+
 const resolveEvalConfig = Effect.gen(function* () {
   const runner = yield* RUNNER_CONFIG;
   const backend = yield* BACKEND_CONFIG;
@@ -119,6 +133,9 @@ const resolveEvalConfig = Effect.gen(function* () {
   const traceDir = yield* TRACE_DIR_CONFIG;
   const baseUrlOption = yield* BASE_URL_CONFIG;
   const headed = yield* HEADED_CONFIG;
+  const gemmaModel = yield* GEMMA_MODEL_CONFIG;
+  const gemmaBaseUrl = yield* GEMMA_BASE_URL_CONFIG;
+  const gemmaPlanner = yield* GEMMA_PLANNER_CONFIG;
   return {
     runner,
     realOptions: {
@@ -128,6 +145,14 @@ const resolveEvalConfig = Effect.gen(function* () {
       baseUrl: Option.getOrUndefined(baseUrlOption),
       isHeadless: !headed,
     } satisfies RealRunnerOptions,
+    gemmaOptions: {
+      model: gemmaModel,
+      baseUrl: gemmaBaseUrl,
+      plannerMode: gemmaPlanner,
+      traceDir,
+      evalBaseUrl: Option.getOrUndefined(baseUrlOption),
+      isHeadless: !headed,
+    } satisfies GemmaRunnerOptions,
   } as const;
 }).pipe(Effect.withSpan("resolveEvalConfig"));
 
@@ -187,10 +212,8 @@ const scorers = [
   },
 ];
 
-if (evalConfig.runner === "real") {
-  const runner: EvalRunner = makeRealRunner("real", evalConfig.realOptions);
-
-  evalite<RealCaseInput, ExecutedTrace, EvalTask>(`real-runner smoke (${runner.name})`, {
+const registerRunnerSuite = (runner: EvalRunner, suiteLabel: string): void => {
+  evalite<RealCaseInput, ExecutedTrace, EvalTask>(`${suiteLabel} (${runner.name})`, {
     data: () => buildRealCases(),
     task: async (input) => Effect.runPromise(runner.run(input.task)),
     scorers,
@@ -201,6 +224,20 @@ if (evalConfig.runner === "real") {
       { label: "final", value: output.finalUrl.length > 0 ? "ok" : "-" },
     ],
   });
+};
+
+if (evalConfig.runner === "real") {
+  const runner: EvalRunner = makeRealRunner("real", evalConfig.realOptions);
+  registerRunnerSuite(runner, "real-runner smoke");
+} else if (evalConfig.runner === "gemma") {
+  const runner: EvalRunner = makeGemmaRunner(evalConfig.gemmaOptions);
+  registerRunnerSuite(runner, "gemma-runner smoke");
+} else if (evalConfig.runner === "dual") {
+  const primary: EvalRunner = makeRealRunner("real", evalConfig.realOptions);
+  const secondary: EvalRunner = makeGemmaRunner(evalConfig.gemmaOptions);
+  const dual = makeDualRunner(primary, secondary);
+  registerRunnerSuite(dual.primary, `dual-runner smoke [primary ${dual.name}]`);
+  registerRunnerSuite(dual.secondary, `dual-runner smoke [secondary ${dual.name}]`);
 } else {
   evalite<MockCaseInput, ExecutedTrace, EvalTask>("mock-runner smoke", {
     data: () => buildMockCases(),
