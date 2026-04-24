@@ -10,7 +10,6 @@ import { buildWatchAssessmentPrompt } from "@neuve/shared/prompts";
 import { Git, GitRepoRoot } from "./git/git";
 import type { ExecuteOptions } from "./executor";
 import { Executor } from "./executor";
-import type { PlannerMode } from "./errors";
 
 const WATCH_POLL_INTERVAL_MS = 2000;
 const WATCH_SETTLE_DELAY_MS = 3000;
@@ -93,7 +92,6 @@ export interface WatchOptions {
   readonly isHeadless: boolean;
   readonly cookieBrowserKeys: readonly string[];
   readonly baseUrl?: string;
-  readonly plannerMode?: PlannerMode;
   readonly onEvent: (event: WatchEvent) => void;
 }
 
