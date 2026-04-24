@@ -16,6 +16,8 @@
     "format": "vp fmt",
     "format:check": "vp fmt --check",
     "check": "vp check",
+    "test": "vp test run",
+    "test:watch": "vp test",
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
