@@ -17,7 +17,8 @@ import {
 } from "@neuve/shared/models";
 import { TokenUsageBus } from "@neuve/shared/token-usage-bus";
 import { Agent, SessionId } from "@neuve/agent";
-import { Executor, Git, GitRepoRoot, PlanDecomposer } from "@neuve/supervisor";
+import { Executor, Git, GitRepoRoot } from "@neuve/supervisor";
+import { PlanDecomposer } from "../src/planning/plan-decomposer";
 import { runRealTask, type RealRunContext } from "../src/runners/real";
 import { TraceRecorderFactory } from "../src/runners/trace-recorder";
 import { GEMMA_RUNNER_NAME } from "../src/runners/gemma";

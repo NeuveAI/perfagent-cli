@@ -17,7 +17,8 @@ import {
 } from "@neuve/shared/models";
 import { TokenUsageBus, TokenUsageEntry } from "@neuve/shared/token-usage-bus";
 import { Agent, SessionId } from "@neuve/agent";
-import { Executor, Git, GitRepoRoot, PlanDecomposer } from "@neuve/supervisor";
+import { Executor, Git, GitRepoRoot } from "@neuve/supervisor";
+import { PlanDecomposer } from "../src/planning/plan-decomposer";
 import { runRealTask, type RealRunContext } from "../src/runners/real";
 import { extractUrlFromToolInput, extractUrlFromToolResult } from "../src/runners/url-extraction";
 import {

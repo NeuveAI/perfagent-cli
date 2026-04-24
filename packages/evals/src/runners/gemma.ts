@@ -1,8 +1,10 @@
 import { ConfigProvider, Effect, Layer } from "effect";
 import { Agent } from "@neuve/agent";
-import { Executor, Git, PlanDecomposer, type PlannerMode } from "@neuve/supervisor";
+import { Executor, Git } from "@neuve/supervisor";
 import { TokenUsageBus } from "@neuve/shared/token-usage-bus";
 import type { EvalTask } from "../task";
+import { PlanDecomposer } from "../planning/plan-decomposer";
+import type { PlannerMode } from "../planning/errors";
 import { runRealTask, type RealRunContext } from "./real";
 import { TraceRecorderFactory } from "./trace-recorder";
 import { EvalRunError, type EvalRunner } from "./types";
@@ -55,17 +57,16 @@ export const makeGemmaRunner = (options: GemmaRunnerOptions = {}): EvalRunner =>
   const agentLayer = Agent.layerLocal;
   const gitLayer = Git.withRepoRoot(rootDir);
   const planDecomposerLayer = PlanDecomposer.layer;
-  const executorLayer = Executor.layer.pipe(
-    Layer.provide(gitLayer),
-    Layer.provide(planDecomposerLayer),
-  );
+  const executorLayer = Executor.layer.pipe(Layer.provide(gitLayer));
   // See `real.ts`: TokenUsageBus is provided at the root so both PlanDecomposer
   // and Executor publish into the same per-task buffer and `runRealTask` can
   // drain it after the stream terminates.
-  const runtimeLayer = Layer.mergeAll(executorLayer, gitLayer, TraceRecorderFactory.layer).pipe(
-    Layer.provideMerge(agentLayer),
-    Layer.provideMerge(TokenUsageBus.layerRef),
-  );
+  const runtimeLayer = Layer.mergeAll(
+    executorLayer,
+    gitLayer,
+    planDecomposerLayer,
+    TraceRecorderFactory.layer,
+  ).pipe(Layer.provideMerge(agentLayer), Layer.provideMerge(TokenUsageBus.layerRef));
 
   const gemmaConfigOverlay = ConfigProvider.fromUnknown({
     PERF_AGENT_LOCAL_MODEL: model,
@@ -94,11 +95,10 @@ export const makeGemmaRunner = (options: GemmaRunnerOptions = {}): EvalRunner =>
         Effect.provide(runtimeLayer),
         Effect.provide(configProviderLayer),
         Effect.catchTags({
+          DecomposeError: toError("plan-decomposer"),
           TraceWriteError: toError("trace-writer"),
           AcpProviderNotInstalledError: toError("agent-not-installed"),
-          AcpProviderUnauthenticatedError: toError("agent-unauthenticated"),
           AcpConnectionInitError: toError("agent-connection-init"),
-          AcpAdapterNotFoundError: toError("agent-adapter-missing"),
           FindRepoRootError: toError("git-repo-root"),
           PlatformError: toError("platform"),
           ConfigError: toError("config"),

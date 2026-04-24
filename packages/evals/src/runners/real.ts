@@ -1,8 +1,10 @@
 import { Effect, Layer, Option, Schema, Stream } from "effect";
 import { Agent, type AgentBackend } from "@neuve/agent";
-import { Executor, Git, PlanDecomposer, type PlannerMode } from "@neuve/supervisor";
+import { Executor, Git } from "@neuve/supervisor";
 import { ChangesFor, type ExecutedPerfPlan, type ExecutionEvent } from "@neuve/shared/models";
 import { TokenUsageBus, TokenUsageEntry } from "@neuve/shared/token-usage-bus";
+import { PlanDecomposer } from "../planning/plan-decomposer";
+import type { PlannerMode } from "../planning/errors";
 import { ExecutedTrace, KeyNode, ToolCall, type EvalTask } from "../task";
 import { EvalRunError, type EvalRunner } from "./types";
 import {
@@ -236,6 +238,7 @@ export const runRealTask = Effect.fn("RealRunner.run")(function* (
   });
 
   const executor = yield* Executor;
+  const planDecomposer = yield* PlanDecomposer;
   const traceFactory = yield* TraceRecorderFactory;
   const tokenUsageBus = yield* TokenUsageBus;
   const recorder = yield* traceFactory.open(
@@ -251,12 +254,29 @@ export const runRealTask = Effect.fn("RealRunner.run")(function* (
 
   const write = makeWriteTraceEvent(recorder.append);
 
+  // Two-step flow: decompose the prompt into oracle steps (when the harness
+  // asks for frontier/template mode) BEFORE invoking the supervisor Executor.
+  // The Executor itself no longer owns PlanDecomposer; the eval harness wires
+  // it up only here so runtime (CLI/TUI) stays Gemma-only.
+  const decomposedPlan =
+    context.plannerMode === "none"
+      ? undefined
+      : yield* planDecomposer.decompose(task.prompt, context.plannerMode, {
+          changesFor: ChangesFor.makeUnsafe({ _tag: "WorkingTree" }),
+          currentBranch: "main",
+          diffPreview: "",
+          baseUrl: context.baseUrl,
+          isHeadless: context.isHeadless,
+          cookieBrowserKeys: [],
+        });
+
   const stream = executor.execute({
     changesFor: ChangesFor.makeUnsafe({ _tag: "WorkingTree" }),
     instruction: task.prompt,
     isHeadless: context.isHeadless,
     cookieBrowserKeys: [],
     baseUrl: context.baseUrl,
+    initialSteps: decomposedPlan?.steps,
   });
 
   const finalAcc = yield* stream.pipe(
@@ -382,17 +402,16 @@ export const makeRealRunner = (runnerName: string, options: RealRunnerOptions): 
   const agentLayer = Agent.layerFor(options.agentBackend);
   const gitLayer = Git.withRepoRoot(rootDir);
   const planDecomposerLayer = PlanDecomposer.layer;
-  const executorLayer = Executor.layer.pipe(
-    Layer.provide(gitLayer),
-    Layer.provide(planDecomposerLayer),
-  );
+  const executorLayer = Executor.layer.pipe(Layer.provide(gitLayer));
   // Each task gets a fresh TokenUsageBus Ref (layerRef builds a new Ref per
   // layer build). `provideMerge` satisfies it for PlanDecomposer + Executor
   // AND exposes it so `runRealTask` can drain after the stream terminates.
-  const runtimeLayer = Layer.mergeAll(executorLayer, gitLayer, TraceRecorderFactory.layer).pipe(
-    Layer.provideMerge(agentLayer),
-    Layer.provideMerge(TokenUsageBus.layerRef),
-  );
+  const runtimeLayer = Layer.mergeAll(
+    executorLayer,
+    gitLayer,
+    planDecomposerLayer,
+    TraceRecorderFactory.layer,
+  ).pipe(Layer.provideMerge(agentLayer), Layer.provideMerge(TokenUsageBus.layerRef));
 
   const context: RealRunContext = {
     runnerName,
@@ -407,6 +426,7 @@ export const makeRealRunner = (runnerName: string, options: RealRunnerOptions): 
     return Effect.scoped(runRealTask(task, context)).pipe(
       Effect.provide(runtimeLayer),
       Effect.catchTags({
+        DecomposeError: translate("plan-decomposer"),
         TraceWriteError: translate("trace-writer"),
         AcpProviderNotInstalledError: translate("agent-not-installed"),
         AcpProviderUnauthenticatedError: translate("agent-unauthenticated"),
