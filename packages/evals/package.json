@@ -7,6 +7,8 @@
     "eval": "evalite run ./evals/smoke.eval.ts",
     "eval:real": "EVAL_RUNNER=real evalite run ./evals/smoke.eval.ts",
     "eval:watch": "evalite watch ./evals/smoke.eval.ts",
+    "eval:mind2web": "evalite run ./evals/online-mind2web.eval.ts",
+    "eval:mind2web:watch": "evalite watch ./evals/online-mind2web.eval.ts",
     "lint": "vp lint && tsc --noEmit",
     "format": "vp fmt",
     "format:check": "vp fmt --check",
