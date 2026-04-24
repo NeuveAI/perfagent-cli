@@ -19,9 +19,7 @@ describe("mock runner", () => {
     const coverage = stepCoverage(trace.reachedKeyNodes, hardVolvoEx90.keyNodes);
     assert.isAbove(coverage, 0);
     assert.isBelow(coverage, 1);
-    assert.isFalse(
-      finalState(trace.finalUrl, trace.finalDom, hardVolvoEx90.expectedFinalState),
-    );
+    assert.isFalse(finalState(trace.finalUrl, trace.finalDom, hardVolvoEx90.expectedFinalState));
   });
 
   it("malformed-tools produces zero tool-call-validity and fails final-state", () => {

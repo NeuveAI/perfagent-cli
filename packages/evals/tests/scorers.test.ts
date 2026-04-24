@@ -17,9 +17,7 @@ const reachedAll = [
   new KeyNode({ urlPattern: "https://site.com/detail", domAssertion: "h1.detail" }),
 ];
 
-const reachedFirstOnly = [
-  new KeyNode({ urlPattern: "https://site.com/", domAssertion: "nav" }),
-];
+const reachedFirstOnly = [new KeyNode({ urlPattern: "https://site.com/", domAssertion: "nav" })];
 
 describe("stepCoverage", () => {
   it("returns 1 when all expected key-nodes are reached", () => {
@@ -31,9 +29,7 @@ describe("stepCoverage", () => {
   });
 
   it("returns 0 when none match", () => {
-    const reachedWrong = [
-      new KeyNode({ urlPattern: "https://other.com/", domAssertion: "nav" }),
-    ];
+    const reachedWrong = [new KeyNode({ urlPattern: "https://other.com/", domAssertion: "nav" })];
     assert.strictEqual(stepCoverage(reachedWrong, expectedKeyNodes), 0);
   });
 
