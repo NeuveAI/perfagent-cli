@@ -1,0 +1,910 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "interact",
+      "description": "Call shape: { \"action\": { \"command\": \"<name>\", ...args } }\n\nExamples:\n  { \"action\": { \"command\": \"navigate\", \"url\": \"https://example.com\" } }\n  { \"action\": { \"command\": \"click\", \"uid\": \"abc123\" } }\n  { \"action\": { \"command\": \"fill\", \"uid\": \"abc123\", \"value\": \"hello\" } }\n  { \"action\": { \"command\": \"wait_for\", \"text\": [\"ready\"], \"timeout\": 5000 } }\n\nCommands: navigate, click, type, fill, press_key, hover, drag, fill_form,\nupload_file, handle_dialog, wait_for, resize, new_tab, switch_tab, close_tab.\n\nPerform user-like interactions on the page using real CDP input events.\nThese trigger real browser behavior (INP, focus, event handlers) — unlike evaluate_script which uses synthetic JS events.\n\nUse `observe snapshot` first to discover element UIDs, then pass them to click, fill, hover, etc.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "navigate"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "direction": {
+                    "default": "url",
+                    "type": "string",
+                    "enum": [
+                      "url",
+                      "back",
+                      "forward",
+                      "reload"
+                    ]
+                  },
+                  "ignoreCache": {
+                    "type": "boolean"
+                  },
+                  "handleBeforeUnload": {
+                    "type": "string",
+                    "enum": [
+                      "accept",
+                      "decline"
+                    ]
+                  },
+                  "initScript": {
+                    "type": "string"
+                  },
+                  "timeout": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "command"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "click"
+                  },
+                  "uid": {
+                    "type": "string"
+                  },
+                  "double": {
+                    "type": "boolean"
+                  },
+                  "includeSnapshot": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "command",
+                  "uid"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "type"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "submitKey": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "command",
+                  "text"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "fill"
+                  },
+                  "uid": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  },
+                  "includeSnapshot": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "command",
+                  "uid",
+                  "value"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "press_key"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "includeSnapshot": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "command",
+                  "key"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "hover"
+                  },
+                  "uid": {
+                    "type": "string"
+                  },
+                  "includeSnapshot": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "command",
+                  "uid"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "drag"
+                  },
+                  "fromUid": {
+                    "type": "string"
+                  },
+                  "toUid": {
+                    "type": "string"
+                  },
+                  "includeSnapshot": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "command",
+                  "fromUid",
+                  "toUid"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "fill_form"
+                  },
+                  "elements": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "uid": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "uid",
+                        "value"
+                      ]
+                    }
+                  },
+                  "includeSnapshot": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "command",
+                  "elements"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "upload_file"
+                  },
+                  "uid": {
+                    "type": "string"
+                  },
+                  "filePath": {
+                    "type": "string"
+                  },
+                  "includeSnapshot": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "command",
+                  "uid",
+                  "filePath"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "handle_dialog"
+                  },
+                  "accept": {
+                    "type": "boolean"
+                  },
+                  "promptText": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "command",
+                  "accept"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "wait_for"
+                  },
+                  "text": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "timeout": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "command",
+                  "text"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "resize"
+                  },
+                  "width": {
+                    "type": "number"
+                  },
+                  "height": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "command",
+                  "width",
+                  "height"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "new_tab"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "background": {
+                    "type": "boolean"
+                  },
+                  "isolatedContext": {
+                    "type": "string"
+                  },
+                  "timeout": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "command",
+                  "url"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "switch_tab"
+                  },
+                  "pageId": {
+                    "type": "number"
+                  },
+                  "bringToFront": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "command",
+                  "pageId"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "close_tab"
+                  },
+                  "pageId": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "command",
+                  "pageId"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "observe",
+      "description": "Call shape: { \"action\": { \"command\": \"<name>\", ...args } }\n\nExamples:\n  { \"action\": { \"command\": \"snapshot\" } }\n  { \"action\": { \"command\": \"console\" } }\n  { \"action\": { \"command\": \"network\" } }\n  { \"action\": { \"command\": \"evaluate\", \"function\": \"() => document.title\" } }\n\nCommands: snapshot, screenshot, console, network, pages, evaluate.\n\nRead page state without side effects.\n\nUse `snapshot` to get the accessibility tree with element UIDs — this is the primary way\nto discover elements before interacting with them via the `interact` tool.\nUse `screenshot` for visual inspection. Use `console` and `network` to inspect logs and requests.\nUse `evaluate` only when no other tool covers your need — prefer real interactions via `interact`.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "snapshot"
+                  },
+                  "verbose": {
+                    "type": "boolean"
+                  },
+                  "filePath": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "command"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "screenshot"
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "png",
+                      "jpeg",
+                      "webp"
+                    ]
+                  },
+                  "quality": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "uid": {
+                    "type": "string"
+                  },
+                  "fullPage": {
+                    "type": "boolean"
+                  },
+                  "filePath": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "command"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "console"
+                  },
+                  "msgid": {
+                    "type": "number"
+                  },
+                  "types": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "log",
+                        "debug",
+                        "info",
+                        "error",
+                        "warn",
+                        "dir",
+                        "dirxml",
+                        "table",
+                        "trace",
+                        "clear",
+                        "startGroup",
+                        "startGroupCollapsed",
+                        "endGroup",
+                        "assert",
+                        "profile",
+                        "profileEnd",
+                        "count",
+                        "timeEnd",
+                        "verbose",
+                        "issue"
+                      ]
+                    }
+                  },
+                  "pageSize": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "pageIdx": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "includePreservedMessages": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "command"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "network"
+                  },
+                  "reqid": {
+                    "type": "number"
+                  },
+                  "resourceTypes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "stylesheet",
+                        "image",
+                        "media",
+                        "font",
+                        "script",
+                        "texttrack",
+                        "xhr",
+                        "fetch",
+                        "prefetch",
+                        "eventsource",
+                        "websocket",
+                        "manifest",
+                        "signedexchange",
+                        "ping",
+                        "cspviolationreport",
+                        "preflight",
+                        "fedcm",
+                        "other"
+                      ]
+                    }
+                  },
+                  "pageSize": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "pageIdx": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "includePreservedRequests": {
+                    "type": "boolean"
+                  },
+                  "requestFilePath": {
+                    "type": "string"
+                  },
+                  "responseFilePath": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "command"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "pages"
+                  }
+                },
+                "required": [
+                  "command"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "evaluate"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "args": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "command",
+                  "function"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "trace",
+      "description": "Call shape: { \"action\": { \"command\": \"<name>\", ...args } }\n\nCold-load profiling is one-shot: call `start` with `reload: true, autoStop: true` to record -> auto-stop -> return CWV + insights in a single response.\nManual profiling (INP / interactions): call `start` with `reload: false, autoStop: false`, then perform user actions via `interact`, then call `stop`.\n\nExamples:\n  { \"action\": { \"command\": \"start\", \"reload\": true, \"autoStop\": true } }   # cold-load, one-shot\n  { \"action\": { \"command\": \"stop\" } }                                       # manual profiling only\n  { \"action\": { \"command\": \"analyze\", \"insightSetId\": \"NAVIGATION_0\", \"insightName\": \"LCPBreakdown\" } }\n  { \"action\": { \"command\": \"emulate\", \"cpuThrottling\": 4, \"network\": \"Slow 3G\" } }\n\nCommands: start, stop, analyze, memory, lighthouse, emulate.\n\nPerformance profiling and analysis.\n\nWorkflow: `emulate` (optional throttling) -> `start` (begins trace; for cold-load pass reload=true, autoStop=true) ->\n`analyze` (drill into specific insights like LCPBreakdown, RenderBlocking, DocumentLatency).\n\nFor interaction profiling: start with reload=false, autoStop=false, perform real interactions via `interact`,\nthen call `stop` to capture INP and other interaction metrics.\nUse `memory` for heap snapshots to detect memory leaks.\nUse `lighthouse` for accessibility, SEO, and best-practices audits (NOT for performance — use traces).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "start"
+                  },
+                  "reload": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "autoStop": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "filePath": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "command"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "stop"
+                  },
+                  "filePath": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "command"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "analyze"
+                  },
+                  "insightSetId": {
+                    "type": "string"
+                  },
+                  "insightName": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "command",
+                  "insightSetId",
+                  "insightName"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "memory"
+                  },
+                  "filePath": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "command",
+                  "filePath"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "lighthouse"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "navigation",
+                      "snapshot"
+                    ]
+                  },
+                  "device": {
+                    "type": "string",
+                    "enum": [
+                      "desktop",
+                      "mobile"
+                    ]
+                  },
+                  "outputDirPath": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "command"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "const": "emulate"
+                  },
+                  "cpuThrottling": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 20
+                  },
+                  "network": {
+                    "type": "string",
+                    "enum": [
+                      "Offline",
+                      "Slow 3G",
+                      "Fast 3G",
+                      "Slow 4G",
+                      "4G"
+                    ]
+                  },
+                  "viewport": {
+                    "type": "string"
+                  },
+                  "colorScheme": {
+                    "type": "string",
+                    "enum": [
+                      "dark",
+                      "light",
+                      "auto"
+                    ]
+                  },
+                  "geolocation": {
+                    "type": "string"
+                  },
+                  "userAgent": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "command"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "click",
+      "description": "Click an element by its ref. The ref is an opaque string from the last snapshot\n(numbered from the Set-of-Mark overlay, or a chrome-devtools-mcp uid).\n\nExample: { \"ref\": \"3\" }\n\nAfter the click, waits for the network to go idle and returns a fresh snapshot\nso the next turn observes the post-click state.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "button": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right",
+              "middle"
+            ]
+          },
+          "clickCount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "fill",
+      "description": "Fill an input element by its ref with the given text.\n\nExample: { \"ref\": \"7\", \"text\": \"hello\", \"clearFirst\": true }\n\nclearFirst empties the field before writing. Returns a post-action snapshot.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "text": {
+            "type": "string"
+          },
+          "clearFirst": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ref",
+          "text"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "hover",
+      "description": "Hover over an element by its ref. Triggers CSS hover states and menu reveals.\n\nExample: { \"ref\": \"3\" }",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "select",
+      "description": "Select an option from a <select> element by its ref. The option can be a value\nstring or an index.\n\nExample: { \"ref\": \"12\", \"option\": \"red\" }",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "option": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          }
+        },
+        "required": [
+          "ref",
+          "option"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "wait_for",
+      "description": "Wait for a target element or text to reach a given state.\nProvide exactly one of: ref, selector, aria.\n\nExample: { \"selector\": \"button.submit\", \"state\": \"visible\", \"timeout\": 5000 }\n\nstate defaults to visible, timeout defaults to 5000ms.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "selector": {
+            "type": "string"
+          },
+          "aria": {
+            "type": "string"
+          },
+          "timeout": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "visible",
+              "hidden",
+              "attached",
+              "detached"
+            ]
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    }
+  }
+]

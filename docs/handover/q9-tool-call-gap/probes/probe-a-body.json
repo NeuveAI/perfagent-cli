@@ -1,0 +1,33 @@
+{
+  "model": "gemma4:e4b",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a browser automation agent. Use the provided tools to complete the user's task."
+    },
+    {
+      "role": "user",
+      "content": "Click the submit button on the page. The button has CSS selector '#submit-btn'."
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "click",
+        "description": "Click an element identified by a CSS selector.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "selector": {
+              "type": "string",
+              "description": "The CSS selector for the element to click."
+            }
+          },
+          "required": ["selector"]
+        }
+      }
+    }
+  ],
+  "stream": false
+}
