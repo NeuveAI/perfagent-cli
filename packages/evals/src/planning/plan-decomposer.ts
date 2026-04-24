@@ -342,10 +342,10 @@ export class PlanDecomposer extends ServiceMap.Service<PlanDecomposer>()("@evals
     ) {
       const plan = yield* plannerAgent.planFrontier(prompt).pipe(
         Effect.catchTag("PlannerCallError", (error) =>
-          new DecomposeError({ mode: "frontier", cause: error.cause }).asEffect(),
+          new DecomposeError({ mode: "oracle-plan", cause: error.cause }).asEffect(),
         ),
         Effect.catchTag("PlannerConfigError", (error) =>
-          new DecomposeError({ mode: "frontier", cause: error.message }).asEffect(),
+          new DecomposeError({ mode: "oracle-plan", cause: error.message }).asEffect(),
         ),
       );
 
@@ -375,7 +375,7 @@ export class PlanDecomposer extends ServiceMap.Service<PlanDecomposer>()("@evals
       }
 
       const steps: readonly AnalysisStep[] =
-        mode === "frontier" ? yield* decomposeFrontier(prompt) : buildTemplateSteps(prompt);
+        mode === "oracle-plan" ? yield* decomposeFrontier(prompt) : buildTemplateSteps(prompt);
 
       if (steps.length === 0) {
         return yield* new DecomposeError({

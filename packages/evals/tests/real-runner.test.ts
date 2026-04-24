@@ -227,7 +227,7 @@ describe("real runner", () => {
     const context: RealRunContext = {
       runnerName: "real-test",
       traceDir,
-      plannerMode: "frontier",
+      plannerMode: "oracle-plan",
       isHeadless: true,
       baseUrl: undefined,
     };
@@ -299,7 +299,7 @@ describe("real runner", () => {
     const context: RealRunContext = {
       runnerName: "real-test",
       traceDir,
-      plannerMode: "frontier",
+      plannerMode: "oracle-plan",
       isHeadless: true,
       baseUrl: undefined,
     };
@@ -350,7 +350,7 @@ describe("real runner", () => {
     const context: RealRunContext = {
       runnerName: "real-test",
       traceDir,
-      plannerMode: "frontier",
+      plannerMode: "oracle-plan",
       isHeadless: true,
       baseUrl: undefined,
     };
@@ -390,7 +390,7 @@ describe("real runner", () => {
     const context: RealRunContext = {
       runnerName: "real-test",
       traceDir,
-      plannerMode: "frontier",
+      plannerMode: "oracle-plan",
       isHeadless: true,
       baseUrl: undefined,
     };
@@ -496,7 +496,7 @@ describe("real runner", () => {
     const buildContext = (traceDir: string): RealRunContext => ({
       runnerName: "real-test",
       traceDir,
-      plannerMode: "frontier",
+      plannerMode: "oracle-plan",
       isHeadless: true,
       baseUrl: undefined,
     });
@@ -695,7 +695,7 @@ describe("real runner", () => {
     const context: RealRunContext = {
       runnerName: "real-test",
       traceDir,
-      plannerMode: "frontier",
+      plannerMode: "oracle-plan",
       isHeadless: true,
       baseUrl: undefined,
     };
@@ -757,7 +757,7 @@ describe("real runner", () => {
     const context: RealRunContext = {
       runnerName: "real-test",
       traceDir,
-      plannerMode: "frontier",
+      plannerMode: "oracle-plan",
       isHeadless: true,
       baseUrl: undefined,
     };
@@ -814,7 +814,7 @@ describe("real runner", () => {
     const context: RealRunContext = {
       runnerName: "real-test",
       traceDir,
-      plannerMode: "frontier",
+      plannerMode: "oracle-plan",
       isHeadless: true,
       baseUrl: undefined,
     };
@@ -874,7 +874,7 @@ describe("real runner", () => {
     const context: RealRunContext = {
       runnerName: "real-test",
       traceDir,
-      plannerMode: "frontier",
+      plannerMode: "oracle-plan",
       isHeadless: true,
       baseUrl: undefined,
     };
@@ -923,7 +923,7 @@ describe("real runner", () => {
     const context: RealRunContext = {
       runnerName: "real-test",
       traceDir,
-      plannerMode: "frontier",
+      plannerMode: "oracle-plan",
       isHeadless: true,
       baseUrl: undefined,
     };

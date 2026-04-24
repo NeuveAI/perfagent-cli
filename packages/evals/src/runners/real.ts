@@ -34,7 +34,7 @@ export interface RealRunContext {
   readonly baseUrl?: string;
 }
 
-const DEFAULT_PLANNER_MODE: PlannerMode = "frontier";
+const DEFAULT_PLANNER_MODE: PlannerMode = "oracle-plan";
 const DEFAULT_TRACE_DIR = "evals/traces";
 
 const UnknownJsonShape = Schema.fromJsonString(Schema.Unknown);
