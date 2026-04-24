@@ -73,7 +73,7 @@ export interface ExecuteOptions {
    * Pre-decomposed plan steps for the Executor to seed its initial plan with.
    * Runtime callers always omit this — Gemma plans and executes in a single
    * loop. Only the @neuve/evals A:B harness uses this to feed an oracle plan
-   * decomposed by the frontier planner upstream of `execute`.
+   * decomposed upstream of `execute`.
    */
   readonly initialSteps?: readonly AnalysisStep[];
 }
