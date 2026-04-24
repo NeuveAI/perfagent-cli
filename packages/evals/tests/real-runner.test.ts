@@ -426,6 +426,47 @@ describe("real runner", () => {
     assert.strictEqual(extractUrlFromToolResult(rawOutput), undefined);
   });
 
+  // The CallToolResult envelope path: if chrome-devtools-mcp ever gets
+  // experimentalStructuredContent turned on upstream (or a provider forwards
+  // the full MCP envelope verbatim), we prefer the typed structuredContent
+  // fields over text-scan.
+  it("extractUrlFromToolResult prefers structuredContent.pages[selected] over text-scan", () => {
+    const rawOutput = JSON.stringify({
+      content: [{ type: "text", text: "noisy text with no URL markers" }],
+      structuredContent: {
+        pages: [
+          { id: 1, url: "https://example.com/home", selected: false },
+          { id: 2, url: "https://example.com/selected-page", selected: true },
+        ],
+      },
+    });
+    assert.strictEqual(extractUrlFromToolResult(rawOutput), "https://example.com/selected-page");
+  });
+
+  it("extractUrlFromToolResult falls back to structuredContent.snapshot.url when no pages[] present", () => {
+    const rawOutput = JSON.stringify({
+      content: [{ type: "text", text: "ignored" }],
+      structuredContent: {
+        snapshot: { url: "https://example.com/snapshotted" },
+      },
+    });
+    assert.strictEqual(extractUrlFromToolResult(rawOutput), "https://example.com/snapshotted");
+  });
+
+  it("extractUrlFromToolResult decodes full MCP envelope and scans content[].text when structuredContent is absent", () => {
+    const rawOutput = JSON.stringify({
+      content: [{ type: "text", text: "Successfully navigated to https://example.com/envelope." }],
+    });
+    assert.strictEqual(extractUrlFromToolResult(rawOutput), "https://example.com/envelope");
+  });
+
+  it("extractUrlFromToolResult handles non-JSON result strings via text-scan", () => {
+    assert.strictEqual(
+      extractUrlFromToolResult("Successfully navigated to https://example.com/plain."),
+      "https://example.com/plain",
+    );
+  });
+
   it("extractUrlFromToolInput keeps reading pre-Wave-2.A { url } / { action: { url } } shapes", () => {
     assert.strictEqual(
       extractUrlFromToolInput(JSON.stringify({ url: "https://example.com/" })),
