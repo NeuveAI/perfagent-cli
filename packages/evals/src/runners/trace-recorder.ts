@@ -66,12 +66,44 @@ export const StreamTerminatedEvent = Schema.Struct({
 });
 export type StreamTerminatedEvent = typeof StreamTerminatedEvent.Type;
 
+// Token-usage events: emitted per model call (planner or executor) and a
+// single aggregate per task on stream termination. Drives the baseline
+// tokenomics analysis that gates Q6 (Wave 4.6 rolling context activation).
+export const TokenUsageSource = Schema.Literals(["planner", "executor"] as const);
+export type TokenUsageSource = typeof TokenUsageSource.Type;
+
+export const TokenUsageEvent = Schema.Struct({
+  type: Schema.Literal("token_usage"),
+  ts: Schema.Number,
+  turn: Schema.Number,
+  source: TokenUsageSource,
+  promptTokens: Schema.Number,
+  completionTokens: Schema.Number,
+  totalTokens: Schema.Number,
+});
+export type TokenUsageEvent = typeof TokenUsageEvent.Type;
+
+export const TaskTokenomicsEvent = Schema.Struct({
+  type: Schema.Literal("task_tokenomics"),
+  ts: Schema.Number,
+  totalPromptTokens: Schema.Number,
+  totalCompletionTokens: Schema.Number,
+  totalTokens: Schema.Number,
+  peakPromptTokens: Schema.Number,
+  turnCount: Schema.Number,
+  plannerTokens: Schema.Number,
+  executorTokens: Schema.Number,
+});
+export type TaskTokenomicsEvent = typeof TaskTokenomicsEvent.Type;
+
 export const TraceEventSchema = Schema.Union([
   AgentMessageEvent,
   ToolCallEvent,
   ToolResultEvent,
   StatusMarkerEvent,
   StreamTerminatedEvent,
+  TokenUsageEvent,
+  TaskTokenomicsEvent,
 ]);
 export type TraceEvent = typeof TraceEventSchema.Type;
 

@@ -13,6 +13,7 @@ import {
   PlanId,
   StepId,
 } from "@neuve/shared/models";
+import { TokenUsageBus } from "@neuve/shared/token-usage-bus";
 import { Agent } from "@neuve/agent";
 import { Executor } from "../src/executor";
 import { PlanDecomposer } from "../src/plan-decomposer";
@@ -137,7 +138,12 @@ const scriptedAgentLayer = (updates: readonly AcpSessionUpdate[]) =>
 const buildLayer = (updates: readonly AcpSessionUpdate[], plan: PerfPlan) =>
   Layer.provideMerge(
     Executor.layer,
-    Layer.mergeAll(scriptedAgentLayer(updates), gitStubLayer, planDecomposerLayer(plan)),
+    Layer.mergeAll(
+      scriptedAgentLayer(updates),
+      gitStubLayer,
+      planDecomposerLayer(plan),
+      TokenUsageBus.layerNoop,
+    ),
   );
 
 const runExecutor = (updates: readonly AcpSessionUpdate[], plan: PerfPlan) =>
@@ -204,8 +210,7 @@ describe("Executor adherence gate", () => {
     expect(finalPlan.steps.length).toBe(6);
     expect(
       warnings.some(
-        (entry) =>
-          entry.level === "Warn" && entry.message.includes("premature-run-completed"),
+        (entry) => entry.level === "Warn" && entry.message.includes("premature-run-completed"),
       ),
     ).toBe(true);
   });
@@ -291,7 +296,12 @@ describe("Executor adherence gate", () => {
 
     const testLayer = Layer.provideMerge(
       Executor.layer,
-      Layer.mergeAll(scriptedAgentLayer(updates), gitStubLayer, neverCalledDecomposer),
+      Layer.mergeAll(
+        scriptedAgentLayer(updates),
+        gitStubLayer,
+        neverCalledDecomposer,
+        TokenUsageBus.layerNoop,
+      ),
     );
 
     const program = Effect.gen(function* () {
@@ -315,8 +325,7 @@ describe("Executor adherence gate", () => {
     expect(finalPlan.hasRunFinished).toBe(true);
     expect(
       warnings.some(
-        (entry) =>
-          entry.level === "Warn" && entry.message.includes("premature-run-completed"),
+        (entry) => entry.level === "Warn" && entry.message.includes("premature-run-completed"),
       ),
     ).toBe(false);
   });

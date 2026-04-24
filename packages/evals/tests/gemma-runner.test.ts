@@ -15,6 +15,7 @@ import {
   PlanId,
   StepId,
 } from "@neuve/shared/models";
+import { TokenUsageBus } from "@neuve/shared/token-usage-bus";
 import { Agent, SessionId } from "@neuve/agent";
 import { Executor, Git, GitRepoRoot, PlanDecomposer } from "@neuve/supervisor";
 import { runRealTask, type RealRunContext } from "../src/runners/real";
@@ -156,6 +157,7 @@ const buildTestLayer = (plan: PerfPlan, updates: readonly AcpSessionUpdate[]) =>
       gitStubLayer,
       planDecomposerLayer(plan),
       repoRootLayer,
+      TokenUsageBus.layerNoop,
     ),
   );
 

@@ -24,6 +24,7 @@ import {
   buildExecutionSystemPrompt,
   type DevServerHint,
 } from "@neuve/shared/prompts";
+import { TokenUsageBus, TokenUsageEntry } from "@neuve/shared/token-usage-bus";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Git } from "./git/git";
 import {
@@ -104,8 +105,9 @@ const stripRunFinished = (plan: ExecutedPerfPlan): ExecutedPerfPlan =>
 const runFinishedSatisfiesGate = (plan: ExecutedPerfPlan): boolean => {
   const lastRunFinished = [...plan.events]
     .reverse()
-    .find((event): event is Extract<ExecutionEvent, { _tag: "RunFinished" }> =>
-      event._tag === "RunFinished",
+    .find(
+      (event): event is Extract<ExecutionEvent, { _tag: "RunFinished" }> =>
+        event._tag === "RunFinished",
     );
   if (!lastRunFinished) return false;
   if (lastRunFinished.abort !== undefined) return true;
@@ -117,6 +119,7 @@ export class Executor extends ServiceMap.Service<Executor>()("@supervisor/Execut
     const agent = yield* Agent;
     const git = yield* Git;
     const planDecomposer = yield* PlanDecomposer;
+    const tokenUsageBus = yield* TokenUsageBus;
 
     const gatherContext = Effect.fn("Executor.gatherContext")(function* (changesFor: ChangesFor) {
       yield* Effect.annotateCurrentSpan({ changesFor: changesFor._tag });
@@ -277,6 +280,31 @@ export class Executor extends ServiceMap.Service<Executor>()("@supervisor/Execut
             return Effect.sync(() => callback(update.configOptions));
           }
           return Effect.void;
+        }),
+        Stream.tap((update) => {
+          // Executor tokens stream in-band via the ACP `usage_update` extension
+          // the local-agent (Ollama + Gemma) emits after every chat completion.
+          // Per-call prompt/completion split lives in `_meta` (ACP standard
+          // extensibility channel). Other ACP adapters (Gemini CLI / Claude
+          // Code / etc.) leave these absent — in that case we publish nothing,
+          // keeping tokenomics a Gemma-specific signal per the
+          // baseline-measurement scope.
+          if (update.sessionUpdate !== "usage_update") return Effect.void;
+          const promptTokens = update.promptTokens;
+          const completionTokens = update.completionTokens;
+          if (promptTokens === undefined && completionTokens === undefined) return Effect.void;
+          const resolvedPrompt = promptTokens ?? 0;
+          const resolvedCompletion = completionTokens ?? 0;
+          const totalTokens = update.totalTokens ?? resolvedPrompt + resolvedCompletion;
+          return tokenUsageBus.publish(
+            new TokenUsageEntry({
+              source: "executor",
+              promptTokens: resolvedPrompt,
+              completionTokens: resolvedCompletion,
+              totalTokens,
+              timestamp: Date.now(),
+            }),
+          );
         }),
         Stream.mapAccumEffect(
           (): ExecutorAccumState => ({

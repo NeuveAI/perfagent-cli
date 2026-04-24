@@ -12,6 +12,7 @@ import {
   PlanId,
   StepId,
 } from "@neuve/shared/models";
+import { TokenUsageBus, TokenUsageEntry } from "@neuve/shared/token-usage-bus";
 import { DecomposeError, PlannerCallError, PlannerConfigError, type PlannerMode } from "./errors";
 import {
   PLAN_DECOMPOSER_MAX_STEPS,
@@ -210,6 +211,7 @@ const makePlannerAgentService = (
 ) => {
   const planFrontier = Effect.fn("PlannerAgent.planFrontier")(function* (userPrompt: string) {
     yield* Effect.annotateCurrentSpan({ promptLength: userPrompt.length });
+    const tokenUsageBus = yield* TokenUsageBus;
     const model = yield* getModel;
     const result = yield* Effect.tryPromise({
       try: () =>
@@ -228,9 +230,24 @@ const makePlannerAgentService = (
           cause: cause instanceof Error ? cause.message : String(cause),
         }),
     });
+    const promptTokens = result.usage.inputTokens ?? 0;
+    const completionTokens = result.usage.outputTokens ?? 0;
+    const totalTokens = result.usage.totalTokens ?? promptTokens + completionTokens;
+    yield* tokenUsageBus.publish(
+      new TokenUsageEntry({
+        source: "planner",
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        timestamp: Date.now(),
+      }),
+    );
     yield* Effect.logInfo("Frontier plan generated", {
       stepCount: result.object.steps.length,
       finishReason: result.finishReason,
+      promptTokens,
+      completionTokens,
+      totalTokens,
     });
     return result.object satisfies FrontierPlan;
   });

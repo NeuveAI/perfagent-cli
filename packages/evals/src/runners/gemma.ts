@@ -1,6 +1,7 @@
 import { ConfigProvider, Effect, Layer } from "effect";
 import { Agent } from "@neuve/agent";
 import { Executor, Git, PlanDecomposer, type PlannerMode } from "@neuve/supervisor";
+import { TokenUsageBus } from "@neuve/shared/token-usage-bus";
 import type { EvalTask } from "../task";
 import { runRealTask, type RealRunContext } from "./real";
 import { TraceRecorderFactory } from "./trace-recorder";
@@ -58,8 +59,12 @@ export const makeGemmaRunner = (options: GemmaRunnerOptions = {}): EvalRunner =>
     Layer.provide(gitLayer),
     Layer.provide(planDecomposerLayer),
   );
+  // See `real.ts`: TokenUsageBus is provided at the root so both PlanDecomposer
+  // and Executor publish into the same per-task buffer and `runRealTask` can
+  // drain it after the stream terminates.
   const runtimeLayer = Layer.mergeAll(executorLayer, gitLayer, TraceRecorderFactory.layer).pipe(
     Layer.provideMerge(agentLayer),
+    Layer.provideMerge(TokenUsageBus.layerRef),
   );
 
   const gemmaConfigOverlay = ConfigProvider.fromUnknown({

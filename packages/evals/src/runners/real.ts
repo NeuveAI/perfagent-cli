@@ -2,6 +2,7 @@ import { Effect, Layer, Option, Schema, Stream } from "effect";
 import { Agent, type AgentBackend } from "@neuve/agent";
 import { Executor, Git, PlanDecomposer, type PlannerMode } from "@neuve/supervisor";
 import { ChangesFor, type ExecutedPerfPlan, type ExecutionEvent } from "@neuve/shared/models";
+import { TokenUsageBus, TokenUsageEntry } from "@neuve/shared/token-usage-bus";
 import { ExecutedTrace, KeyNode, ToolCall, type EvalTask } from "../task";
 import { EvalRunError, type EvalRunner } from "./types";
 import {
@@ -236,6 +237,7 @@ export const runRealTask = Effect.fn("RealRunner.run")(function* (
 
   const executor = yield* Executor;
   const traceFactory = yield* TraceRecorderFactory;
+  const tokenUsageBus = yield* TokenUsageBus;
   const recorder = yield* traceFactory.open(
     buildTracePath(context.traceDir, context.runnerName, task.id),
   );
@@ -284,6 +286,54 @@ export const runRealTask = Effect.fn("RealRunner.run")(function* (
     ),
   );
 
+  // Drain the token-usage bus and write one `token_usage` event per model call
+  // followed by a single `task_tokenomics` aggregate — both BEFORE the
+  // `stream_terminated` sentinel so that replay tools can still rely on
+  // `stream_terminated` being the last line of every trace (existing invariant
+  // enforced by the Wave 0.A test suite). Entries are written in publish order
+  // (planner-first, then per-executor-turn); downstream tools can re-sort by
+  // timestamp if needed.
+  const tokenUsages = yield* tokenUsageBus.drain;
+  let executorTurn = 0;
+  for (const entry of tokenUsages) {
+    if (entry.source === "executor") executorTurn += 1;
+    const eventTurn = entry.source === "planner" ? 0 : executorTurn;
+    yield* write({
+      type: "token_usage",
+      ts: entry.timestamp,
+      turn: eventTurn,
+      source: entry.source,
+      promptTokens: entry.promptTokens,
+      completionTokens: entry.completionTokens,
+      totalTokens: entry.totalTokens,
+    });
+  }
+
+  const reachedKeyNodes = buildReachedKeyNodes(finalAcc.reachedUrls, task.keyNodes);
+  const finalUrl = finalUrlFromReached(finalAcc.reachedUrls);
+  const finalDom = finalAcc.lastRunFinished?.summary ?? "";
+
+  const executedTrace = new ExecutedTrace({
+    reachedKeyNodes,
+    toolCalls: finalAcc.recordedToolCalls,
+    finalUrl,
+    finalDom,
+    tokenUsages,
+  });
+  const tokenomics = executedTrace.tokenomics;
+
+  yield* write({
+    type: "task_tokenomics",
+    ts: Date.now(),
+    totalPromptTokens: tokenomics.totalPromptTokens,
+    totalCompletionTokens: tokenomics.totalCompletionTokens,
+    totalTokens: tokenomics.totalTokens,
+    peakPromptTokens: tokenomics.peakPromptTokens,
+    turnCount: tokenomics.turnCount,
+    plannerTokens: tokenomics.plannerTokens,
+    executorTokens: tokenomics.executorTokens,
+  });
+
   const remainingSteps =
     finalAcc.lastSnapshot !== undefined
       ? finalAcc.lastSnapshot.steps.filter(
@@ -295,24 +345,20 @@ export const runRealTask = Effect.fn("RealRunner.run")(function* (
     : "stream_ended";
   yield* write({ type: "stream_terminated", ts: Date.now(), reason, remainingSteps });
 
-  const reachedKeyNodes = buildReachedKeyNodes(finalAcc.reachedUrls, task.keyNodes);
-  const finalUrl = finalUrlFromReached(finalAcc.reachedUrls);
-  const finalDom = finalAcc.lastRunFinished?.summary ?? "";
-
   yield* Effect.logInfo("Real runner finished", {
     runner: context.runnerName,
     taskId: task.id,
     toolCalls: finalAcc.recordedToolCalls.length,
     reachedKeyNodes: reachedKeyNodes.length,
     tracePath: recorder.filePath,
+    totalTokens: tokenomics.totalTokens,
+    peakPromptTokens: tokenomics.peakPromptTokens,
+    plannerTokens: tokenomics.plannerTokens,
+    executorTokens: tokenomics.executorTokens,
+    turnCount: tokenomics.turnCount,
   });
 
-  return new ExecutedTrace({
-    reachedKeyNodes,
-    toolCalls: finalAcc.recordedToolCalls,
-    finalUrl,
-    finalDom,
-  });
+  return executedTrace;
 });
 
 const toRunError =
@@ -341,8 +387,12 @@ export const makeRealRunner = (runnerName: string, options: RealRunnerOptions): 
     Layer.provide(gitLayer),
     Layer.provide(planDecomposerLayer),
   );
+  // Each task gets a fresh TokenUsageBus Ref (layerRef builds a new Ref per
+  // layer build). `provideMerge` satisfies it for PlanDecomposer + Executor
+  // AND exposes it so `runRealTask` can drain after the stream terminates.
   const runtimeLayer = Layer.mergeAll(executorLayer, gitLayer, TraceRecorderFactory.layer).pipe(
     Layer.provideMerge(agentLayer),
+    Layer.provideMerge(TokenUsageBus.layerRef),
   );
 
   const context: RealRunContext = {

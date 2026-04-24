@@ -1,5 +1,8 @@
 import type { AgentSideConnection } from "@agentclientprotocol/sdk";
-import type { ChatCompletionMessageParam, ChatCompletionTool } from "openai/resources/chat/completions";
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionTool,
+} from "openai/resources/chat/completions";
 import type { OllamaClient } from "./ollama-client.js";
 import type { McpBridge, McpToolCallResult } from "./mcp-bridge.js";
 
@@ -85,6 +88,32 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
     log("calling ollama", { round, messageCount: messages.length, toolCount: tools.length });
     const completion = await ollamaClient.complete({ messages, tools, signal });
     const choice = completion.choices[0];
+    // Emit a usage_update session update per completion so the harness can
+    // attribute tokens to the executor turn. ACP's UsageUpdate type only
+    // carries cumulative `size`/`used` tokens; per-call prompt/completion
+    // split is vendor-specific, so we route it through `_meta` (the
+    // ACP-sanctioned extensibility channel) where @neuve/shared's
+    // `AcpUsageUpdate` schema picks it up.
+    if (completion.usage) {
+      await connection.sessionUpdate({
+        sessionId,
+        update: {
+          sessionUpdate: "usage_update",
+          size: completion.usage.total_tokens,
+          used: completion.usage.total_tokens,
+          _meta: {
+            promptTokens: completion.usage.prompt_tokens,
+            completionTokens: completion.usage.completion_tokens,
+            totalTokens: completion.usage.total_tokens,
+          },
+        },
+      });
+      log("usage reported", {
+        round,
+        promptTokens: completion.usage.prompt_tokens,
+        completionTokens: completion.usage.completion_tokens,
+      });
+    }
     if (!choice) {
       log("ollama returned no choices");
       await connection.sessionUpdate({

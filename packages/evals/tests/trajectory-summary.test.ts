@@ -22,6 +22,7 @@ const buildTrace = (overrides: Partial<ExecutedTrace> = {}): ExecutedTrace =>
     ],
     finalUrl: overrides.finalUrl ?? "https://site.com/details",
     finalDom: overrides.finalDom ?? "Details page rendered",
+    tokenUsages: overrides.tokenUsages ?? [],
   });
 
 describe("summarizeTrajectory", () => {
@@ -107,6 +108,7 @@ describe("summarizeTrajectory", () => {
       toolCalls: [],
       finalUrl: "",
       finalDom: "",
+      tokenUsages: [],
     });
     const summary = summarizeTrajectory(trace);
     assert.include(summary, "Key nodes reached: none");

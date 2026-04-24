@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Cause, Effect, Layer, Option, Stream } from "effect";
 import { ChangesFor } from "@neuve/shared/models";
+import { TokenUsageBus } from "@neuve/shared/token-usage-bus";
 import { Agent } from "@neuve/agent";
 import { Executor, ExecutionError } from "../src/executor";
 import { PlanDecomposer } from "../src/plan-decomposer";
@@ -64,7 +65,12 @@ const makeGitStub = () =>
 const buildExecutorTestLayer = () =>
   Layer.provideMerge(
     Executor.layer,
-    Layer.mergeAll(agentNeverCalledLayer, makeGitStub(), failingDecomposerLayer),
+    Layer.mergeAll(
+      agentNeverCalledLayer,
+      makeGitStub(),
+      failingDecomposerLayer,
+      TokenUsageBus.layerNoop,
+    ),
   );
 
 describe("Executor ↔ PlanDecomposer propagation", () => {
@@ -133,7 +139,12 @@ describe("Executor ↔ PlanDecomposer propagation", () => {
 
     const testLayer = Layer.provideMerge(
       Executor.layer,
-      Layer.mergeAll(agentEmptyStreamLayer, makeGitStub(), neverCalledDecomposer),
+      Layer.mergeAll(
+        agentEmptyStreamLayer,
+        makeGitStub(),
+        neverCalledDecomposer,
+        TokenUsageBus.layerNoop,
+      ),
     );
 
     const program = Effect.gen(function* () {

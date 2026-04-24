@@ -217,12 +217,17 @@ const registerRunnerSuite = (runner: EvalRunner, suiteLabel: string): void => {
     data: () => buildRealCases(),
     task: async (input) => Effect.runPromise(runner.run(input.task)),
     scorers,
-    columns: ({ input, output }) => [
-      { label: "task", value: input.task.id },
-      { label: "reached", value: String(output.reachedKeyNodes.length) },
-      { label: "tools", value: String(output.toolCalls.length) },
-      { label: "final", value: output.finalUrl.length > 0 ? "ok" : "-" },
-    ],
+    columns: ({ input, output }) => {
+      const tokenomics = output.tokenomics;
+      return [
+        { label: "task", value: input.task.id },
+        { label: "reached", value: String(output.reachedKeyNodes.length) },
+        { label: "tools", value: String(output.toolCalls.length) },
+        { label: "final", value: output.finalUrl.length > 0 ? "ok" : "-" },
+        { label: "total_tokens", value: String(tokenomics.totalTokens) },
+        { label: "peak_prompt", value: String(tokenomics.peakPromptTokens) },
+      ];
+    },
   });
 };
 

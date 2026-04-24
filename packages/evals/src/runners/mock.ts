@@ -32,6 +32,7 @@ export const runMock = (task: EvalTask, scenario: MockScenario): ExecutedTrace =
       toolCalls: [],
       finalUrl: task.expectedFinalState.urlPattern,
       finalDom: task.expectedFinalState.domAssertion,
+      tokenUsages: [],
     });
   }
 
@@ -42,6 +43,7 @@ export const runMock = (task: EvalTask, scenario: MockScenario): ExecutedTrace =
       toolCalls: buildToolCalls(expectedNodes.length, expectedNodes.length),
       finalUrl: task.expectedFinalState.urlPattern,
       finalDom: task.expectedFinalState.domAssertion,
+      tokenUsages: [],
     });
   }
 
@@ -53,6 +55,7 @@ export const runMock = (task: EvalTask, scenario: MockScenario): ExecutedTrace =
       toolCalls: buildToolCalls(1, 1),
       finalUrl: firstNode ? firstNode.urlPattern : "",
       finalDom: "stopped-early",
+      tokenUsages: [],
     });
   }
 
@@ -62,5 +65,6 @@ export const runMock = (task: EvalTask, scenario: MockScenario): ExecutedTrace =
     toolCalls: buildToolCalls(expectedNodes.length, 0),
     finalUrl: "",
     finalDom: "",
+    tokenUsages: [],
   });
 };

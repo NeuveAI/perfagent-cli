@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Cause, ConfigProvider, Effect, Exit, Layer, Option } from "effect";
 import { ChangesFor } from "@neuve/shared/models";
+import { TokenUsageBus } from "@neuve/shared/token-usage-bus";
 import { MockLanguageModelV4 } from "ai/test";
 import type { LanguageModelV4CallOptions } from "@ai-sdk/provider";
 import {
@@ -77,7 +78,10 @@ const buildModelReturningRawText = (rawText: string) =>
   });
 
 const decomposerLayerFromModel = (model: MockLanguageModelV4) =>
-  PlanDecomposer.layerWithPlannerAgent(PlannerAgent.layerFromModel(model));
+  Layer.mergeAll(
+    PlanDecomposer.layerWithPlannerAgent(PlannerAgent.layerFromModel(model)),
+    TokenUsageBus.layerNoop,
+  );
 
 const runWithLayer = <A, E>(
   effect: Effect.Effect<A, E, PlanDecomposer>,
@@ -361,7 +365,10 @@ describe("PlanDecomposer no-API-key path (CRITICAL-1 regression)", () => {
   const emptyConfigProviderLayer = ConfigProvider.layerAdd(emptyConfigProvider, {
     asPrimary: true,
   });
-  const decomposerLayerNoKey = PlanDecomposer.layer.pipe(Layer.provide(emptyConfigProviderLayer));
+  const decomposerLayerNoKey = Layer.mergeAll(
+    PlanDecomposer.layer.pipe(Layer.provide(emptyConfigProviderLayer)),
+    TokenUsageBus.layerNoop,
+  );
 
   it("PlanDecomposer.layer resolves without GOOGLE_GENERATIVE_AI_API_KEY (template mode works)", async () => {
     const plan = await runWithLayer(

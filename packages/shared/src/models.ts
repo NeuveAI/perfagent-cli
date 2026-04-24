@@ -203,7 +203,37 @@ export class AcpSessionInfoUpdate extends Schema.Class<AcpSessionInfoUpdate>(
 
 export class AcpUsageUpdate extends Schema.Class<AcpUsageUpdate>("AcpUsageUpdate")({
   sessionUpdate: Schema.Literal("usage_update"),
-}) {}
+  // ACP-standard fields per the @agentclientprotocol/sdk UsageUpdate shape.
+  // `size` is the total context-window size; `used` is cumulative tokens
+  // consumed. Left optional because not every adapter populates them.
+  size: Schema.optional(Schema.NullOr(Schema.Number)),
+  used: Schema.optional(Schema.NullOr(Schema.Number)),
+  // Per-call prompt/completion split is vendor-specific, so it flows through
+  // the ACP-standard `_meta` extensibility channel. The @neuve/local-agent
+  // populates these from Ollama's CompletionUsage after every chat call so
+  // the eval harness can attribute tokens to the executor turn without a
+  // side-channel. Keep every field optional to stay forward-compatible with
+  // ACP adapters that don't emit token telemetry (Gemini CLI, Claude Code).
+  _meta: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        promptTokens: Schema.optional(Schema.NullOr(Schema.Number)),
+        completionTokens: Schema.optional(Schema.NullOr(Schema.Number)),
+        totalTokens: Schema.optional(Schema.NullOr(Schema.Number)),
+      }),
+    ),
+  ),
+}) {
+  get promptTokens(): number | undefined {
+    return this._meta?.promptTokens ?? undefined;
+  }
+  get completionTokens(): number | undefined {
+    return this._meta?.completionTokens ?? undefined;
+  }
+  get totalTokens(): number | undefined {
+    return this._meta?.totalTokens ?? undefined;
+  }
+}
 
 export const AcpSessionUpdate = Schema.Union([
   AcpAgentMessageChunk,

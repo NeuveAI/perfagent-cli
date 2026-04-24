@@ -15,6 +15,7 @@ import {
   PlanId,
   StepId,
 } from "@neuve/shared/models";
+import { TokenUsageBus, TokenUsageEntry } from "@neuve/shared/token-usage-bus";
 import { Agent, SessionId } from "@neuve/agent";
 import { Executor, Git, GitRepoRoot, PlanDecomposer } from "@neuve/supervisor";
 import { runRealTask, type RealRunContext } from "../src/runners/real";
@@ -166,6 +167,7 @@ const buildTestLayer = (plan: PerfPlan, updates: readonly AcpSessionUpdate[]) =>
       gitStubLayer,
       planDecomposerLayer(plan),
       repoRootLayer,
+      TokenUsageBus.layerNoop,
     ),
   );
 
@@ -375,6 +377,211 @@ describe("real runner", () => {
     const terminated = decodeStreamTerminated(raw[raw.length - 1]);
     assert.strictEqual(terminated.reason, "run_finished:failed");
     assert.strictEqual(terminated.remainingSteps, 0);
+  });
+
+  // Drain-order invariant for tokenomics: every `token_usage` event must be
+  // emitted before `task_tokenomics`, which must be emitted before
+  // `stream_terminated`, which must be the last line of the ndjson file.
+  // This protects the Wave 0.A replay contract (stream_terminated is the
+  // sentinel) from silently drifting when we iterate on the bus/drain flow.
+  it("drains token_usage → task_tokenomics → stream_terminated (last line) in order", async () => {
+    const traceDir = makeTempTraceDir();
+    const context: RealRunContext = {
+      runnerName: "real-test",
+      traceDir,
+      plannerMode: "frontier",
+      isHeadless: true,
+      baseUrl: undefined,
+    };
+
+    const plan = makeSamplePlan();
+    const updates: AcpSessionUpdate[] = [
+      messageChunk("message\n"),
+      thoughtChunk("."),
+      ...markerMessage([
+        `STEP_START|${plan.steps[0].id}|${plan.steps[0].title}`,
+        `STEP_DONE|${plan.steps[0].id}|landed`,
+      ]),
+      ...markerMessage([
+        `STEP_START|${plan.steps[1].id}|${plan.steps[1].title}`,
+        `STEP_DONE|${plan.steps[1].id}|reported`,
+      ]),
+      ...markerMessage(["RUN_COMPLETED|passed|done"]),
+    ];
+
+    // Swap the default noop bus for a per-task Ref-backed bus and pre-seed it
+    // with the entries the production code path would normally publish via
+    // PlanDecomposer + Executor. runRealTask drains at the end and writes one
+    // `token_usage` event per entry followed by `task_tokenomics`.
+    const refLayer = Layer.provideMerge(
+      Layer.mergeAll(Executor.layer, TraceRecorderFactory.layer),
+      Layer.mergeAll(
+        scriptedAgentLayer(updates),
+        gitStubLayer,
+        planDecomposerLayer(plan),
+        repoRootLayer,
+        TokenUsageBus.layerRef,
+      ),
+    );
+
+    const seedEntries = [
+      new TokenUsageEntry({
+        source: "planner",
+        promptTokens: 265,
+        completionTokens: 581,
+        totalTokens: 846,
+        timestamp: 1_700_000_000_000,
+      }),
+      new TokenUsageEntry({
+        source: "executor",
+        promptTokens: 4096,
+        completionTokens: 392,
+        totalTokens: 4488,
+        timestamp: 1_700_000_000_100,
+      }),
+      new TokenUsageEntry({
+        source: "executor",
+        promptTokens: 4096,
+        completionTokens: 300,
+        totalTokens: 4396,
+        timestamp: 1_700_000_000_200,
+      }),
+    ];
+
+    const program = Effect.gen(function* () {
+      const bus = yield* TokenUsageBus;
+      for (const entry of seedEntries) {
+        yield* bus.publish(entry);
+      }
+      return yield* Effect.scoped(runRealTask(sampleTask, context));
+    }).pipe(Effect.provide(refLayer));
+
+    await Effect.runPromise(program);
+
+    const files = fs.readdirSync(traceDir).filter((name) => name.endsWith(".ndjson"));
+    assert.strictEqual(files.length, 1);
+    const raw = parseTraceFile(path.join(traceDir, files[0]));
+    const types = raw.map((event) => decodeWireEnvelope(event).type);
+
+    // Exactly N token_usage events, then one task_tokenomics, then
+    // stream_terminated as the last line. The order-preserving drain is what
+    // lets consumers replay the sweep deterministically.
+    const tokenUsageIndices = types.flatMap((type, index) =>
+      type === "token_usage" ? [index] : [],
+    );
+    const taskTokenomicsIndices = types.flatMap((type, index) =>
+      type === "task_tokenomics" ? [index] : [],
+    );
+    assert.strictEqual(tokenUsageIndices.length, seedEntries.length);
+    assert.strictEqual(taskTokenomicsIndices.length, 1);
+    for (const index of tokenUsageIndices) {
+      assert.isTrue(
+        index < taskTokenomicsIndices[0],
+        `token_usage at ${index} must precede task_tokenomics at ${taskTokenomicsIndices[0]}`,
+      );
+    }
+    assert.isTrue(
+      taskTokenomicsIndices[0] < types.length - 1,
+      "task_tokenomics must precede the final stream_terminated sentinel",
+    );
+    assert.strictEqual(types[types.length - 1], "stream_terminated");
+  });
+
+  // Per-task isolation for the Ref-backed bus: sequential task runs under a
+  // fresh layer build must each see an independent buffer. If `layerRef`
+  // ever regresses to a module-level Ref, the second task will observe
+  // drained entries from the first and the aggregate will be wrong.
+  it("each task run under TokenUsageBus.layerRef sees an isolated buffer", async () => {
+    const buildContext = (traceDir: string): RealRunContext => ({
+      runnerName: "real-test",
+      traceDir,
+      plannerMode: "frontier",
+      isHeadless: true,
+      baseUrl: undefined,
+    });
+
+    const plan = makeSamplePlan();
+    const updates: AcpSessionUpdate[] = [
+      messageChunk("m\n"),
+      thoughtChunk("."),
+      ...markerMessage([
+        `STEP_START|${plan.steps[0].id}|${plan.steps[0].title}`,
+        `STEP_DONE|${plan.steps[0].id}|landed`,
+      ]),
+      ...markerMessage([
+        `STEP_START|${plan.steps[1].id}|${plan.steps[1].title}`,
+        `STEP_DONE|${plan.steps[1].id}|reported`,
+      ]),
+      ...markerMessage(["RUN_COMPLETED|passed|done"]),
+    ];
+
+    const makeProgram = (taskSeedEntries: readonly TokenUsageEntry[], traceDir: string) =>
+      Effect.gen(function* () {
+        const bus = yield* TokenUsageBus;
+        for (const entry of taskSeedEntries) {
+          yield* bus.publish(entry);
+        }
+        return yield* Effect.scoped(runRealTask(sampleTask, buildContext(traceDir)));
+      }).pipe(
+        Effect.provide(
+          Layer.provideMerge(
+            Layer.mergeAll(Executor.layer, TraceRecorderFactory.layer),
+            Layer.mergeAll(
+              scriptedAgentLayer(updates),
+              gitStubLayer,
+              planDecomposerLayer(plan),
+              repoRootLayer,
+              TokenUsageBus.layerRef,
+            ),
+          ),
+        ),
+      );
+
+    const taskAEntries = [
+      new TokenUsageEntry({
+        source: "planner",
+        promptTokens: 100,
+        completionTokens: 50,
+        totalTokens: 150,
+        timestamp: 1,
+      }),
+    ];
+    const taskBEntries = [
+      new TokenUsageEntry({
+        source: "planner",
+        promptTokens: 700,
+        completionTokens: 300,
+        totalTokens: 1000,
+        timestamp: 2,
+      }),
+      new TokenUsageEntry({
+        source: "executor",
+        promptTokens: 800,
+        completionTokens: 400,
+        totalTokens: 1200,
+        timestamp: 3,
+      }),
+    ];
+
+    const traceDirA = makeTempTraceDir();
+    const traceDirB = makeTempTraceDir();
+    const traceA = await Effect.runPromise(makeProgram(taskAEntries, traceDirA));
+    const traceB = await Effect.runPromise(makeProgram(taskBEntries, traceDirB));
+
+    // Task A saw its own entries only.
+    assert.strictEqual(traceA.tokenUsages.length, 1);
+    assert.strictEqual(traceA.tokenUsages[0].totalTokens, 150);
+    assert.strictEqual(traceA.tokenomics.plannerTokens, 150);
+    assert.strictEqual(traceA.tokenomics.executorTokens, 0);
+    assert.strictEqual(traceA.tokenomics.turnCount, 0);
+
+    // Task B saw its own entries only — crucially, Task A's 150 did not leak
+    // in. If layerRef shared state, plannerTokens here would be 1150.
+    assert.strictEqual(traceB.tokenUsages.length, 2);
+    assert.strictEqual(traceB.tokenomics.plannerTokens, 1000);
+    assert.strictEqual(traceB.tokenomics.executorTokens, 1200);
+    assert.strictEqual(traceB.tokenomics.turnCount, 1);
+    assert.strictEqual(traceB.tokenomics.totalTokens, 2200);
   });
 
   // F5: Wave 2.A consolidated browser tools (interact/observe/trace) ship
