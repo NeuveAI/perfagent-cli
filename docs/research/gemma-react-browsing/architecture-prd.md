@@ -4,6 +4,14 @@ Date: 2026-04-24 (revised 2026-04-24 — target model corrected from Gemma 3n E4
 Status: Draft for user review; not yet approved for team orchestration.
 Companion: `research-brief.md`, `assessment.md`, `open-questions.md`.
 
+> **Frontier planner removal (2026-04-24).** The `--planner` CLI flag was
+> removed and `@neuve/supervisor` no longer ships the frontier pre-planner.
+> The frontier decomposer lives in `@neuve/evals` and the eval mode literal
+> was renamed from `"frontier"` to `"oracle-plan"`. Historical references to
+> "frontier planner" and `--planner=frontier` below describe the pre-removal
+> architecture; the current runtime is Gemma-only single-loop as this PRD
+> prescribed. See `docs/handover/frontier-planner-removal/diary/`.
+
 ## 1. Goal
 
 Collapse the current Gemini-planner + Gemma-executor two-model pipeline into **a single Gemma 4 E4B agent** (Ollama tag `gemma4:e4b`; 4.5B effective / 8B with embeddings; 128K context; native `tools`, `thinking`, `vision`, `audio` capabilities) running a ReAct loop (Thought → Action → Observation → Thought …) that **owns plan decomposition, mid-run course correction, and termination discipline**. Frontier models (Gemini 3 Flash) stay external to the production runtime — used only for eval A:B comparisons, teacher-data generation, and LLM-as-judge scoring.

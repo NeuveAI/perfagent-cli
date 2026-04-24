@@ -1,5 +1,13 @@
 # Harness & Eval Overhaul — Plan
 
+> **2026-04-24 update — frontier planner removal.** The `--planner` CLI flag is
+> gone (both `perf-agent tui` and `perf-agent watch` run Gemma in a single loop
+> now). Historical references to `--planner=frontier|template|none` below
+> describe the pre-removal runtime. The frontier pre-planner survives in
+> `@neuve/evals` as the `oracle-plan` mode (`EVAL_PLANNER=oracle-plan` /
+> `EVAL_GEMMA_PLANNER=oracle-plan`) for A:B benchmarking only. See
+> `CHANGELOG.md` + `docs/handover/frontier-planner-removal/diary/`.
+
 ## Context
 
 The perf-agent CLI's agent harness stops short on multi-step user journeys. Two real runs of "go to volvocars.com → navigate buy → build → configure EX90 → reach the order form → report web vitals" both emitted `RUN_COMPLETED` after a single homepage trace. The agent never navigated past the landing page.
