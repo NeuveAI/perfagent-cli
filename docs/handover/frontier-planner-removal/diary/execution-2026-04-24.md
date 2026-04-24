@@ -31,7 +31,9 @@ Execute **Option B** of the frontier-planner removal audit:
 | C6 | `a4e204fc` | refactor(supervisor): drop plannerMode from WatchOptions |
 | C7 | `4ff3d383` | refactor(evals): rename planner mode literal "frontier" → "oracle-plan" |
 | C8 | `cf3af302` | chore(supervisor)!: delete frontier planner files + drop AI SDK deps |
-| C9 | (this commit) | docs+tests: CHANGELOG, regression tests, diary |
+| C9 | `e71f5329` | docs(frontier-planner-removal): CHANGELOG, regression tests, diary |
+| P2 | `35d2ff44` | fix(evals): update PlannerConfigError guidance to EVAL_PLANNER=oracle-plan (backend-lane Major M2) |
+| P1 | `21637939` | test(evals): port plan-decomposer suite to @neuve/evals (backend-lane Major M1) |
 
 ## Final invariant checks
 
@@ -173,6 +175,24 @@ Two small mid-flight adjustments were needed inside Option B:
 - **1 rewritten test file** (`tests/executor-adherence-gate.test.ts` was
   the premature-RUN_COMPLETED guardrail test; rewritten to use
   `initialSteps` instead of stubbing `PlanDecomposer.decompose`).
+- **1 ported test file** (`packages/evals/tests/plan-decomposer.test.ts`,
+  445 lines, 16 test cases — ported from the deleted supervisor copy as part
+  of P1 after the backend-lane reviewer flagged the deletion as a Major
+  coverage-regression. The three describe blocks — `PlanDecomposer template
+  mode`, `PlanDecomposer oracle-plan mode (structured output)`, and
+  `PlanDecomposer no-API-key path (CRITICAL-1 regression)` — plus the
+  `splitByConnectives` utility tests now exercise the evals-local service
+  directly, preserving parity with the pre-removal coverage).
+
+### Minor (m1): `@ai-sdk/provider` version bump
+
+When the supervisor copy was deleted in C8, the pre-existing pinning of
+`@ai-sdk/provider` at `^3.0.8` in `packages/supervisor/package.json` went
+away with it. `@neuve/evals/package.json` pins `@ai-sdk/provider` at
+`4.0.0-beta.12` — so the test fixture's `import type { LanguageModelV4CallOptions }
+from "@ai-sdk/provider"` in the ported suite now resolves against the v4
+beta surface (which is what the eval runtime + the `LlmJudge` already use).
+No behavior change observed; noting for anyone tracing the bump later.
 
 ## Post-removal runtime shape (user-visible)
 
@@ -210,3 +230,27 @@ The trace ndjson schema and token-usage bus semantics are unchanged — the
   so it runs without a build step. If a future reviewer prefers the
   snapshot approach, it'd need a pre-test `pnpm build --filter @neuve/perf-agent-cli`
   hook to keep the CI loop fast.
+
+## Backend-lane reviewer patches (2026-04-24 post-hoc)
+
+After C9 landed, the backend-lane reviewer returned REQUEST_CHANGES with two
+Major findings. Patches land as P2 (trivial, committed first per team-lead's
+ordering suggestion) + P1 (larger test-port, committed second).
+
+- **P2 (`35d2ff44`) — fix(evals): update PlannerConfigError guidance to
+  EVAL_PLANNER=oracle-plan.** `PlannerConfigError.message` still pointed
+  users at `EVAL_PLANNER=frontier`, which throws `Unknown planner mode
+  "frontier"` after C7 renamed the literal. Updated both message + displayName
+  to match the current `"oracle-plan"` name. One file, four lines.
+- **P1 (`21637939`) — test(evals): port plan-decomposer suite to
+  @neuve/evals.** The 445-line deleted test wasn't actually covered by the
+  e2e runner tests (those stub `PlanDecomposer.of({...})` and never exercise
+  the service internals). Ported the full suite to
+  `packages/evals/tests/plan-decomposer.test.ts` with rebased imports,
+  `"frontier"` → `"oracle-plan"` mode literals, and updated
+  `PlannerConfigError` text assertions. 16 test cases across 4 describe
+  blocks — template mode, oracle-plan structured-output (including the 8
+  DecomposeError scenarios + the "Reached …" preamble prod regression),
+  CRITICAL-1 no-API-key path, and `splitByConnectives`. Verified:
+  `pnpm --filter @neuve/evals test` → 148 passed across 14 files (was 132
+  across 13 before the port).
