@@ -7,7 +7,8 @@
   },
   "type": "module",
   "exports": {
-    ".": "./src/main.ts"
+    ".": "./src/main.ts",
+    "./mcp-bridge": "./src/mcp-bridge.ts"
   },
   "scripts": {
     "build": "vp pack",

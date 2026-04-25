@@ -333,6 +333,9 @@ importers:
       '@neuve/agent':
         specifier: workspace:*
         version: link:../agent
+      '@neuve/local-agent':
+        specifier: workspace:*
+        version: link:../local-agent
       '@neuve/shared':
         specifier: workspace:*
         version: link:../shared
@@ -7354,7 +7357,7 @@ snapshots:
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
       zod: 4.3.6
-      zod-to-json-schema: 3.25.1(zod@4.3.6)
+      zod-to-json-schema: 3.25.1(zod@3.25.76)
     transitivePeerDependencies:
       - supports-color
 
@@ -11788,10 +11791,6 @@ snapshots:
   zod-to-json-schema@3.25.1(zod@3.25.76):
     dependencies:
       zod: 3.25.76
-
-  zod-to-json-schema@3.25.1(zod@4.3.6):
-    dependencies:
-      zod: 4.3.6
 
   zod@3.25.76: {}
 

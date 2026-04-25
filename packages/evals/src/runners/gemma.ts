@@ -9,7 +9,13 @@ import { runRealTask, type RealRunContext } from "./real";
 import { TraceRecorderFactory } from "./trace-recorder";
 import { EvalRunError, type EvalRunner } from "./types";
 
-export const GEMMA_RUNNER_NAME = "gemma";
+// Re-exported from `runner-names.ts` so this heavyweight module stays the
+// canonical "import this for `makeGemmaRunner`" entry point while the
+// lightweight string constants are also reachable from the `aggregate.ts`
+// scripts without dragging this file's full dependency graph.
+export { GEMMA_RUNNER_NAME, GEMMA_REACT_RUNNER_NAME } from "./runner-names";
+import { GEMMA_RUNNER_NAME } from "./runner-names";
+
 export const GEMMA_DEFAULT_MODEL = "gemma4:e4b";
 export const GEMMA_DEFAULT_BASE_URL = "http://localhost:11434/v1/";
 const DEFAULT_PLANNER_MODE: PlannerMode = "template";
