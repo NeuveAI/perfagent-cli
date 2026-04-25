@@ -179,6 +179,30 @@ describe("buildExecutionSystemPrompt — shape & invariants", () => {
     expect(prompt).toContain("category=abort");
   });
 
+  it("teaches the THOUGHT marker before each ACTION", () => {
+    const prompt = buildExecutionSystemPrompt();
+    expect(prompt).toContain("THOUGHT|<step-id>|<one-sentence-reasoning>");
+    expect(prompt).toContain("Each ACTION is");
+    expect(prompt).toContain("preceded by a THOUGHT marker");
+  });
+
+  it("includes the PLAN_UPDATE protocol with all four actions", () => {
+    const prompt = buildExecutionSystemPrompt();
+    expect(prompt).toContain("<plan_update_protocol>");
+    expect(prompt).toContain("PLAN_UPDATE|<step-id>|action=insert");
+    expect(prompt).toContain("PLAN_UPDATE|<step-id>|action=replace;");
+    expect(prompt).toContain("PLAN_UPDATE|<step-id>|action=replace_step");
+    expect(prompt).toContain("PLAN_UPDATE|<step-id>|action=remove");
+    expect(prompt).toContain("at most 5 PLAN_UPDATE markers per run");
+  });
+
+  it("includes the REFLECT trigger guidance", () => {
+    const prompt = buildExecutionSystemPrompt();
+    expect(prompt).toContain("<reflect_trigger>");
+    expect(prompt).toContain("2 consecutive ASSERTION_FAILED markers");
+    expect(prompt).toContain("REFLECT directive");
+  });
+
   it("golden snapshot — output is stable across invocations", () => {
     const promptOne = buildExecutionSystemPrompt();
     const promptTwo = buildExecutionSystemPrompt();
@@ -374,11 +398,11 @@ describe("buildExecutionPrompt — per-turn state blocks", () => {
 });
 
 describe("buildLocalAgentSystemPrompt", () => {
-  it("names the three local-agent tool categories", () => {
+  it("names the three local-agent tool categories in the catalog", () => {
     const prompt = buildLocalAgentSystemPrompt();
-    expect(prompt).toContain("`interact`");
-    expect(prompt).toContain("`observe`");
-    expect(prompt).toContain("`trace`");
+    expect(prompt).toContain("interact");
+    expect(prompt).toContain("observe");
+    expect(prompt).toContain("trace");
   });
 
   it("includes Core Web Vitals thresholds", () => {
@@ -388,13 +412,70 @@ describe("buildLocalAgentSystemPrompt", () => {
     expect(prompt).toContain("INP < 200 ms");
   });
 
-  it("mandates per-insight analyze drill-ins with directive language", () => {
+  it("teaches the per-insight drill in the rules block", () => {
     const prompt = buildLocalAgentSystemPrompt();
-    expect(prompt).toContain('YOU MUST call `trace` with command="analyze" for EACH insight');
-    expect(prompt).toContain("Do not produce a final report until every insight has been analyzed");
+    expect(prompt).toContain("Drill every insight returned by `trace stop`");
     expect(prompt).toContain("LCPBreakdown");
     expect(prompt).toContain("CLSCulprits");
     expect(prompt).toContain("RenderBlocking");
+  });
+
+  it("documents the AgentTurn envelope grammar (Variant B)", () => {
+    const prompt = buildLocalAgentSystemPrompt();
+    expect(prompt).toContain("<envelopes>");
+    expect(prompt).toContain('"_tag":"THOUGHT"');
+    expect(prompt).toContain('"_tag":"ACTION"');
+    expect(prompt).toContain('"_tag":"PLAN_UPDATE"');
+    expect(prompt).toContain('"_tag":"STEP_DONE"');
+    expect(prompt).toContain('"_tag":"ASSERTION_FAILED"');
+    expect(prompt).toContain('"_tag":"RUN_COMPLETED"');
+  });
+
+  it("includes the THOUGHT-before-ACTION protocol section", () => {
+    const prompt = buildLocalAgentSystemPrompt();
+    expect(prompt).toContain("<thought_protocol>");
+    expect(prompt).toContain("Before each ACTION emit a THOUGHT envelope");
+    expect(prompt).toContain("One tag per turn");
+  });
+
+  it("includes the PLAN_UPDATE protocol section with all four actions", () => {
+    const prompt = buildLocalAgentSystemPrompt();
+    expect(prompt).toContain("<plan_update_protocol>");
+    expect(prompt).toContain("insert");
+    expect(prompt).toContain("replace");
+    expect(prompt).toContain("remove");
+    expect(prompt).toContain("replace_step");
+  });
+
+  it("includes the REFLECT trigger guidance", () => {
+    const prompt = buildLocalAgentSystemPrompt();
+    expect(prompt).toContain("<reflect_trigger>");
+    expect(prompt).toContain("2 consecutive ASSERTION_FAILED envelopes");
+    expect(prompt).toContain("REFLECT");
+  });
+
+  it("lists every failure category", () => {
+    const prompt = buildLocalAgentSystemPrompt();
+    expect(prompt).toContain("budget-violation");
+    expect(prompt).toContain("regression");
+    expect(prompt).toContain("resource-blocker");
+    expect(prompt).toContain("memory-leak");
+    expect(prompt).toContain("abort");
+  });
+
+  it("lists every failure domain", () => {
+    const prompt = buildLocalAgentSystemPrompt();
+    expect(prompt).toContain("design");
+    expect(prompt).toContain("responsive");
+    expect(prompt).toContain("perf");
+    expect(prompt).toContain("a11y");
+    expect(prompt).toContain("other");
+  });
+
+  it("emits at most 80 non-blank lines", () => {
+    const prompt = buildLocalAgentSystemPrompt();
+    const nonBlank = prompt.split("\n").filter((line) => line.trim().length > 0);
+    expect(nonBlank.length).toBeLessThanOrEqual(80);
   });
 
   it("fits a small-model context budget (<= 4 KB)", () => {
@@ -402,10 +483,76 @@ describe("buildLocalAgentSystemPrompt", () => {
     expect(prompt.length).toBeLessThanOrEqual(4 * 1024);
   });
 
-  it("includes the analyze call-shape example", () => {
-    const prompt = buildLocalAgentSystemPrompt();
-    expect(prompt).toContain('"command": "analyze"');
-    expect(prompt).toContain('"insightSetId": "NAVIGATION_0"');
+  it("golden snapshot — output is stable across invocations", () => {
+    expect(buildLocalAgentSystemPrompt()).toBe(buildLocalAgentSystemPrompt());
+  });
+});
+
+describe("buildLocalAgentSystemPrompt + buildExecutionSystemPrompt — protocol convergence", () => {
+  // Per PRD §R2: both prompts must teach the same THOUGHT / PLAN_UPDATE / REFLECT
+  // protocol so frontier model (Gemini, via execution prompt) eval-runner output is
+  // shape-comparable to Gemma's (local prompt). Wire format may differ — local emits
+  // AgentTurn JSON envelopes, executor uses pipe-delimited markers — but the
+  // concepts are unified.
+
+  it("both prompts teach the THOUGHT-before-ACTION discipline", () => {
+    const localPrompt = buildLocalAgentSystemPrompt();
+    const executorPrompt = buildExecutionSystemPrompt();
+    expect(localPrompt).toContain("THOUGHT");
+    expect(executorPrompt).toContain("THOUGHT");
+  });
+
+  it("both prompts document PLAN_UPDATE with the four actions", () => {
+    const localPrompt = buildLocalAgentSystemPrompt();
+    const executorPrompt = buildExecutionSystemPrompt();
+    for (const action of ["insert", "replace", "remove", "replace_step"]) {
+      expect(localPrompt).toContain(action);
+      expect(executorPrompt).toContain(action);
+    }
+  });
+
+  it("both prompts document the REFLECT trigger after 2 consecutive same-step failures", () => {
+    const localPrompt = buildLocalAgentSystemPrompt();
+    const executorPrompt = buildExecutionSystemPrompt();
+    expect(localPrompt).toContain("REFLECT");
+    expect(localPrompt).toContain("2 consecutive ASSERTION_FAILED");
+    expect(executorPrompt).toContain("REFLECT");
+    expect(executorPrompt).toContain("2 consecutive ASSERTION_FAILED");
+  });
+
+  it("both prompts list the same five failure categories", () => {
+    const localPrompt = buildLocalAgentSystemPrompt();
+    const executorPrompt = buildExecutionSystemPrompt();
+    for (const category of [
+      "budget-violation",
+      "regression",
+      "resource-blocker",
+      "memory-leak",
+      "abort",
+    ]) {
+      expect(localPrompt).toContain(category);
+      expect(executorPrompt).toContain(category);
+    }
+  });
+
+  it("both prompts list the same five failure domains", () => {
+    const localPrompt = buildLocalAgentSystemPrompt();
+    const executorPrompt = buildExecutionSystemPrompt();
+    for (const domain of ["design", "responsive", "perf", "a11y", "other"]) {
+      expect(localPrompt).toContain(domain);
+      expect(executorPrompt).toContain(domain);
+    }
+  });
+
+  it("both prompts stay under the 80 non-blank-line budget", () => {
+    const localNonBlank = buildLocalAgentSystemPrompt()
+      .split("\n")
+      .filter((line) => line.trim().length > 0).length;
+    const executorNonBlank = buildExecutionSystemPrompt()
+      .split("\n")
+      .filter((line) => line.trim().length > 0).length;
+    expect(localNonBlank).toBeLessThanOrEqual(80);
+    expect(executorNonBlank).toBeLessThanOrEqual(80);
   });
 });
 
