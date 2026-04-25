@@ -1,18 +1,41 @@
 import type { AgentSideConnection } from "@agentclientprotocol/sdk";
-import type {
-  ChatCompletionMessageParam,
-  ChatCompletionTool,
-} from "openai/resources/chat/completions";
-import type { OllamaClient } from "./ollama-client.js";
-import type { McpBridge, McpToolCallResult } from "./mcp-bridge.js";
+import { Effect, Predicate, Schema } from "effect";
 
 import { parseTraceOutput } from "@neuve/shared/parse-trace-output";
+import {
+  Action,
+  AgentTurn,
+  AssertionFailed,
+  PlanUpdate,
+  RunCompleted,
+  StepDone,
+  Thought,
+  parseAgentTurnFromString,
+} from "@neuve/shared/react-envelope";
+
+import type {
+  OllamaClient,
+  OllamaMessage,
+  OllamaToolDefinition,
+} from "./ollama-client.js";
+import type { McpBridge, McpToolCallResult } from "./mcp-bridge.js";
 
 import { log } from "./log.js";
 
 const MAX_TOOL_ROUNDS = 15;
 const DOOM_LOOP_THRESHOLD = 3;
 const TRACE_STOPPED_SENTINEL = "The performance trace has been stopped.";
+
+// AgentTurn JSON Schema generated once at module load. Variant B (locked
+// 2026-04-25) constrains every Gemma turn to one of THOUGHT / ACTION /
+// PLAN_UPDATE / STEP_DONE / ASSERTION_FAILED / RUN_COMPLETED — Ollama's
+// `format` parameter applies this as a llama.cpp grammar so the model
+// physically cannot emit non-conforming output. The loop dispatches on
+// `_tag`; native `message.tool_calls` are intentionally ignored.
+const AGENT_TURN_FORMAT = (() => {
+  const document = Schema.toJsonSchemaDocument(AgentTurn);
+  return { ...document.schema, $defs: document.definitions };
+})();
 
 interface AutoDrillTarget {
   readonly insightSetId: string;
@@ -37,10 +60,13 @@ const collectAutoDrillTargets = (traceResultText: string): AutoDrillTarget[] => 
   return targets;
 };
 
+const toRecord = (value: unknown): Record<string, unknown> =>
+  Predicate.isObject(value) ? { ...value } : {};
+
 export interface ToolLoopOptions {
   sessionId: string;
-  messages: ChatCompletionMessageParam[];
-  tools: ChatCompletionTool[];
+  messages: OllamaMessage[];
+  tools: OllamaToolDefinition[];
   ollamaClient: OllamaClient;
   mcpBridge: McpBridge;
   connection: AgentSideConnection;
@@ -52,6 +78,25 @@ interface ToolCallFingerprint {
   argsHash: string;
 }
 
+interface ParseFailure {
+  readonly _tag: "__parse_failure__";
+  readonly cause: string;
+}
+
+const parseEnvelope = (
+  content: string,
+): Promise<typeof AgentTurn.Type | ParseFailure> =>
+  Effect.runPromise(
+    parseAgentTurnFromString(content).pipe(
+      Effect.catchTag("SchemaError", (cause) =>
+        Effect.succeed<ParseFailure>({
+          _tag: "__parse_failure__",
+          cause: String(cause),
+        }),
+      ),
+    ),
+  );
+
 export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
   const { sessionId, messages, tools, ollamaClient, mcpBridge, connection, signal } = options;
 
@@ -61,86 +106,175 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     if (signal.aborted) return;
 
-    log("calling ollama", { round, messageCount: messages.length, toolCount: tools.length });
-    const completion = await ollamaClient.complete({ messages, tools, signal });
-    const choice = completion.choices[0];
-    // Emit a usage_update session update per completion so the harness can
-    // attribute tokens to the executor turn. ACP's UsageUpdate type only
-    // carries cumulative `size`/`used` tokens; per-call prompt/completion
-    // split is vendor-specific, so we route it through `_meta` (the
-    // ACP-sanctioned extensibility channel) where @neuve/shared's
-    // `AcpUsageUpdate` schema picks it up.
-    if (completion.usage) {
+    log("calling ollama", {
+      round,
+      messageCount: messages.length,
+      toolCount: tools.length,
+    });
+
+    const result = await Effect.runPromise(
+      ollamaClient.chat({
+        messages,
+        tools,
+        format: AGENT_TURN_FORMAT,
+        signal,
+      }),
+    );
+
+    if (result.usage) {
+      const totalTokens = result.usage.promptEvalCount + result.usage.evalCount;
       await connection.sessionUpdate({
         sessionId,
         update: {
           sessionUpdate: "usage_update",
-          size: completion.usage.total_tokens,
-          used: completion.usage.total_tokens,
+          size: totalTokens,
+          used: totalTokens,
           _meta: {
-            promptTokens: completion.usage.prompt_tokens,
-            completionTokens: completion.usage.completion_tokens,
-            totalTokens: completion.usage.total_tokens,
+            promptTokens: result.usage.promptEvalCount,
+            completionTokens: result.usage.evalCount,
+            totalTokens,
           },
         },
       });
       log("usage reported", {
         round,
-        promptTokens: completion.usage.prompt_tokens,
-        completionTokens: completion.usage.completion_tokens,
+        promptTokens: result.usage.promptEvalCount,
+        completionTokens: result.usage.evalCount,
       });
     }
-    if (!choice) {
-      log("ollama returned no choices");
-      await connection.sessionUpdate({
-        sessionId,
-        update: {
-          sessionUpdate: "agent_message_chunk",
-          content: { type: "text", text: "[Local agent: Ollama returned no choices]" },
-        },
-      });
-      return;
-    }
-    const assistantMessage = choice.message;
-    const toolCalls = assistantMessage.tool_calls;
+
     log("ollama responded", {
       round,
-      finishReason: choice.finish_reason,
-      hasToolCalls: Boolean(toolCalls?.length),
-      toolCallCount: toolCalls?.length ?? 0,
-      contentPreview: (assistantMessage.content ?? "").slice(0, 200),
+      doneReason: result.doneReason,
+      contentLength: result.content.length,
+      contentPreview: result.content.slice(0, 200),
     });
 
-    messages.push(assistantMessage);
+    // The format-grammar guarantees the assistant message IS an AgentTurn JSON
+    // envelope. Append it verbatim to message history so subsequent turns
+    // see the prior envelopes.
+    messages.push({ role: "assistant", content: result.content });
 
-    if (!toolCalls || toolCalls.length === 0) {
-      const text =
-        assistantMessage.content && assistantMessage.content.length > 0
-          ? assistantMessage.content
-          : `[Local agent: model returned empty response at round ${round} with finish_reason="${choice.finish_reason}". The model may not support tool calling or the system prompt may need adjustment.]`;
+    if (result.content.length === 0) {
       await connection.sessionUpdate({
         sessionId,
         update: {
           sessionUpdate: "agent_message_chunk",
-          content: { type: "text", text },
+          content: {
+            type: "text",
+            text: `[Local agent: model returned empty content at round ${round} with done_reason="${result.doneReason ?? "unknown"}". The format grammar should have prevented this — likely a server-side cancellation.]`,
+          },
         },
       });
       return;
     }
 
-    for (const toolCall of toolCalls) {
-      if (signal.aborted) return;
+    const envelope = await parseEnvelope(result.content);
 
-      const functionName = toolCall.function.name;
-      const rawArgs = toolCall.function.arguments;
-      // Post-Q9-fix: Ollama emits structured `tool_calls` where `arguments`
-      // is a valid JSON string per OpenAI spec. If parsing fails here, the
-      // upstream emitted malformed JSON — we want that surfaced (the fiber
-      // dies, the eval run records the failure) rather than papered over
-      // with regex repairs that silently swallow the real signal.
-      const args = JSON.parse(rawArgs) as Record<string, unknown>;
+    if (envelope._tag === "__parse_failure__") {
+      log("schema-invalid envelope", { cause: envelope.cause });
+      await connection.sessionUpdate({
+        sessionId,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            type: "text",
+            text: `[Local agent: non-schema-valid agent output. Aborting run. Cause: ${envelope.cause}]`,
+          },
+        },
+      });
+      return;
+    }
 
+    if (envelope instanceof Thought) {
+      await connection.sessionUpdate({
+        sessionId,
+        update: {
+          sessionUpdate: "agent_thought_chunk",
+          content: { type: "text", text: envelope.thought },
+        },
+      });
+      messages.push({
+        role: "user",
+        content: `<observation>(THOUGHT recorded for ${envelope.stepId} — proceed with the next ACTION or status envelope.)</observation>`,
+      });
+      continue;
+    }
+
+    if (envelope instanceof PlanUpdate) {
+      await connection.sessionUpdate({
+        sessionId,
+        update: {
+          sessionUpdate: "agent_thought_chunk",
+          content: {
+            type: "text",
+            text: `[PLAN_UPDATE action=${envelope.action} step=${envelope.stepId}]`,
+          },
+        },
+      });
+      messages.push({
+        role: "user",
+        content: `<observation>(plan updated: action=${envelope.action} step=${envelope.stepId} — proceed.)</observation>`,
+      });
+      continue;
+    }
+
+    if (envelope instanceof StepDone) {
+      await connection.sessionUpdate({
+        sessionId,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            type: "text",
+            text: `[STEP_DONE ${envelope.stepId}] ${envelope.summary}`,
+          },
+        },
+      });
+      messages.push({
+        role: "user",
+        content: `<observation>(STEP_DONE recorded for ${envelope.stepId} — advance to next step or emit RUN_COMPLETED.)</observation>`,
+      });
+      continue;
+    }
+
+    if (envelope instanceof AssertionFailed) {
+      await connection.sessionUpdate({
+        sessionId,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            type: "text",
+            text: `[ASSERTION_FAILED ${envelope.stepId} | category=${envelope.category} domain=${envelope.domain}] ${envelope.reason}`,
+          },
+        },
+      });
+      messages.push({
+        role: "user",
+        content: `<observation>(ASSERTION_FAILED recorded for ${envelope.stepId} — choose between retry, replan via PLAN_UPDATE, or RUN_COMPLETED.)</observation>`,
+      });
+      continue;
+    }
+
+    if (envelope instanceof RunCompleted) {
+      await connection.sessionUpdate({
+        sessionId,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            type: "text",
+            text: `[RUN_COMPLETED|${envelope.status}] ${envelope.summary}`,
+          },
+        },
+      });
+      log("run completed", { status: envelope.status, round });
+      return;
+    }
+
+    if (envelope instanceof Action) {
+      const functionName = envelope.toolName;
+      const args = toRecord(envelope.args);
       const argsHash = JSON.stringify(args);
+
       const lastCall = recentCalls[recentCalls.length - 1];
       const matchesLast =
         Boolean(lastCall) && lastCall?.toolName === functionName && lastCall?.argsHash === argsHash;
@@ -148,13 +282,14 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
         recentCalls.length = 0;
       }
       const wouldTripThreshold = matchesLast && recentCalls.length >= DOOM_LOOP_THRESHOLD - 1;
+      const callId = crypto.randomUUID();
       if (wouldTripThreshold) {
         log("doom loop detected", { tool: functionName, repeats: DOOM_LOOP_THRESHOLD });
         await connection.sessionUpdate({
           sessionId,
           update: {
             sessionUpdate: "tool_call",
-            toolCallId: toolCall.id,
+            toolCallId: callId,
             title: functionName,
             kind: "read",
             status: "failed",
@@ -168,7 +303,7 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
             sessionUpdate: "agent_message_chunk",
             content: {
               type: "text",
-              text: `[Local agent: detected ${DOOM_LOOP_THRESHOLD} identical consecutive tool calls (${functionName}). Aborting to avoid wasted cycles. Last error: ${lastErrorOrUnknown}. Check the tool description for the expected call shape.]`,
+              text: `[Local agent: detected ${DOOM_LOOP_THRESHOLD} identical consecutive ACTION envelopes (${functionName}). Aborting to avoid wasted cycles. Last error: ${lastErrorOrUnknown}. Check the tool description for the expected call shape.]`,
             },
           },
         });
@@ -183,7 +318,7 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
         sessionId,
         update: {
           sessionUpdate: "tool_call",
-          toolCallId: toolCall.id,
+          toolCallId: callId,
           title: functionName,
           kind: "read",
           status: "pending",
@@ -203,7 +338,7 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
         sessionId,
         update: {
           sessionUpdate: "tool_call_update",
-          toolCallId: toolCall.id,
+          toolCallId: callId,
           title: functionName,
           status: isError ? "failed" : "completed",
           content: [{ type: "content", content: { type: "text", text: baseMessageText } }],
@@ -302,21 +437,25 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
       }
 
       messages.push({
-        role: "tool" as const,
-        tool_call_id: toolCall.id,
-        content: combinedLlmText,
+        role: "user",
+        content: `<observation>${combinedLlmText}</observation>`,
       });
+      continue;
     }
 
-    if (assistantMessage.content) {
-      await connection.sessionUpdate({
-        sessionId,
-        update: {
-          sessionUpdate: "agent_message_chunk",
-          content: { type: "text", text: assistantMessage.content },
+    // Defensive — should be unreachable since AgentTurn is a closed union.
+    log("unexpected envelope kind", { tag: (envelope as { _tag: string })._tag });
+    await connection.sessionUpdate({
+      sessionId,
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        content: {
+          type: "text",
+          text: `[Local agent: unexpected envelope tag at round ${round}. Aborting.]`,
         },
-      });
-    }
+      },
+    });
+    return;
   }
 
   await connection.sessionUpdate({
