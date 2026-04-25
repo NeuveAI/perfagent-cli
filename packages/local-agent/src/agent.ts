@@ -1,18 +1,19 @@
 import type * as acp from "@agentclientprotocol/sdk";
-import { createOllamaClient, type OllamaClient } from "./ollama-client.js";
+import {
+  createOllamaClient,
+  type OllamaClient,
+  type OllamaMessage,
+  type OllamaToolDefinition,
+} from "./ollama-client.js";
 import { createMcpBridge, type McpBridge } from "./mcp-bridge.js";
 import { runToolLoop } from "./tool-loop.js";
 import { log } from "./log.js";
 import { buildLocalAgentSystemPrompt } from "@neuve/shared/prompts";
-import type {
-  ChatCompletionMessageParam,
-  ChatCompletionTool,
-} from "openai/resources/chat/completions";
 
 interface Session {
   id: string;
-  messages: ChatCompletionMessageParam[];
-  tools: ChatCompletionTool[];
+  messages: OllamaMessage[];
+  tools: OllamaToolDefinition[];
   mcpBridge: McpBridge;
   pendingPrompt: AbortController | undefined;
   systemPrompt: string;
@@ -51,12 +52,12 @@ export class LocalAgent implements acp.Agent {
     });
 
     let mcpBridge: McpBridge;
-    let tools: ChatCompletionTool[] = [];
+    let tools: OllamaToolDefinition[] = [];
 
     if (mcpServers && Object.keys(mcpServers).length > 0) {
       try {
         mcpBridge = await createMcpBridge(mcpServers);
-        tools = mcpBridge.listToolsAsOpenAI();
+        tools = mcpBridge.listTools();
         log("mcp bridge connected", { toolCount: tools.length });
       } catch (error) {
         log("mcp bridge failed", { error: String(error) });
@@ -64,7 +65,7 @@ export class LocalAgent implements acp.Agent {
       }
     } else {
       mcpBridge = {
-        listToolsAsOpenAI: () => [],
+        listTools: () => [],
         callTool: async () => ({ text: "No MCP servers configured", isError: true }),
         close: async () => {},
       };
@@ -107,7 +108,7 @@ export class LocalAgent implements acp.Agent {
     const userText = extractPromptText(params.prompt);
     log("prompt", { sessionId: session.id, userTextLength: userText.length });
 
-    const messages: ChatCompletionMessageParam[] = [
+    const messages: OllamaMessage[] = [
       { role: "system", content: session.systemPrompt },
       ...session.messages,
       { role: "user", content: userText },

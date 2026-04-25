@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import type { ChatCompletionTool } from "openai/resources/chat/completions";
 
+import type { OllamaToolDefinition } from "./ollama-client.js";
 import { log } from "./log.js";
 
 interface McpServerConfig {
@@ -21,7 +21,7 @@ export interface McpToolCallResult {
 }
 
 export interface McpBridge {
-  readonly listToolsAsOpenAI: () => ChatCompletionTool[];
+  readonly listTools: () => OllamaToolDefinition[];
   readonly callTool: (name: string, args: Record<string, unknown>) => Promise<McpToolCallResult>;
   readonly close: () => Promise<void>;
 }
@@ -178,7 +178,7 @@ export const createMcpBridge = async (
   const clients: Array<{ client: Client; transport: StdioClientTransport }> = [];
   const toolToClient = new Map<string, Client>();
   const wrapperKeyByTool = new Map<string, string>();
-  const openAiTools: ChatCompletionTool[] = [];
+  const ollamaTools: OllamaToolDefinition[] = [];
 
   for (const [name, config] of Object.entries(servers)) {
     const transport = new StdioClientTransport({
@@ -204,7 +204,7 @@ export const createMcpBridge = async (
         log("detected tool wrapper key", { tool: tool.name, wrapperKey });
       }
       const flattenedParameters = flattenOneOf(tool.inputSchema);
-      openAiTools.push({
+      ollamaTools.push({
         type: "function" as const,
         function: {
           name: tool.name,
@@ -215,7 +215,7 @@ export const createMcpBridge = async (
     }
   }
 
-  const listToolsAsOpenAI = (): ChatCompletionTool[] => openAiTools;
+  const listTools = (): OllamaToolDefinition[] => ollamaTools;
 
   const callTool = async (
     name: string,
@@ -264,5 +264,5 @@ export const createMcpBridge = async (
     }
   };
 
-  return { listToolsAsOpenAI, callTool, close } as const;
+  return { listTools, callTool, close } as const;
 };

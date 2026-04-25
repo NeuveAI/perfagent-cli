@@ -24,7 +24,7 @@
     "@agentclientprotocol/sdk": "^0.16.1",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@neuve/shared": "workspace:*",
-    "openai": "^4.100.0"
+    "effect": "4.0.0-beta.35"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
