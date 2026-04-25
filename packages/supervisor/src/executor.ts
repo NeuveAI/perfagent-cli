@@ -9,6 +9,7 @@ import {
 import { Effect, Layer, Option, Schema, ServiceMap, Stream } from "effect";
 import {
   type AcpConfigOption,
+  type AcpSessionUpdate,
   type AnalysisStep,
   type ChangesFor,
   type ChangedFile,
@@ -20,6 +21,7 @@ import {
   PerfPlan,
   type ExecutionEvent,
 } from "@neuve/shared/models";
+import { ReactRunState, ReducerSignal, reduceAgentTurn } from "./react-reducer";
 import {
   buildExecutionPrompt,
   buildExecutionSystemPrompt,
@@ -39,6 +41,7 @@ import {
   ALL_STEPS_TERMINAL_GRACE_MS,
   EXECUTION_CONTEXT_FILE_LIMIT,
   EXECUTION_RECENT_COMMIT_LIMIT,
+  REACT_PREMATURE_RUN_WINDOW,
 } from "./constants";
 
 export class ExecutionError extends Schema.ErrorClass<ExecutionError>("@supervisor/ExecutionError")(
@@ -81,7 +84,45 @@ export interface ExecuteOptions {
 interface ExecutorAccumState {
   readonly plan: ExecutedPerfPlan;
   readonly allTerminalSince: number | undefined;
+  readonly runState: ReactRunState;
+  readonly expectsDisplaySkip: boolean;
 }
+
+const isReactSkippedDisplayUpdate = (sessionUpdate: AcpSessionUpdate["sessionUpdate"]): boolean =>
+  sessionUpdate === "agent_thought_chunk" ||
+  sessionUpdate === "agent_message_chunk" ||
+  sessionUpdate === "tool_call";
+
+const logReducerSignal = Effect.fn("Executor.logReducerSignal")(function* (signal: ReducerSignal) {
+  if (signal._tag === "ReflectTriggered") {
+    yield* Effect.logWarning("react-reflect-triggered", {
+      stepId: signal.stepId,
+      failureCount: signal.failureCount,
+    });
+    return;
+  }
+  if (signal._tag === "PlanUpdateCapExceeded") {
+    yield* Effect.logWarning("react-plan-update-cap-exceeded", {
+      stepId: signal.stepId,
+      action: signal.action,
+      attemptedCount: signal.attemptedCount,
+    });
+    return;
+  }
+  if (signal._tag === "PrematureRunCompleted") {
+    yield* Effect.logWarning("react-premature-run-completed", {
+      status: signal.status,
+      unresolvedStepId: signal.unresolvedStepId,
+      reason: signal.reason,
+    });
+    return;
+  }
+  yield* Effect.logWarning("react-invalid-plan-update-payload", {
+    stepId: signal.stepId,
+    action: signal.action,
+    cause: signal.cause,
+  });
+});
 
 const resolveTerminalTimestamp = (executed: ExecutedPerfPlan, previous: number | undefined) => {
   if (!executed.allStepsTerminal) return undefined;
@@ -106,15 +147,46 @@ const stripRunFinished = (plan: ExecutedPerfPlan): ExecutedPerfPlan =>
     events: plan.events.filter((event) => event._tag !== "RunFinished"),
   });
 
+const hasUnresolvedAssertionInWindow = (
+  events: readonly ExecutionEvent[],
+  runFinishedIndex: number,
+): boolean => {
+  const windowStart = Math.max(0, runFinishedIndex - REACT_PREMATURE_RUN_WINDOW);
+  for (let index = windowStart; index < runFinishedIndex; index++) {
+    const candidate = events[index];
+    if (candidate._tag !== "StepFailed") continue;
+    let resolved = false;
+    for (let after = index + 1; after < runFinishedIndex; after++) {
+      const successor = events[after];
+      if (successor._tag === "StepCompleted" && successor.stepId === candidate.stepId) {
+        resolved = true;
+        break;
+      }
+    }
+    if (!resolved) return true;
+  }
+  return false;
+};
+
 const runFinishedSatisfiesGate = (plan: ExecutedPerfPlan): boolean => {
-  const lastRunFinished = [...plan.events]
-    .reverse()
-    .find(
-      (event): event is Extract<ExecutionEvent, { _tag: "RunFinished" }> =>
-        event._tag === "RunFinished",
-    );
+  let runFinishedIndex = -1;
+  let lastRunFinished: Extract<ExecutionEvent, { _tag: "RunFinished" }> | undefined;
+  for (let index = plan.events.length - 1; index >= 0; index--) {
+    const event = plan.events[index];
+    if (event._tag === "RunFinished") {
+      runFinishedIndex = index;
+      lastRunFinished = event;
+      break;
+    }
+  }
   if (!lastRunFinished) return false;
   if (lastRunFinished.abort !== undefined) return true;
+  if (
+    lastRunFinished.status === "passed" &&
+    hasUnresolvedAssertionInWindow(plan.events, runFinishedIndex)
+  ) {
+    return false;
+  }
   return plan.allPlanStepsTerminal;
 };
 
@@ -292,10 +364,32 @@ export class Executor extends ServiceMap.Service<Executor>()("@supervisor/Execut
           (): ExecutorAccumState => ({
             plan: initial,
             allTerminalSince: undefined,
+            runState: ReactRunState.initial,
+            expectsDisplaySkip: false,
           }),
           (state, part) =>
             Effect.gen(function* () {
-              const updated = state.plan.addEvent(part);
+              let updated: ExecutedPerfPlan;
+              let nextRunState: ReactRunState = state.runState;
+              let nextExpectsDisplaySkip: boolean = false;
+
+              if (part.sessionUpdate === "agent_turn") {
+                const reduced = yield* reduceAgentTurn(state.plan, part.agentTurn, state.runState);
+                for (const signal of reduced.signals) {
+                  yield* logReducerSignal(signal);
+                }
+                updated = reduced.plan;
+                nextRunState = reduced.runState;
+                nextExpectsDisplaySkip = true;
+              } else if (
+                state.expectsDisplaySkip &&
+                isReactSkippedDisplayUpdate(part.sessionUpdate)
+              ) {
+                updated = state.plan;
+              } else {
+                updated = state.plan.addEvent(part);
+              }
+
               const terminalTimestamp = resolveTerminalTimestamp(updated, state.allTerminalSince);
               const withGrace =
                 terminalTimestamp !== undefined &&
@@ -321,13 +415,23 @@ export class Executor extends ServiceMap.Service<Executor>()("@supervisor/Execut
                 });
                 const filtered = stripRunFinished(withGrace);
                 return [
-                  { plan: filtered, allTerminalSince: terminalTimestamp },
+                  {
+                    plan: filtered,
+                    allTerminalSince: terminalTimestamp,
+                    runState: nextRunState,
+                    expectsDisplaySkip: nextExpectsDisplaySkip,
+                  },
                   [filtered],
                 ] as const;
               }
 
               return [
-                { plan: withGrace, allTerminalSince: terminalTimestamp },
+                {
+                  plan: withGrace,
+                  allTerminalSince: terminalTimestamp,
+                  runState: nextRunState,
+                  expectsDisplaySkip: nextExpectsDisplaySkip,
+                },
                 [withGrace],
               ] as const;
             }),

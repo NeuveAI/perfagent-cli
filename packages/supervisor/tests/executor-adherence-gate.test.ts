@@ -273,6 +273,109 @@ describe("Executor adherence gate", () => {
     ).toBe(false);
   });
 
+  it("R3 rule — rejects passed RUN_COMPLETED when ASSERTION_FAILED in last 3 events lacks matching STEP_DONE", async () => {
+    const steps = makeVolvoSteps();
+    const updates: AcpSessionUpdate[] = [
+      ...markerMessage([
+        `STEP_START|${steps[0].id}|${steps[0].title}`,
+        `STEP_DONE|${steps[0].id}|landed`,
+      ]),
+      ...markerMessage([
+        `STEP_START|${steps[1].id}|${steps[1].title}`,
+        `STEP_DONE|${steps[1].id}|menu opened`,
+      ]),
+      ...markerMessage([
+        `STEP_START|${steps[2].id}|${steps[2].title}`,
+        `ASSERTION_FAILED|${steps[2].id}|category=regression; domain=perf; reason=lcp-poor; evidence=lcp=4500ms`,
+        "RUN_COMPLETED|passed|claimed pass despite unresolved failure",
+      ]),
+    ];
+
+    const warnings: { message: string; level: string }[] = [];
+    const capturingLogger = Logger.make((options) => {
+      warnings.push({
+        level: String(options.logLevel),
+        message: Array.isArray(options.message)
+          ? options.message.map((part) => String(part)).join(" ")
+          : String(options.message),
+      });
+    });
+    const logCapture = Logger.layer([capturingLogger]);
+
+    const emitted = await Effect.runPromise(
+      runExecutor(updates, steps).pipe(Effect.provide(logCapture)),
+    );
+    const finalPlan = lastPlanOf(emitted);
+
+    expect(finalPlan.hasRunFinished).toBe(false);
+    expect(finalPlan.allPlanStepsTerminal).toBe(false);
+    expect(
+      warnings.some(
+        (entry) => entry.level === "Warn" && entry.message.includes("premature-run-completed"),
+      ),
+    ).toBe(true);
+  });
+
+  it("R3 rule — accepts passed RUN_COMPLETED when ASSERTION_FAILED is followed by matching STEP_DONE on same stepId", async () => {
+    const steps = makeVolvoSteps().slice(0, 3);
+    const updates: AcpSessionUpdate[] = [
+      ...markerMessage([
+        `STEP_START|${steps[0].id}|${steps[0].title}`,
+        `STEP_DONE|${steps[0].id}|landed`,
+      ]),
+      ...markerMessage([
+        `STEP_START|${steps[1].id}|${steps[1].title}`,
+        `STEP_DONE|${steps[1].id}|menu opened`,
+      ]),
+      ...markerMessage([
+        `STEP_START|${steps[2].id}|${steps[2].title}`,
+        `ASSERTION_FAILED|${steps[2].id}|category=regression; domain=perf; reason=lcp-initial-poor; evidence=lcp=4500ms`,
+        `STEP_DONE|${steps[2].id}|recovered after retry`,
+        "RUN_COMPLETED|passed|all three steps complete",
+      ]),
+    ];
+
+    const emitted = await Effect.runPromise(runExecutor(updates, steps));
+    const finalPlan = lastPlanOf(emitted);
+
+    expect(finalPlan.hasRunFinished).toBe(true);
+    expect(finalPlan.allPlanStepsTerminal).toBe(true);
+    const runFinished = finalPlan.events.find((event) => event._tag === "RunFinished");
+    expect(runFinished?._tag).toBe("RunFinished");
+    if (runFinished?._tag === "RunFinished") {
+      expect(runFinished.status).toBe("passed");
+    }
+  });
+
+  it("R3 rule — accepts failed RUN_COMPLETED with unresolved ASSERTION_FAILED (failure is honest)", async () => {
+    const steps = makeVolvoSteps().slice(0, 3);
+    const updates: AcpSessionUpdate[] = [
+      ...markerMessage([
+        `STEP_START|${steps[0].id}|${steps[0].title}`,
+        `STEP_DONE|${steps[0].id}|landed`,
+      ]),
+      ...markerMessage([
+        `STEP_START|${steps[1].id}|${steps[1].title}`,
+        `STEP_DONE|${steps[1].id}|menu opened`,
+      ]),
+      ...markerMessage([
+        `STEP_START|${steps[2].id}|${steps[2].title}`,
+        `ASSERTION_FAILED|${steps[2].id}|category=regression; domain=perf; reason=lcp-poor; evidence=lcp=4500ms`,
+        "RUN_COMPLETED|failed|honest failure",
+      ]),
+    ];
+
+    const emitted = await Effect.runPromise(runExecutor(updates, steps));
+    const finalPlan = lastPlanOf(emitted);
+
+    expect(finalPlan.hasRunFinished).toBe(true);
+    const runFinished = finalPlan.events.find((event) => event._tag === "RunFinished");
+    expect(runFinished?._tag).toBe("RunFinished");
+    if (runFinished?._tag === "RunFinished") {
+      expect(runFinished.status).toBe("failed");
+    }
+  });
+
   it("auto-synthesizes RunFinished via the grace-period safety net", () => {
     const steps = makeVolvoSteps();
     let current = new ExecutedPerfPlan({
