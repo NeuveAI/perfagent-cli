@@ -201,6 +201,17 @@ const applyExecutionEvent = Effect.fn("RealRunner.applyExecutionEvent")(function
     if (resultUrl === undefined) return acc;
     return { ...acc, reachedUrls: [...acc.reachedUrls, resultUrl] };
   }
+  if (event._tag === "PlanUpdate") {
+    yield* write({
+      type: "plan_update",
+      ts: Date.now(),
+      turn: acc.turn,
+      stepId: event.stepId,
+      action: event.action,
+      payload: event.payload,
+    });
+    return acc;
+  }
   const marker = statusMarkerForEvent(event);
   if (marker === undefined) return acc;
   yield* write({

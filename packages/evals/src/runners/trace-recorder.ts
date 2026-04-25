@@ -66,6 +66,35 @@ export const StreamTerminatedEvent = Schema.Struct({
 });
 export type StreamTerminatedEvent = typeof StreamTerminatedEvent.Type;
 
+// Plan-update events: emitted when the ReAct reducer applies a PLAN_UPDATE
+// AgentTurn envelope from the agent (Gemma or Gemini under T1's runner).
+// Carries the wire-canonical action + stepId + payload so the
+// teacher-data exporter can render the exact envelope the model would
+// emit, training the distillation target to author plans the same way.
+//
+// `payload` is `Schema.Unknown` because PlanUpdate.payload in the React
+// envelope is too — the AnalysisStep schema is decoded inside the
+// supervisor's reducer, so by the time the trace recorder sees it the
+// shape is already validated. Persisting it as `Unknown` keeps the trace
+// schema stable across AnalysisStep changes.
+export const PlanUpdateAction = Schema.Literals([
+  "insert",
+  "replace",
+  "remove",
+  "replace_step",
+] as const);
+export type PlanUpdateAction = typeof PlanUpdateAction.Type;
+
+export const PlanUpdateEvent = Schema.Struct({
+  type: Schema.Literal("plan_update"),
+  ts: Schema.Number,
+  turn: Schema.Number,
+  stepId: Schema.String,
+  action: PlanUpdateAction,
+  payload: Schema.optional(Schema.Unknown),
+});
+export type PlanUpdateEvent = typeof PlanUpdateEvent.Type;
+
 // Token-usage events: emitted per model call (planner or executor) and a
 // single aggregate per task on stream termination. Drives the baseline
 // tokenomics analysis that gates Q6 (Wave 4.6 rolling context activation).
@@ -101,6 +130,7 @@ export const TraceEventSchema = Schema.Union([
   ToolCallEvent,
   ToolResultEvent,
   StatusMarkerEvent,
+  PlanUpdateEvent,
   StreamTerminatedEvent,
   TokenUsageEvent,
   TaskTokenomicsEvent,

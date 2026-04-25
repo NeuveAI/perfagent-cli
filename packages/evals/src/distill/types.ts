@@ -75,4 +75,16 @@ export class ExportOptions extends Schema.Class<ExportOptions>("@evals/distill/E
   granularity: Schema.optional(ExportGranularity),
   teacherModel: Schema.String,
   systemPrompt: Schema.String,
+  /**
+   * When true, apply R4's `rollTrajectory` to per-turn samples so prompt
+   * context for late turns (turn 12+) collapses older assistant/observation
+   * pairs into a single `<trajectory_summary>` block. Keeps training-time
+   * prompt sizes under the same 96K/120K context budget the runtime
+   * enforces (R4), preventing the distillation pipeline from teaching
+   * Gemma to expect a 50K-prompt-token context it'll never see in
+   * production. Defaults to false (existing behavior preserved). Per
+   * R5-T4 brief — applies to per-turn granularity only; per-trajectory
+   * samples are full traces by definition.
+   */
+  rollTrajectory: Schema.optional(Schema.Boolean),
 }) {}

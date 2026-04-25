@@ -13,6 +13,10 @@ import {
   isTraceSuccessful,
   redactSensitiveKeys,
 } from "../src/distill/filters";
+import {
+  parseAgentTurnFromString,
+  PlanUpdate as PlanUpdateTurn,
+} from "@neuve/shared/react-envelope";
 
 const makeTempDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), "teacher-data-"));
 
@@ -384,6 +388,238 @@ describe("TeacherDataExporter", () => {
           })
         : undefined;
     assert.strictEqual(result?.summary.samplesWritten, 3);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("applies rollTrajectory to per-turn samples when option is enabled, keeping prompt context bounded", async () => {
+    // Build a synthetic 14-turn trace — past the N=10 verbatim window — so
+    // rolling actually fires on the late samples. Each turn is
+    // agent_message + tool_call + tool_result so the per-turn split produces
+    // 14 candidate samples.
+    const tempDir = makeTempDir();
+    const tracePath = path.join(tempDir, "real__rolling-test.ndjson");
+    const events: unknown[] = [];
+    for (let turn = 1; turn <= 14; turn += 1) {
+      events.push({
+        type: "agent_message",
+        ts: turn * 10,
+        turn,
+        content: `Turn ${turn} action.`,
+      });
+      events.push({
+        type: "tool_call",
+        ts: turn * 10 + 1,
+        turn,
+        id: `tc-${String(turn).padStart(3, "0")}`,
+        name: "interact",
+        args: JSON.stringify({ command: "click", ref: `[${turn}]` }),
+      });
+      events.push({
+        type: "tool_result",
+        ts: turn * 10 + 2,
+        id: `tc-${String(turn).padStart(3, "0")}`,
+        result: `clicked ${turn}`,
+        ok: true,
+      });
+    }
+    events.push({
+      type: "status_marker",
+      ts: 9999,
+      marker: "RUN_COMPLETED",
+      payload: ["passed", "done"],
+    });
+    events.push({ type: "stream_terminated", ts: 10000, reason: "run_finished:passed", remainingSteps: 0 });
+    writeNdjson(tracePath, events);
+    const task = buildTask("rolling-test", "Click 14 times.");
+
+    const buildEffect = (rolling: boolean) =>
+      Effect.gen(function* () {
+        const exporter = yield* TeacherDataExporter;
+        return yield* exporter.export({
+          tracePaths: [tracePath],
+          tasks: [task],
+          options: new ExportOptions({
+            granularity: "per-turn",
+            teacherModel: SAMPLE_TEACHER,
+            systemPrompt: SAMPLE_SYSTEM_PROMPT,
+            rollTrajectory: rolling,
+          }),
+        });
+      });
+
+    const unrolledExit = await runExportEffect(buildEffect(false));
+    const rolledExit = await runExportEffect(buildEffect(true));
+    assert.strictEqual(unrolledExit._tag, "Success");
+    assert.strictEqual(rolledExit._tag, "Success");
+
+    const unrolledResult =
+      unrolledExit._tag === "Success"
+        ? (unrolledExit.value as {
+            samples: ReadonlyArray<{
+              messages: ReadonlyArray<{ role: string; content: string }>;
+            }>;
+          })
+        : undefined;
+    const rolledResult =
+      rolledExit._tag === "Success"
+        ? (rolledExit.value as {
+            samples: ReadonlyArray<{
+              messages: ReadonlyArray<{ role: string; content: string }>;
+            }>;
+          })
+        : undefined;
+    assert.isDefined(unrolledResult);
+    assert.isDefined(rolledResult);
+    if (!unrolledResult || !rolledResult) return;
+
+    // 14 agent_message turns + 1 RUN_COMPLETED status_marker = 15 assistant
+    // messages, hence 15 per-turn samples. (The status_marker becomes
+    // assistant content via the existing eventsToMessages path; per-turn
+    // splitting then gives it its own sample.)
+    assert.strictEqual(unrolledResult.samples.length, 15);
+    assert.strictEqual(rolledResult.samples.length, 15);
+
+    // The LAST sample's prompt context should be smaller in the rolled
+    // version: rolled keeps last 10 verbatim, summarizes older turns into a
+    // <trajectory_summary> user block; unrolled accumulates all 14 prior
+    // assistant turns + tool messages.
+    const lastUnrolled = unrolledResult.samples[14];
+    const lastRolled = rolledResult.samples[14];
+    const unrolledMessageCount = lastUnrolled.messages.length;
+    const rolledMessageCount = lastRolled.messages.length;
+    assert.isAbove(
+      unrolledMessageCount,
+      rolledMessageCount,
+      "rolled sample has fewer messages than unrolled",
+    );
+    const rolledHasSummary = lastRolled.messages.some((message) =>
+      message.content.includes("<trajectory_summary>"),
+    );
+    assert.isTrue(
+      rolledHasSummary,
+      "<trajectory_summary> block emitted in rolled sample's prompt context",
+    );
+
+    // The TARGET assistant message (the final one) must be preserved
+    // verbatim in both — that's what the model is being trained to emit.
+    const unrolledTarget = lastUnrolled.messages[lastUnrolled.messages.length - 1];
+    const rolledTarget = lastRolled.messages[lastRolled.messages.length - 1];
+    assert.strictEqual(unrolledTarget.role, "assistant");
+    assert.strictEqual(rolledTarget.role, "assistant");
+    assert.strictEqual(rolledTarget.content, unrolledTarget.content);
+
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("renders plan_update events as canonical PLAN_UPDATE AgentTurn JSON envelopes in assistant content", async () => {
+    const tempDir = makeTempDir();
+    const tracePath = path.join(tempDir, "real__plan-update.ndjson");
+    const planUpdateTraceEvents: ReadonlyArray<unknown> = [
+      { type: "agent_message", ts: 1, turn: 1, content: "I will plan the journey." },
+      {
+        type: "plan_update",
+        ts: 2,
+        turn: 1,
+        stepId: "step-01",
+        action: "insert",
+        payload: { id: "step-01", title: "Open landing page" },
+      },
+      {
+        type: "plan_update",
+        ts: 3,
+        turn: 1,
+        stepId: "step-02",
+        action: "remove",
+      },
+      { type: "status_marker", ts: 4, marker: "RUN_COMPLETED", payload: ["passed", "done"] },
+      { type: "stream_terminated", ts: 5, reason: "run_finished:passed", remainingSteps: 0 },
+    ];
+    writeNdjson(tracePath, planUpdateTraceEvents);
+    const task = buildTask("plan-update", "Plan a journey");
+    const effect = Effect.gen(function* () {
+      const exporter = yield* TeacherDataExporter;
+      return yield* exporter.export({
+        tracePaths: [tracePath],
+        tasks: [task],
+        options: new ExportOptions({
+          teacherModel: SAMPLE_TEACHER,
+          systemPrompt: SAMPLE_SYSTEM_PROMPT,
+        }),
+      });
+    });
+    const exit = await runExportEffect(effect);
+    assert.strictEqual(exit._tag, "Success", JSON.stringify(exit));
+    const result =
+      exit._tag === "Success"
+        ? (exit.value as {
+            samples: ReadonlyArray<{
+              messages: ReadonlyArray<{ role: string; content: string }>;
+            }>;
+          })
+        : undefined;
+    assert.isDefined(result);
+    if (result === undefined) return;
+    assert.strictEqual(result.samples.length, 1);
+    const assistantMessages = result.samples[0].messages.filter(
+      (message) => message.role === "assistant",
+    );
+    assert.isAtLeast(assistantMessages.length, 1);
+    const fullAssistantContent = assistantMessages.map((message) => message.content).join("\n");
+    assert.include(
+      fullAssistantContent,
+      `"_tag":"PLAN_UPDATE"`,
+      "PLAN_UPDATE envelope serialized into assistant content",
+    );
+    assert.include(fullAssistantContent, `"action":"insert"`);
+    assert.include(fullAssistantContent, `"action":"remove"`);
+    assert.include(fullAssistantContent, `"stepId":"step-01"`);
+    assert.include(fullAssistantContent, `"stepId":"step-02"`);
+    assert.include(fullAssistantContent, `"title":"Open landing page"`);
+
+    // C2 round-trip contract test: every rendered PLAN_UPDATE envelope MUST
+    // parse back through `parseAgentTurnFromString` to a valid PlanUpdate
+    // instance. Round-tripping pins the schema contract — the exporter
+    // teaches `browsing-gemma` to emit envelopes that the production R3
+    // supervisor's reducer ACCEPTS, not envelopes that it rejects with
+    // schema decode failures (the C2 finding for action="remove" was
+    // missing the required `payload` field). Substring-only assertions
+    // above don't catch missing-required-field bugs.
+    const planUpdateLines: string[] = [];
+    for (const message of assistantMessages) {
+      const lines = message.content.split("\n");
+      for (const line of lines) {
+        if (line.includes(`"_tag":"PLAN_UPDATE"`)) planUpdateLines.push(line);
+      }
+    }
+    assert.strictEqual(
+      planUpdateLines.length,
+      2,
+      "two PLAN_UPDATE envelopes (insert + remove) emitted in assistant content",
+    );
+    for (const line of planUpdateLines) {
+      const decoded = await Effect.runPromise(parseAgentTurnFromString(line));
+      assert.instanceOf(
+        decoded,
+        PlanUpdateTurn,
+        `rendered PLAN_UPDATE envelope round-trips through parseAgentTurnFromString as PlanUpdate: ${line}`,
+      );
+    }
+    const removeLine = planUpdateLines.find((line) => line.includes(`"action":"remove"`));
+    assert.isDefined(removeLine, "remove-action envelope present");
+    if (removeLine !== undefined) {
+      const decoded = await Effect.runPromise(parseAgentTurnFromString(removeLine));
+      assert.instanceOf(decoded, PlanUpdateTurn);
+      if (decoded instanceof PlanUpdateTurn) {
+        assert.strictEqual(decoded.action, "remove");
+        assert.strictEqual(decoded.stepId, "step-02");
+        assert.strictEqual(
+          decoded.payload,
+          null,
+          "remove-action payload renders as null (Schema.Unknown accepts null) so parseAgentTurn doesn't reject the envelope",
+        );
+      }
+    }
+
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 

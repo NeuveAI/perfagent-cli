@@ -5,6 +5,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import type { EvalTask } from "../task";
 import { TraceEventSchema, type TraceEvent } from "../runners/trace-recorder";
+import { rollTrajectory } from "@neuve/shared/trajectory";
 import { containsSensitiveData, isTraceSuccessful, redactSensitiveKeys } from "./filters";
 import {
   ExportOptions,
@@ -245,8 +246,37 @@ const eventsToMessages = (
       pushAssistantText(acc, acc.currentAssistantTurn ?? 0, markerLine);
       continue;
     }
-    // stream_terminated is a harness-level signal, not a learnable action.
-    // Skip — the teacher did not emit it.
+    if (event.type === "plan_update") {
+      // Render PLAN_UPDATE as the canonical AgentTurn JSON envelope so the
+      // distillation target learns to emit the exact wire format the
+      // supervisor's reducer consumes. Mirrors the shape of Gemma's
+      // grammar-constrained output verbatim — `_tag: "PLAN_UPDATE"`, plus
+      // stepId, action, payload — so a fine-tuned `browsing-gemma` learns
+      // to author plans the way the production runtime expects.
+      //
+      // R1's `PlanUpdate` schema declares `payload: Schema.Unknown`
+      // (REQUIRED, not optional). For action="remove" the trace event
+      // legitimately has no payload (R3's `applyPlanUpdate` ignores
+      // payload for remove per T1 decision 4), but the envelope
+      // produced here MUST still include the field — otherwise
+      // `parseAgentTurn` rejects the rendered teacher-data sample as
+      // schema-invalid (the C2 review finding) and the LoRA learns to
+      // emit envelopes the production reducer would discard.
+      // `Schema.Unknown` accepts `null`, so we render `payload: null`
+      // when the trace event omits it. Future-proof against R1 schema
+      // tightening: if `payload` ever becomes typed, the round-trip
+      // unit test pins this contract.
+      const envelope: Record<string, unknown> = {
+        _tag: "PLAN_UPDATE",
+        stepId: event.stepId,
+        action: event.action,
+        payload: event.payload === undefined ? null : redactSensitiveKeys(event.payload),
+      };
+      pushAssistantText(acc, event.turn, JSON.stringify(envelope));
+      continue;
+    }
+    // stream_terminated, token_usage, task_tokenomics are harness-level
+    // signals — not a learnable action the model emits. Skip.
   }
   flushAssistant(acc);
   return acc.messages;
@@ -270,6 +300,54 @@ const splitMessagesPerTurn = (
     context.push(message);
   }
   return samples;
+};
+
+/**
+ * Rolls the prior-turn context inside a per-turn sample so older
+ * assistant/observation pairs collapse into a single
+ * `<trajectory_summary>` block while the most-recent N=10 stay verbatim.
+ * The TARGET assistant message (the last one in the sample) is preserved
+ * verbatim — that's what the model is being trained to emit, so its
+ * shape (including tool calls) cannot be summarized.
+ *
+ * Role remapping: the exporter emits tool messages as `role: "tool"` per
+ * the OpenAI chat shape, but `rollTrajectory.partitionTrajectory` looks
+ * for `role: "user"` observations. Tool results are structurally
+ * observations — same conversation position the user role occupies in
+ * the runtime ReAct loop — so we remap `tool → user` before rolling.
+ * The rolled output drops tool-call structure on older turns by design:
+ * that detail lives in those turns' OWN per-turn samples; what matters
+ * for the LATE-turn sample is the prompt-context size, not preserving
+ * earlier tool-call training data here.
+ */
+const remapRoleForRolling = (role: TrainingMessage["role"]): "system" | "user" | "assistant" =>
+  role === "tool" ? "user" : role;
+
+const applyTrajectoryRollToSample = (
+  sample: ReadonlyArray<TrainingMessage>,
+): ReadonlyArray<TrainingMessage> => {
+  if (sample.length === 0) return sample;
+  const lastIndex = sample.length - 1;
+  const target = sample[lastIndex];
+  if (target.role !== "assistant") return sample;
+  const prior = sample.slice(0, lastIndex);
+  const rolled = rollTrajectory(
+    prior.map((message) => ({
+      role: remapRoleForRolling(message.role),
+      content: message.content,
+    })),
+  );
+  const rolledMessages: TrainingMessage[] = [];
+  for (const rolledMessage of rolled.messages) {
+    rolledMessages.push(
+      new TrainingMessage({
+        role: rolledMessage.role as TrainingMessage["role"],
+        content: rolledMessage.content,
+      }),
+    );
+  }
+  rolledMessages.push(target);
+  return rolledMessages;
 };
 
 const hashMessages = (messages: ReadonlyArray<TrainingMessage>): string => {
@@ -364,10 +442,12 @@ export class TeacherDataExporter extends ServiceMap.Service<
       }
 
       const granularity: ExportGranularity = input.options.granularity ?? "per-trajectory";
+      const shouldRollTrajectory = input.options.rollTrajectory ?? false;
       yield* Effect.annotateCurrentSpan({
         traceCount: input.tracePaths.length,
         taskCount: input.tasks.length,
         granularity,
+        rollTrajectory: shouldRollTrajectory,
       });
 
       const samples: TrainingSample[] = [];
@@ -408,8 +488,12 @@ export class TeacherDataExporter extends ServiceMap.Service<
 
         const messages = eventsToMessages(events, input.options.systemPrompt, task.prompt);
 
-        const candidateMessageSets: ReadonlyArray<ReadonlyArray<TrainingMessage>> =
+        const rawCandidateSets: ReadonlyArray<ReadonlyArray<TrainingMessage>> =
           granularity === "per-turn" ? splitMessagesPerTurn(messages) : [messages];
+        const candidateMessageSets: ReadonlyArray<ReadonlyArray<TrainingMessage>> =
+          granularity === "per-turn" && shouldRollTrajectory
+            ? rawCandidateSets.map((sample) => applyTrajectoryRollToSample(sample))
+            : rawCandidateSets;
 
         let acceptedFromThisTrace = 0;
         for (const messageSet of candidateMessageSets) {
