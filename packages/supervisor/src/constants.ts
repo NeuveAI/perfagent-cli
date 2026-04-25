@@ -22,6 +22,10 @@ export const REPORT_ANALYSIS_PREVIEW_CHARS = 4000;
 
 export const ALL_STEPS_TERMINAL_GRACE_MS = 2 * 60 * 1000;
 
+export const REACT_PLAN_UPDATE_CAP = 5;
+export const REACT_REFLECT_THRESHOLD = 2;
+export const REACT_PREMATURE_RUN_WINDOW = 3;
+
 export const FRAMEWORK_DEFAULT_PORTS: Record<string, number> = {
   next: 3000,
   vite: 5173,
