@@ -737,6 +737,24 @@ export class RunFinished extends Schema.TaggedClass<RunFinished>()("RunFinished"
   }
 }
 
+export const PlanUpdateAction = Schema.Literals([
+  "insert",
+  "replace",
+  "remove",
+  "replace_step",
+] as const);
+export type PlanUpdateAction = typeof PlanUpdateAction.Type;
+
+export class PlanUpdate extends Schema.TaggedClass<PlanUpdate>()("PlanUpdate", {
+  stepId: StepId,
+  action: PlanUpdateAction,
+  payload: Schema.Unknown,
+}) {
+  get id(): string {
+    return `plan-update-${this.action}-${this.stepId}`;
+  }
+}
+
 const serializeToolResult = (value: unknown): string => {
   if (
     typeof value === "string" ||
@@ -887,6 +905,7 @@ export const ExecutionEvent = Schema.Union([
   AgentThinking,
   AgentText,
   RunFinished,
+  PlanUpdate,
 ]);
 export type ExecutionEvent = typeof ExecutionEvent.Type;
 
@@ -1101,6 +1120,48 @@ export class ExecutedPerfPlan extends PerfPlan.extend<ExecutedPerfPlan>(
     }
 
     return this;
+  }
+
+  applyPlanUpdate(update: PlanUpdate): ExecutedPerfPlan {
+    const eventsWithUpdate = [...this.events, update];
+
+    if (update.action === "remove") {
+      return new ExecutedPerfPlan({
+        ...this,
+        steps: this.steps.filter((step) => step.id !== update.stepId),
+        events: eventsWithUpdate,
+      });
+    }
+
+    if (!(update.payload instanceof AnalysisStep)) {
+      throw new Error(
+        `applyPlanUpdate: action "${update.action}" requires payload to be an AnalysisStep instance; ` +
+          `got ${update.payload === undefined ? "undefined" : typeof update.payload}. ` +
+          `Decode the wire payload upstream before constructing the PlanUpdate event.`,
+      );
+    }
+
+    const newStep = update.payload;
+
+    if (update.action === "replace" || update.action === "replace_step") {
+      return new ExecutedPerfPlan({
+        ...this,
+        steps: this.steps.map((step) => (step.id === update.stepId ? newStep : step)),
+        events: eventsWithUpdate,
+      });
+    }
+
+    const targetIndex = this.steps.findIndex((step) => step.id === update.stepId);
+    const insertedSteps =
+      targetIndex === -1
+        ? [...this.steps, newStep]
+        : [...this.steps.slice(0, targetIndex), newStep, ...this.steps.slice(targetIndex)];
+
+    return new ExecutedPerfPlan({
+      ...this,
+      steps: insertedSteps,
+      events: eventsWithUpdate,
+    });
   }
 
   finalizeTextBlock(): ExecutedPerfPlan {

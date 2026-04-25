@@ -76,9 +76,7 @@ const formatEvent = (event: ExecutionEvent, stepNumberByStepId: Map<string, numb
     }),
     Match.tag("ToolCall", (call) => {
       const formatted = formatToolCall(call.toolName, call.input);
-      const detail = formatted.args
-        ? `${formatted.name}  ${formatted.args}`
-        : formatted.name;
+      const detail = formatted.args ? `${formatted.name}  ${formatted.args}` : formatted.name;
       return {
         tag: "tool",
         label: "tool",
@@ -116,6 +114,12 @@ const formatEvent = (event: ExecutionEvent, stepNumberByStepId: Map<string, numb
       detail: `status=${finished.status}`,
       color: finished.status === "passed" ? COLORS.GREEN : COLORS.RED,
     })),
+    Match.tag("PlanUpdate", (planUpdate) => ({
+      tag: "plan",
+      label: planUpdate.action,
+      detail: `step=${planUpdate.stepId}`,
+      color: COLORS.DIM,
+    })),
     Match.exhaustive,
   );
 
@@ -141,10 +145,7 @@ export const RawEventsOverlay = (props: RawEventsOverlayProps) => {
   );
 
   const visibleRows = () =>
-    Math.max(
-      MIN_VISIBLE_ROWS,
-      Math.floor(dimensions().height * 0.7) - OVERLAY_CHROME_ROWS,
-    );
+    Math.max(MIN_VISIBLE_ROWS, Math.floor(dimensions().height * 0.7) - OVERLAY_CHROME_ROWS);
 
   const [selectedIndex, setSelectedIndex] = createSignal(0);
   const [scrollOffset, setScrollOffset] = createSignal(0);
