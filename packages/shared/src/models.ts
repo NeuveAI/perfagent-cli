@@ -7,6 +7,7 @@ import {
   formatCwvTarget,
   formatCwvValue,
 } from "./cwv-thresholds";
+import { AgentTurn } from "./react-envelope";
 
 export interface SavedFlowStep {
   id: string;
@@ -235,6 +236,11 @@ export class AcpUsageUpdate extends Schema.Class<AcpUsageUpdate>("AcpUsageUpdate
   }
 }
 
+export class AcpAgentTurnUpdate extends Schema.Class<AcpAgentTurnUpdate>("AcpAgentTurnUpdate")({
+  sessionUpdate: Schema.Literal("agent_turn"),
+  agentTurn: AgentTurn,
+}) {}
+
 export const AcpSessionUpdate = Schema.Union([
   AcpAgentMessageChunk,
   AcpAgentThoughtChunk,
@@ -247,6 +253,7 @@ export const AcpSessionUpdate = Schema.Union([
   AcpConfigOptionUpdate,
   AcpSessionInfoUpdate,
   AcpUsageUpdate,
+  AcpAgentTurnUpdate,
 ]);
 export type AcpSessionUpdate = typeof AcpSessionUpdate.Type;
 
