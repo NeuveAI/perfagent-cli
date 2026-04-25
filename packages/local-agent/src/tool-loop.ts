@@ -12,6 +12,7 @@ import {
   Thought,
   parseAgentTurnFromString,
 } from "@neuve/shared/react-envelope";
+import { rollTrajectory } from "@neuve/shared/trajectory";
 
 import type {
   OllamaClient,
@@ -106,15 +107,24 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     if (signal.aborted) return;
 
+    // R4 trajectory rolling: keep the full chat history in `messages` so the
+    // post-loop session caller can replay/inspect it, but send only the
+    // rolled view to Ollama. Older assistant/observation pairs collapse into
+    // a single `<trajectory_summary>` block; the most recent N=10 pairs stay
+    // verbatim. See `packages/shared/src/trajectory.ts` and PRD §R4.
+    const rolled = rollTrajectory(messages);
     log("calling ollama", {
       round,
       messageCount: messages.length,
+      sentMessageCount: rolled.messages.length,
+      summarizedTurns: rolled.summarizedTurnCount,
+      verbatimTurns: rolled.verbatimTurnCount,
       toolCount: tools.length,
     });
 
     const result = await Effect.runPromise(
       ollamaClient.chat({
-        messages,
+        messages: rolled.messages,
         tools,
         format: AGENT_TURN_FORMAT,
         signal,
