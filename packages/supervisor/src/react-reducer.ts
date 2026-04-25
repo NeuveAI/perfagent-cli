@@ -30,13 +30,20 @@ export class ReactRunState extends Schema.Class<ReactRunState>("@supervisor/Reac
   planUpdateCount: Schema.Number,
   consecutiveAssertionFailures: Schema.Record(Schema.String, Schema.Number),
   lastTurnTag: Schema.optional(Schema.String),
+  // R4 budget monitor: once we've emitted a warn or abort signal for this run,
+  // we don't re-emit on every subsequent usage_update. A run with prompt
+  // tokens parked above the warn threshold logs the warning once.
+  budgetExceeded: Schema.Boolean,
 }) {
   static readonly initial: ReactRunState = new ReactRunState({
     planUpdateCount: 0,
     consecutiveAssertionFailures: {},
     lastTurnTag: undefined,
+    budgetExceeded: false,
   });
 }
+
+export type ReducerSignalLevel = "warn" | "abort";
 
 export type ReducerSignal = Data.TaggedEnum<{
   ReflectTriggered: { readonly stepId: StepId; readonly failureCount: number };
@@ -54,6 +61,11 @@ export type ReducerSignal = Data.TaggedEnum<{
     readonly stepId: StepId;
     readonly action: PlanUpdateTurn["action"];
     readonly cause: string;
+  };
+  BudgetExceeded: {
+    readonly level: ReducerSignalLevel;
+    readonly promptTokens: number;
+    readonly threshold: number;
   };
 }>;
 export const ReducerSignal = Data.taggedEnum<ReducerSignal>();

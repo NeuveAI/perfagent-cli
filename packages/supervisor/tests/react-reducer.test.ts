@@ -125,6 +125,7 @@ describe("reduceAgentTurn — STEP_DONE", () => {
       planUpdateCount: 0,
       consecutiveAssertionFailures: { "step-01": 2, "step-02": 1 },
       lastTurnTag: "ASSERTION_FAILED",
+      budgetExceeded: false,
     });
     const turn = new StepDone({ stepId: "step-01", summary: "Landed on homepage" });
 
@@ -175,6 +176,7 @@ describe("reduceAgentTurn — ASSERTION_FAILED", () => {
       planUpdateCount: 0,
       consecutiveAssertionFailures: { "step-01": 1 },
       lastTurnTag: "ASSERTION_FAILED",
+      budgetExceeded: false,
     });
     const turn = new AssertionFailed({
       stepId: "step-01",
@@ -202,6 +204,7 @@ describe("reduceAgentTurn — ASSERTION_FAILED", () => {
       planUpdateCount: 0,
       consecutiveAssertionFailures: { "step-01": 1 },
       lastTurnTag: "ASSERTION_FAILED",
+      budgetExceeded: false,
     });
     const turn = new AssertionFailed({
       stepId: "step-02",

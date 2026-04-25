@@ -26,6 +26,15 @@ export const REACT_PLAN_UPDATE_CAP = 5;
 export const REACT_REFLECT_THRESHOLD = 2;
 export const REACT_PREMATURE_RUN_WINDOW = 3;
 
+// Wave R4 prompt-budget thresholds. Gemma 4 E4B advertises a 128K context
+// (`ollama show gemma4:e4b` confirms `num_ctx=131072`); we keep a safety
+// margin so a runaway trajectory doesn't silently truncate at the model
+// boundary. Numbers are PRD §R4 verbatim (warn at ≈75% of 128K, abort at
+// ≈93.75%) and not subject to ad-hoc tuning without re-validating against
+// `docs/handover/q9-tool-call-gap/diary/rebaseline-2026-04-25.md` Probe D.
+export const REACT_BUDGET_WARN_TOKENS = 96_000;
+export const REACT_BUDGET_ABORT_TOKENS = 120_000;
+
 export const FRAMEWORK_DEFAULT_PORTS: Record<string, number> = {
   next: 3000,
   vite: 5173,

@@ -6,11 +6,16 @@ import {
   AcpAgentTurnUpdate,
   AcpSessionUpdate,
   AcpToolCallUpdate,
+  AcpUsageUpdate,
   AnalysisStep,
   ChangesFor,
   ExecutedPerfPlan,
   StepId,
 } from "@neuve/shared/models";
+import {
+  REACT_BUDGET_ABORT_TOKENS,
+  REACT_BUDGET_WARN_TOKENS,
+} from "../src/constants";
 import {
   Action,
   AssertionFailed,
@@ -453,6 +458,150 @@ describe("Executor — react-mode wire (agent_turn → reducer)", () => {
     ) {
       expect(agentThinkingEvents[0].text).toBe("First step thinking.");
       expect(agentThinkingEvents[1].text).toBe("Second step thinking.");
+    }
+  });
+
+  it("budget warn — logs once when prompt tokens cross 96K, does not abort", async () => {
+    const steps = [makeStep("step-01", "Navigate")];
+    const usage = (promptTokens: number): AcpSessionUpdate =>
+      new AcpUsageUpdate({
+        sessionUpdate: "usage_update",
+        size: 131_072,
+        used: promptTokens,
+        _meta: {
+          promptTokens,
+          completionTokens: 100,
+          totalTokens: promptTokens + 100,
+        },
+      });
+    const updates: AcpSessionUpdate[] = [
+      // First call crosses warn → warn fires
+      usage(REACT_BUDGET_WARN_TOKENS + 1),
+      // Second call still above warn but warn-once guard suppresses it
+      usage(REACT_BUDGET_WARN_TOKENS + 5_000),
+      // Third call back below threshold (no-op)
+      usage(REACT_BUDGET_WARN_TOKENS - 1_000),
+      wrapAgentTurn(new StepDone({ stepId: "step-01", summary: "ok" })),
+      wrapAgentTurn(new RunCompletedTurn({ status: "passed", summary: "done" })),
+    ];
+
+    const warnings: { message: string; level: string }[] = [];
+    const capturingLogger = Logger.make((options) => {
+      warnings.push({
+        level: String(options.logLevel),
+        message: Array.isArray(options.message)
+          ? options.message.map((part) => String(part)).join(" ")
+          : String(options.message),
+      });
+    });
+    const logCapture = Logger.layer([capturingLogger]);
+
+    const emitted = await Effect.runPromise(
+      runExecutor(updates, steps).pipe(Effect.provide(logCapture)),
+    );
+    const final = lastPlanOf(emitted);
+
+    const budgetWarnings = warnings.filter(
+      (entry) => entry.level === "Warn" && entry.message.includes("react-budget-exceeded"),
+    );
+    expect(budgetWarnings).toHaveLength(1);
+    expect(final.hasRunFinished).toBe(true);
+    const runFinished = final.events.find((event) => event._tag === "RunFinished");
+    if (runFinished?._tag === "RunFinished") {
+      expect(runFinished.status).toBe("passed");
+      expect(runFinished.abort).toBeUndefined();
+    }
+  });
+
+  it("budget abort — synthesizes a context-budget-exceeded RunFinished when prompt tokens cross 120K", async () => {
+    const steps = [makeStep("step-01", "Navigate")];
+    const usageBeyondAbort = new AcpUsageUpdate({
+      sessionUpdate: "usage_update",
+      size: 131_072,
+      used: REACT_BUDGET_ABORT_TOKENS + 5_000,
+      _meta: {
+        promptTokens: REACT_BUDGET_ABORT_TOKENS + 5_000,
+        completionTokens: 200,
+        totalTokens: REACT_BUDGET_ABORT_TOKENS + 5_200,
+      },
+    });
+    // After abort RunFinished is appended, the executor's takeUntil should
+    // halt the stream — anything after this is ignored.
+    const updates: AcpSessionUpdate[] = [
+      usageBeyondAbort,
+      wrapAgentTurn(new RunCompletedTurn({ status: "passed", summary: "should-not-arrive" })),
+    ];
+
+    const warnings: { message: string; level: string }[] = [];
+    const capturingLogger = Logger.make((options) => {
+      warnings.push({
+        level: String(options.logLevel),
+        message: Array.isArray(options.message)
+          ? options.message.map((part) => String(part)).join(" ")
+          : String(options.message),
+      });
+    });
+    const logCapture = Logger.layer([capturingLogger]);
+
+    const emitted = await Effect.runPromise(
+      runExecutor(updates, steps).pipe(Effect.provide(logCapture)),
+    );
+    const final = lastPlanOf(emitted);
+
+    expect(final.hasRunFinished).toBe(true);
+    const runFinished = final.events.find((event) => event._tag === "RunFinished");
+    expect(runFinished?._tag).toBe("RunFinished");
+    if (runFinished?._tag === "RunFinished") {
+      expect(runFinished.status).toBe("failed");
+      expect(runFinished.abort).toBeDefined();
+      expect(runFinished.abort?.reason).toBe("context-budget-exceeded");
+      expect(runFinished.summary).toContain(String(REACT_BUDGET_ABORT_TOKENS + 5_000));
+    }
+
+    const budgetWarnings = warnings.filter(
+      (entry) => entry.level === "Warn" && entry.message.includes("react-budget-exceeded"),
+    );
+    expect(budgetWarnings.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("budget abort — flows through the adherence gate (abort RunFinished is accepted, not rejected)", async () => {
+    // Per executor.ts:183 — gate accepts any RunFinished with abort.reason set.
+    // The synthesized budget-exceeded RunFinished must satisfy this rule so the
+    // run doesn't get filtered out by the premature-completed guard.
+    const steps = [
+      makeStep("step-01", "Navigate"),
+      makeStep("step-02", "Click"),
+      makeStep("step-03", "Verify"),
+    ];
+    const updates: AcpSessionUpdate[] = [
+      // A StepFailed near the end — without abort.reason, the R3 gate would
+      // reject a passed RUN_COMPLETED. The budget abort must NOT be filtered.
+      wrapAgentTurn(
+        new AssertionFailed({
+          stepId: "step-02",
+          category: "regression",
+          domain: "perf",
+          reason: "perf regression",
+          evidence: "lcp=4500ms",
+        }),
+      ),
+      new AcpUsageUpdate({
+        sessionUpdate: "usage_update",
+        _meta: {
+          promptTokens: REACT_BUDGET_ABORT_TOKENS + 100,
+          completionTokens: 100,
+          totalTokens: REACT_BUDGET_ABORT_TOKENS + 200,
+        },
+      }),
+    ];
+
+    const emitted = await Effect.runPromise(runExecutor(updates, steps));
+    const final = lastPlanOf(emitted);
+
+    expect(final.hasRunFinished).toBe(true);
+    const runFinished = final.events.find((event) => event._tag === "RunFinished");
+    if (runFinished?._tag === "RunFinished") {
+      expect(runFinished.abort?.reason).toBe("context-budget-exceeded");
     }
   });
 

@@ -16,12 +16,14 @@ import {
   type CommitSummary,
   ExecutedPerfPlan,
   PlanId,
+  RunFinished,
   RunStarted,
   type SavedFlow,
   PerfPlan,
   type ExecutionEvent,
 } from "@neuve/shared/models";
 import { ReactRunState, ReducerSignal, reduceAgentTurn } from "./react-reducer";
+import { evaluateBudget } from "./budget-monitor";
 import {
   buildExecutionPrompt,
   buildExecutionSystemPrompt,
@@ -117,12 +119,30 @@ const logReducerSignal = Effect.fn("Executor.logReducerSignal")(function* (signa
     });
     return;
   }
-  yield* Effect.logWarning("react-invalid-plan-update-payload", {
-    stepId: signal.stepId,
-    action: signal.action,
-    cause: signal.cause,
-  });
+  if (signal._tag === "InvalidPlanUpdatePayload") {
+    yield* Effect.logWarning("react-invalid-plan-update-payload", {
+      stepId: signal.stepId,
+      action: signal.action,
+      cause: signal.cause,
+    });
+    return;
+  }
+  if (signal._tag === "BudgetExceeded") {
+    yield* Effect.logWarning("react-budget-exceeded", {
+      level: signal.level,
+      promptTokens: signal.promptTokens,
+      threshold: signal.threshold,
+    });
+    return;
+  }
 });
+
+const buildBudgetAbortRunFinished = (promptTokens: number): RunFinished =>
+  new RunFinished({
+    status: "failed",
+    summary: `Context budget exceeded: ${promptTokens} prompt tokens`,
+    abort: { reason: "context-budget-exceeded" },
+  });
 
 const resolveTerminalTimestamp = (executed: ExecutedPerfPlan, previous: number | undefined) => {
   if (!executed.allStepsTerminal) return undefined;
@@ -386,6 +406,22 @@ export class Executor extends ServiceMap.Service<Executor>()("@supervisor/Execut
                 isReactSkippedDisplayUpdate(part.sessionUpdate)
               ) {
                 updated = state.plan;
+              } else if (part.sessionUpdate === "usage_update") {
+                const promptTokens = part.promptTokens ?? 0;
+                const evaluation = evaluateBudget(promptTokens, state.runState);
+                for (const signal of evaluation.signals) {
+                  yield* logReducerSignal(signal);
+                }
+                nextRunState = evaluation.runState;
+                if (evaluation.shouldAbort) {
+                  const abortEvent = buildBudgetAbortRunFinished(promptTokens);
+                  updated = new ExecutedPerfPlan({
+                    ...state.plan,
+                    events: [...state.plan.events, abortEvent],
+                  });
+                } else {
+                  updated = state.plan;
+                }
               } else {
                 updated = state.plan.addEvent(part);
               }
