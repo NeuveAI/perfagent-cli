@@ -1,0 +1,34 @@
+[
+  {
+    "label": "small",
+    "chars": 1948,
+    "estimatedTokens": 488,
+    "reportedPromptTokens": 576,
+    "completionTokens": 55,
+    "elapsedMs": 8385
+  },
+  {
+    "label": "medium",
+    "chars": 11323,
+    "estimatedTokens": 2831,
+    "reportedPromptTokens": 3096,
+    "completionTokens": 41,
+    "elapsedMs": 5942
+  },
+  {
+    "label": "large",
+    "chars": 37473,
+    "estimatedTokens": 9369,
+    "reportedPromptTokens": 4096,
+    "completionTokens": 2,
+    "elapsedMs": 7049
+  },
+  {
+    "label": "huge",
+    "chars": 112173,
+    "estimatedTokens": 28044,
+    "reportedPromptTokens": 4096,
+    "completionTokens": 2,
+    "elapsedMs": 7677
+  }
+]
