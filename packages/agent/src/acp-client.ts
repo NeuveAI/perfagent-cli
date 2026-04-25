@@ -8,6 +8,7 @@ import {
   Config,
   Duration,
   Effect,
+  Exit,
   FiberMap,
   FileSystem,
   Filter,
@@ -23,11 +24,13 @@ import {
   String as Str,
 } from "effect";
 import {
+  AcpAgentTurnUpdate,
   AcpConfigOption,
   AcpConfigOptionUpdate,
   AcpSessionUpdate,
   AgentProvider,
 } from "@neuve/shared/models";
+import { AgentTurn } from "@neuve/shared/react-envelope";
 import { hasStringMessage } from "@neuve/shared/utils";
 import { detectLaunchedFrom } from "@neuve/shared/launched-from";
 import { buildLocalAgentSystemPrompt } from "@neuve/shared/prompts";
@@ -677,6 +680,19 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@neuve/AcpClient
       return Option.none();
     };
 
+    const decodeAgentTurnUnknownExit = Schema.decodeUnknownExit(AgentTurn);
+
+    const offerSessionUpdate = (sessionId: string, decoded: AcpSessionUpdate): void => {
+      const updatesQueue = sessionUpdatesMap.get(SessionId.makeUnsafe(sessionId));
+      if (updatesQueue === undefined) {
+        const pending = pendingUpdatesBuffer.get(sessionId) ?? [];
+        pending.push(decoded);
+        pendingUpdatesBuffer.set(sessionId, pending);
+        return;
+      }
+      Queue.offerUnsafe(updatesQueue, decoded);
+    };
+
     const client: acp.Client = {
       requestPermission: (params) =>
         Promise.resolve({
@@ -691,17 +707,44 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@neuve/AcpClient
       sessionUpdate: async ({ sessionId, update }) => {
         try {
           const decoded = Schema.decodeUnknownSync(AcpSessionUpdate)(update);
-          const updatesQueue = sessionUpdatesMap.get(SessionId.makeUnsafe(sessionId));
-          if (updatesQueue === undefined) {
-            const pending = pendingUpdatesBuffer.get(sessionId) ?? [];
-            pending.push(decoded);
-            pendingUpdatesBuffer.set(sessionId, pending);
-            return;
-          }
-          Queue.offerUnsafe(updatesQueue, decoded);
+          offerSessionUpdate(sessionId, decoded);
         } catch {
           // HACK: unknown session update types from newer ACP servers are silently dropped
         }
+      },
+      extNotification: async (method, params) => {
+        if (method !== "_neuve/agent_turn") {
+          return;
+        }
+        const sessionId =
+          typeof params["sessionId"] === "string" ? params["sessionId"] : undefined;
+        if (sessionId === undefined) {
+          Effect.runSync(
+            Effect.logWarning("malformed _neuve/agent_turn — missing sessionId; payload dropped", {
+              method,
+            }),
+          );
+          return;
+        }
+        const decodeExit = decodeAgentTurnUnknownExit(params["agentTurn"]);
+        if (Exit.isFailure(decodeExit)) {
+          Effect.runSync(
+            Effect.logWarning(
+              "malformed _neuve/agent_turn — AgentTurn schema decode failed; payload dropped",
+              {
+                method,
+                sessionId,
+                cause: String(decodeExit.cause),
+              },
+            ),
+          );
+          return;
+        }
+        const turnUpdate = new AcpAgentTurnUpdate({
+          sessionUpdate: "agent_turn",
+          agentTurn: decodeExit.value,
+        });
+        offerSessionUpdate(sessionId, turnUpdate);
       },
     };
 
@@ -981,7 +1024,8 @@ export class AcpClient extends ServiceMap.Service<AcpClient>()("@neuve/AcpClient
         update.sessionUpdate === "agent_thought_chunk" ||
         update.sessionUpdate === "tool_call" ||
         update.sessionUpdate === "tool_call_update" ||
-        update.sessionUpdate === "plan";
+        update.sessionUpdate === "plan" ||
+        update.sessionUpdate === "agent_turn";
 
       return Stream.fromQueue(updatesQueue).pipe(
         Stream.tap((update) =>

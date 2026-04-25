@@ -186,6 +186,27 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
       return;
     }
 
+    // Emit the structured AgentTurn FIRST per R3 wire contract — supervisor's
+    // ReAct reducer needs the typed envelope before any display-oriented update
+    // arrives so REFLECT / cap-exceeded signals stay ordered with the next-turn
+    // prompt assembly. Display updates below follow for UI compatibility.
+    // The SDK's `session/update` channel is closed-union zod-validated at
+    // runtime, so we use the SDK-blessed `extNotification` extension method
+    // with the `_neuve/agent_turn` method name. The supervisor-side acp-client
+    // implements `extNotification` to synthesize an `AcpAgentTurnUpdate` and
+    // offer it to the session updates queue.
+    await connection.extNotification(
+      "_neuve/agent_turn",
+      // HACK: SDK extNotification typed as Record<string, unknown>; the AgentTurn
+      // Schema.Class instance is not directly assignable but JSON-serializes
+      // cleanly through JSON-RPC via JSON.stringify (its `_tag` and field
+      // properties are enumerable own properties).
+      {
+        sessionId,
+        agentTurn: envelope,
+      } as unknown as Record<string, unknown>,
+    );
+
     if (envelope instanceof Thought) {
       await connection.sessionUpdate({
         sessionId,

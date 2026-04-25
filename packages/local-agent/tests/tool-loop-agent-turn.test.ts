@@ -31,19 +31,32 @@ interface RecordedToolCall {
   readonly args: Record<string, unknown>;
 }
 
+interface RecordedExtNotification {
+  readonly method: string;
+  readonly params: Record<string, unknown>;
+}
+
 const makeRecordingConnection = (): {
   connection: acp.AgentSideConnection;
   updates: RecordedSessionUpdate[];
+  extNotifications: RecordedExtNotification[];
 } => {
   const updates: RecordedSessionUpdate[] = [];
+  const extNotifications: RecordedExtNotification[] = [];
   const connection = {
     sessionUpdate: async (
       params: acp.SessionNotification,
     ): Promise<void> => {
       updates.push({ sessionId: params.sessionId, update: params.update });
     },
+    extNotification: async (
+      method: string,
+      params: Record<string, unknown>,
+    ): Promise<void> => {
+      extNotifications.push({ method, params });
+    },
   } as unknown as acp.AgentSideConnection;
-  return { connection, updates };
+  return { connection, updates, extNotifications };
 };
 
 const makeScriptedClient = (
