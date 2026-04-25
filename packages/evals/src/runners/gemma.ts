@@ -18,7 +18,11 @@ import { GEMMA_RUNNER_NAME } from "./runner-names";
 
 export const GEMMA_DEFAULT_MODEL = "gemma4:e4b";
 export const GEMMA_DEFAULT_BASE_URL = "http://localhost:11434/v1/";
-const DEFAULT_PLANNER_MODE: PlannerMode = "template";
+// Production default: Gemma owns plan authorship via PLAN_UPDATE envelopes
+// inside the ReAct loop (R3+R4 wiring). PRD §R5 line 276 + project_react_migration_plan.md
+// flip target. Legacy `template` and `oracle-plan` modes stay reachable via
+// the option override + the `gemma-oracle-plan` debug runner.
+const DEFAULT_PLANNER_MODE: PlannerMode = "gemma-react";
 const DEFAULT_TRACE_DIR = "evals/traces";
 
 export interface GemmaRunnerOptions {

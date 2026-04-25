@@ -5,7 +5,7 @@ export const PLANNER_MODES = ["oracle-plan", "template", "none", "gemma-react"] 
 export const PlannerMode = Schema.Literals(PLANNER_MODES);
 export type PlannerMode = typeof PlannerMode.Type;
 
-export const DEFAULT_PLANNER_MODE: PlannerMode = "oracle-plan";
+export const DEFAULT_PLANNER_MODE: PlannerMode = "gemma-react";
 
 export const isPlannerMode = (value: string): value is PlannerMode =>
   (PLANNER_MODES as readonly string[]).includes(value);
