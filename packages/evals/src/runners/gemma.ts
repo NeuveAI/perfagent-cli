@@ -29,6 +29,14 @@ export interface GemmaRunnerOptions {
   readonly traceDir?: string;
   readonly isHeadless?: boolean;
   readonly evalBaseUrl?: string;
+  /**
+   * Runner identifier used in trace filenames, log annotations, and the
+   * scoreboard column. Defaults to GEMMA_RUNNER_NAME ("gemma"). The
+   * gemma-oracle-plan debug runner overrides this to keep its trace files
+   * separate from the production gemma runner so A:B regressions can compare
+   * them side-by-side.
+   */
+  readonly runnerName?: string;
 }
 
 const translate =
@@ -52,7 +60,7 @@ const translate =
  * scoped ConfigProvider overlay — no process.env mutation.
  */
 export const makeGemmaRunner = (options: GemmaRunnerOptions = {}): EvalRunner => {
-  const runnerName = GEMMA_RUNNER_NAME;
+  const runnerName = options.runnerName ?? GEMMA_RUNNER_NAME;
   const model = options.model ?? GEMMA_DEFAULT_MODEL;
   const baseUrl = options.baseUrl ?? GEMMA_DEFAULT_BASE_URL;
   const plannerMode = options.plannerMode ?? DEFAULT_PLANNER_MODE;
