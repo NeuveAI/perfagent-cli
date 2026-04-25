@@ -18,7 +18,8 @@
     "./parse-network-requests": "./src/parse-network-requests.ts",
     "./parse-insight-detail": "./src/parse-insight-detail.ts",
     "./cwv-thresholds": "./src/cwv-thresholds.ts",
-    "./token-usage-bus": "./src/token-usage-bus.ts"
+    "./token-usage-bus": "./src/token-usage-bus.ts",
+    "./trajectory": "./src/trajectory.ts"
   },
   "scripts": {
     "lint": "vp lint && tsc --noEmit",
