@@ -370,8 +370,10 @@ export class PlanDecomposer extends ServiceMap.Service<PlanDecomposer>()("@evals
     ) {
       yield* Effect.annotateCurrentSpan({ mode, promptLength: prompt.length });
 
-      if (mode === "none") {
-        return yield* Effect.die("PlanDecomposer.decompose should not be called with mode=none");
+      if (mode === "none" || mode === "gemma-react") {
+        return yield* Effect.die(
+          `PlanDecomposer.decompose should not be called with mode=${mode}; ReAct/none modes skip pre-decomposition.`,
+        );
       }
 
       const steps: readonly AnalysisStep[] =

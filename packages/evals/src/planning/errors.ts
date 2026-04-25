@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-export const PLANNER_MODES = ["oracle-plan", "template", "none"] as const;
+export const PLANNER_MODES = ["oracle-plan", "template", "none", "gemma-react"] as const;
 
 export const PlannerMode = Schema.Literals(PLANNER_MODES);
 export type PlannerMode = typeof PlannerMode.Type;

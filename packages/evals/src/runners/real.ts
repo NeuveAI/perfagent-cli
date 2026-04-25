@@ -258,17 +258,24 @@ export const runRealTask = Effect.fn("RealRunner.run")(function* (
   // asks for frontier/template mode) BEFORE invoking the supervisor Executor.
   // The Executor itself no longer owns PlanDecomposer; the eval harness wires
   // it up only here so runtime (CLI/TUI) stays Gemma-only.
-  const decomposedPlan =
-    context.plannerMode === "none"
-      ? undefined
-      : yield* planDecomposer.decompose(task.prompt, context.plannerMode, {
-          changesFor: ChangesFor.makeUnsafe({ _tag: "WorkingTree" }),
-          currentBranch: "main",
-          diffPreview: "",
-          baseUrl: context.baseUrl,
-          isHeadless: context.isHeadless,
-          cookieBrowserKeys: [],
-        });
+  //
+  // `gemma-react` and `none` both skip pre-decomposition: the Gemma agent
+  // owns plan authorship via PLAN_UPDATE envelopes inside the ReAct loop.
+  // Distinct literals because `gemma-react` carries explicit semantics for
+  // the eval harness ("ReAct mode") while `none` is the legacy escape
+  // hatch that pre-dates the ReAct migration.
+  const skipDecomposition =
+    context.plannerMode === "none" || context.plannerMode === "gemma-react";
+  const decomposedPlan = skipDecomposition
+    ? undefined
+    : yield* planDecomposer.decompose(task.prompt, context.plannerMode, {
+        changesFor: ChangesFor.makeUnsafe({ _tag: "WorkingTree" }),
+        currentBranch: "main",
+        diffPreview: "",
+        baseUrl: context.baseUrl,
+        isHeadless: context.isHeadless,
+        cookieBrowserKeys: [],
+      });
 
   const stream = executor.execute({
     changesFor: ChangesFor.makeUnsafe({ _tag: "WorkingTree" }),

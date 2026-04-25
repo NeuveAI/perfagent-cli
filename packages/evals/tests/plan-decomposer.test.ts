@@ -404,6 +404,26 @@ describe("PlanDecomposer no-API-key path (CRITICAL-1 regression)", () => {
     }
   });
 
+  it("plannerMode='gemma-react' also defects when called — Gemma owns the plan via PLAN_UPDATE inside the ReAct loop", async () => {
+    // Symmetrical to the `none` defect. The R5 `gemma-react` literal signals
+    // "ReAct mode owns plan authorship"; if the harness ever calls
+    // `decompose(prompt, "gemma-react", ...)`, it's a contract violation by
+    // the runner — the executor's `runRealTask` short-circuits both `none`
+    // and `gemma-react` before reaching `decompose`. Defecting on the
+    // unexpected path keeps mistakes loud.
+    const exit = await runExitWithLayer(
+      Effect.gen(function* () {
+        const decomposer = yield* PlanDecomposer;
+        return yield* decomposer.decompose(DOCS_SEARCH_PROMPT, "gemma-react", decomposeContext);
+      }),
+      decomposerLayerNoKey,
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(Cause.hasDies(exit.cause)).toBe(true);
+    }
+  });
+
   it("oracle-plan mode without the key surfaces a DecomposeError (lazy key read fires on first planFrontier call)", async () => {
     const exit = await runExitWithLayer(
       Effect.gen(function* () {

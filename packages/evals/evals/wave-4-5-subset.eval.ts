@@ -65,7 +65,7 @@ const BACKEND_CONFIG = stringWithSchemaDefault(
 
 const PLANNER_CONFIG = stringWithSchemaDefault(
   "EVAL_PLANNER",
-  Schema.Literals(["oracle-plan", "template", "none"] as const),
+  Schema.Literals(["oracle-plan", "template", "none", "gemma-react"] as const),
   "oracle-plan",
 );
 
@@ -83,7 +83,7 @@ const GEMMA_BASE_URL_CONFIG = Config.string("EVAL_OLLAMA_URL").pipe(
 
 const GEMMA_PLANNER_CONFIG = stringWithSchemaDefault(
   "EVAL_GEMMA_PLANNER",
-  Schema.Literals(["oracle-plan", "template", "none"] as const),
+  Schema.Literals(["oracle-plan", "template", "none", "gemma-react"] as const),
   "template",
 );
 
