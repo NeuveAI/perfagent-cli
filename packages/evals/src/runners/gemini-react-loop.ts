@@ -371,6 +371,14 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
           round,
           repeats: GEMINI_REACT_DOOM_LOOP_THRESHOLD,
         });
+        emitAgentTurn(
+          emit,
+          new RunCompleted({
+            status: "failed",
+            summary: `Doom-loop detected: ${GEMINI_REACT_DOOM_LOOP_THRESHOLD} identical consecutive ${toolName} calls at round ${round}. Last tool error: ${lastToolError ?? "unknown"}.`,
+            abort: { reason: "doom-loop" },
+          }),
+        );
         return;
       }
       recentCalls.push({ toolName, argsHash });
@@ -405,14 +413,23 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
       continue;
     }
 
+    const unexpectedTag = (envelope as { _tag: string })._tag;
     yield* Effect.logWarning("Gemini-react: unexpected envelope kind", {
       sessionId,
       round,
-      tag: (envelope as { _tag: string })._tag,
+      tag: unexpectedTag,
     });
     emitMessageChunk(
       emit,
       `[Gemini-react: unexpected envelope tag at round ${round}. Aborting.]`,
+    );
+    emitAgentTurn(
+      emit,
+      new RunCompleted({
+        status: "failed",
+        summary: `Unexpected envelope tag '${unexpectedTag}' at round ${round}. Aborting.`,
+        abort: { reason: "unexpected-envelope" },
+      }),
     );
     return;
   }
@@ -425,4 +442,12 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
     sessionId,
     maxRounds: GEMINI_REACT_MAX_TOOL_ROUNDS,
   });
+  emitAgentTurn(
+    emit,
+    new RunCompleted({
+      status: "failed",
+      summary: `Reached maximum tool call rounds (${GEMINI_REACT_MAX_TOOL_ROUNDS}). Stopping.`,
+      abort: { reason: "max-rounds" },
+    }),
+  );
 });
