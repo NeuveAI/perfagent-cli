@@ -267,7 +267,16 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
           cause: cause instanceof Error ? cause.message : String(cause),
           round,
         }),
-    });
+    }).pipe(
+      Effect.tapError((error) =>
+        Effect.logError("Gemini generateObject failed", {
+          sessionId,
+          round,
+          modelId,
+          cause: error.cause,
+        }),
+      ),
+    );
 
     const promptTokens = generation.usage.inputTokens ?? 0;
     const completionTokens = generation.usage.outputTokens ?? 0;
