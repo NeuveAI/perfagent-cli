@@ -1,3 +1,6 @@
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 import { Config, Effect, Option, Schema } from "effect";
 import { evalite } from "evalite";
 import { finalState } from "../src/scorers/final-state";
@@ -37,6 +40,14 @@ import { moderate1 } from "../tasks/moderate-1";
 import { moderate2 } from "../tasks/moderate-2";
 import { trivial1 } from "../tasks/trivial-1";
 import { trivial2 } from "../tasks/trivial-2";
+
+// Load `.env.local` *before* reading any Config. dotenv writes to process.env
+// only — Effect's ConfigProvider.fromEnv picks values up from there on its
+// first read. Mirrors `online-mind2web.eval.ts` so the gemini-react and
+// gemma-oracle-plan suites can resolve `GOOGLE_GENERATIVE_AI_API_KEY` from
+// the gitignored env file documented in the prerequisites comment below.
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(moduleDir, "..", ".env.local"), quiet: true });
 
 // Wave R5 final A:B regression sweep — the headline deliverable per
 // `docs/research/gemma-react-browsing/architecture-prd.md` §R5 line 279
