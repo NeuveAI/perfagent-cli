@@ -307,6 +307,7 @@ const handleRunCompleted = Effect.fn("ReactReducer.handleRunCompleted")(function
   const runFinished = new RunFinished({
     status: envelope.status,
     summary: envelope.summary,
+    abort: envelope.abort,
   });
   const updatedPlan = new ExecutedPerfPlan({
     ...plan,

@@ -58,6 +58,16 @@ export class AssertionFailed extends Schema.TaggedClass<AssertionFailed>()("ASSE
 export class RunCompleted extends Schema.TaggedClass<RunCompleted>()("RUN_COMPLETED", {
   status: RunCompletedStatus,
   summary: Schema.String,
+  // Optional abort metadata that mirrors `RunFinished.abort` in
+  // `@neuve/shared/models`. Set ONLY by runtime synthesizers (e.g. the
+  // gemini-react eval runner's early-termination paths) to flag a non-natural
+  // exit so the supervisor's `runFinishedSatisfiesGate` short-circuits and
+  // emits the terminal envelope downstream instead of waiting for all plan
+  // steps to be terminal. Reasons are short kebab-case identifiers
+  // (`doom-loop`, `max-rounds`, `unexpected-envelope`) — richer detail goes
+  // in `summary`. Models do NOT set this in normal operation; the field is
+  // optional precisely to keep the natural happy-path schema unchanged.
+  abort: Schema.optional(Schema.Struct({ reason: Schema.String })),
 }) {}
 
 export const AgentTurn = Schema.Union([
