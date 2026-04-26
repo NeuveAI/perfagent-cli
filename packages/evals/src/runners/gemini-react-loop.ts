@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 import { generateObject, jsonSchema, type LanguageModel } from "ai";
 import type { JSONSchema7 } from "@ai-sdk/provider";
 import {
@@ -59,24 +59,47 @@ interface RunLoopOptions {
   readonly emit: EmitUpdate;
 }
 
+// HACK: Google's Gemini `responseSchema` is an OpenAPI 3.0 subset that
+// rejects `$ref`/`$defs` references with "Invalid JSON payload received.
+// Unknown name '$ref'" — `generateObject` then throws "No object generated"
+// in <2s on every call. `Schema.toJsonSchemaDocument(AgentTurn)` emits
+// `{anyOf: [{$ref: "#/$defs/THOUGHT"}, ...], $defs: {THOUGHT: {...}, ...}}`,
+// so we walk the tree once at module load and inline every `$ref` into the
+// referenced definition. Result: a self-contained `anyOf` schema with no
+// `$ref`/`$defs` left, accepted by both gemini-3-flash-preview and
+// gemini-2.5-flash. Keep `validate` below so `Schema.decodeUnknownExit`
+// remains the runtime gate the loop trusts. See
+// `feedback_no_test_only_injection_seams.md` (R5 strike) for context — this
+// regression hid behind `MockLanguageModelV4` for an entire wave.
+const inlineJsonSchemaRefs = (
+  schema: unknown,
+  definitions: Record<string, unknown>,
+): unknown => {
+  if (Array.isArray(schema)) {
+    return schema.map((entry) => inlineJsonSchemaRefs(entry, definitions));
+  }
+  if (!Predicate.isObject(schema)) return schema;
+  const ref = schema["$ref"];
+  if (typeof ref === "string") {
+    const refName = ref.replace("#/$defs/", "");
+    return inlineJsonSchemaRefs(definitions[refName], definitions);
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (key === "$defs") continue;
+    out[key] = inlineJsonSchemaRefs(value, definitions);
+  }
+  return out;
+};
+
 const AGENT_TURN_JSON_SCHEMA = (() => {
   const document = Schema.toJsonSchemaDocument(AgentTurn);
-  // HACK: Effect's `Schema.toJsonSchemaDocument` produces a
-  // `JsonSchema.Document<"draft-2020-12">` but the AI SDK's `jsonSchema`
-  // helper accepts `JSONSchema7` (draft-07). The two specs share the
-  // bulk of the same field set (type / properties / oneOf / required /
-  // enum / etc.) but the meta-keys differ (`$defs` in 2020-12,
-  // `definitions` in draft-07) and TypeScript's structural typing can't
-  // bridge them without an `as unknown` step. Direct `as JSONSchema7`
-  // fails with "insufficient overlap"; the double cast is the
-  // documented workaround at the boundary between the two third-party
-  // schema specs. AI SDK 7's Gemini provider tolerates `$defs` at
-  // runtime (the only meta-key difference that matters for our union),
-  // so the cast is safe in practice.
-  return { ...document.schema, $defs: document.definitions } as unknown as JSONSchema7;
+  const flattened = inlineJsonSchemaRefs(document.schema, document.definitions);
+  // HACK: bridge Effect's draft-2020-12 JsonSchema to AI SDK's draft-07 JSONSchema7 parameter type.
+  return flattened as JSONSchema7;
 })();
 
-const AGENT_TURN_RESPONSE_SCHEMA = jsonSchema<typeof AgentTurn.Type>(AGENT_TURN_JSON_SCHEMA, {
+export const AGENT_TURN_RESPONSE_SCHEMA = jsonSchema<typeof AgentTurn.Type>(AGENT_TURN_JSON_SCHEMA, {
   validate: (value) => {
     const decoded = Schema.decodeUnknownExit(AgentTurn)(value);
     if (decoded._tag === "Success") {
