@@ -137,6 +137,13 @@ const GEMMA_BASE_URL_CONFIG = Config.string("EVAL_OLLAMA_URL").pipe(
 const SKIP_RUNNERS_CONFIG = Config.string("EVAL_R5_SKIP_RUNNERS").pipe(
   Config.withDefault(""),
 );
+// Task filter: comma-separated EvalTask ids (e.g. "calibration-3-two-step-docs").
+// Pairs with EVAL_R5_SKIP_RUNNERS for tight partial reruns — e.g. verifying a
+// single doom-loop task exits cleanly after a termination fix without
+// re-paying API cost on the other 19 tasks. Default empty (run all tasks).
+const TASK_FILTER_CONFIG = Config.string("EVAL_TASK_FILTER").pipe(
+  Config.withDefault(""),
+);
 
 const resolveEvalConfig = Effect.gen(function* () {
   const traceDir = yield* TRACE_DIR_CONFIG;
@@ -151,6 +158,13 @@ const resolveEvalConfig = Effect.gen(function* () {
       .map((entry) => entry.trim())
       .filter((entry) => entry.length > 0),
   );
+  const taskFilterRaw = yield* TASK_FILTER_CONFIG;
+  const taskFilter = new Set(
+    taskFilterRaw
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0),
+  );
   const evalBaseUrl = Option.getOrUndefined(baseUrlOption);
   const isHeadless = !headed;
   const baseGemmaOptions: GemmaRunnerOptions = {
@@ -160,7 +174,14 @@ const resolveEvalConfig = Effect.gen(function* () {
     evalBaseUrl,
     isHeadless,
   };
-  return { baseGemmaOptions, traceDir, evalBaseUrl, isHeadless, skipRunners } as const;
+  return {
+    baseGemmaOptions,
+    traceDir,
+    evalBaseUrl,
+    isHeadless,
+    skipRunners,
+    taskFilter,
+  } as const;
 }).pipe(Effect.withSpan("resolveWaveR5AbConfig"));
 
 const evalConfig = Effect.runSync(resolveEvalConfig);
@@ -169,8 +190,13 @@ interface SweepCaseInput {
   readonly task: EvalTask;
 }
 
-const buildCases = (): Array<{ readonly input: SweepCaseInput; readonly expected: EvalTask }> =>
-  TWENTY_TASKS.map((task) => ({ input: { task }, expected: task }));
+const buildCases = (): Array<{ readonly input: SweepCaseInput; readonly expected: EvalTask }> => {
+  const filtered =
+    evalConfig.taskFilter.size > 0
+      ? TWENTY_TASKS.filter((task) => evalConfig.taskFilter.has(task.id))
+      : TWENTY_TASKS;
+  return filtered.map((task) => ({ input: { task }, expected: task }));
+};
 
 const scorers = [
   {
