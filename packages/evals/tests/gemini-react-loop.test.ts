@@ -10,6 +10,7 @@ import {
   StepDone,
   Thought,
 } from "@neuve/shared/react-envelope";
+import { GEMINI_REACT_MAX_TOOL_ROUNDS } from "../src/runners/gemini-react-constants";
 import {
   AcpAgentTurnUpdate,
   AcpToolCall,
@@ -288,8 +289,80 @@ describe("runGeminiReactLoop doom loop detection", () => {
         : false,
     );
     assert.isTrue(aborted, "abort message emitted on doom-loop trip");
+
+    // R5b regression guard: the doom-loop branch must emit a synthetic
+    // RunCompleted `agent_turn` so the supervisor's `runFinishedSatisfiesGate`
+    // accepts the run as terminal (via `lastRunFinished.abort !== undefined`)
+    // instead of stripping the RunFinished and waiting 600s for a
+    // non-existent natural exit. Pre-fix this assertion would have caught
+    // the live-sweep doom-loop hang documented in /tmp/wave-r5-ab/run-3.log.
+    const agentTurns = updates.filter(
+      (update): update is AcpAgentTurnUpdate => update.sessionUpdate === "agent_turn",
+    );
+    const terminal = agentTurns[agentTurns.length - 1];
+    assert.instanceOf(terminal.agentTurn, RunCompleted);
+    const completed = terminal.agentTurn as RunCompleted;
+    assert.strictEqual(completed.status, "failed");
+    assert.deepStrictEqual(completed.abort, { reason: "doom-loop" });
   });
 });
+
+describe("runGeminiReactLoop max-rounds termination", () => {
+  it("emits a synthetic RunCompleted with abort.reason='max-rounds' after MAX_TOOL_ROUNDS non-terminal envelopes", async () => {
+    // Feed strictly more THOUGHTs than MAX_TOOL_ROUNDS so the for-loop runs
+    // its full count without ever encountering a RUN_COMPLETED. A THOUGHT
+    // envelope `continue`s without dispatching to MCP, so this isolates the
+    // max-rounds termination path from the doom-loop guard (which only fires
+    // on identical ACTIONs).
+    const envelopes = Array.from({ length: GEMINI_REACT_MAX_TOOL_ROUNDS + 5 }, (_, index) => ({
+      _tag: "THOUGHT",
+      stepId: `step-${index + 1}`,
+      thought: `thought-${index + 1}`,
+    }));
+    const model = buildModelReturningSequence(envelopes);
+    const mcpBridge = buildFakeMcpBridge();
+    const { updates, emit } = collectEmits();
+
+    await Effect.runPromise(
+      runGeminiReactLoop({
+        sessionId: "test-session-max-rounds",
+        model,
+        mcpBridge,
+        systemPrompt: "system",
+        userPrompt: "stall forever",
+        modelId: "test-gemini",
+        emit,
+      }),
+    );
+
+    const agentTurns = updates.filter(
+      (update): update is AcpAgentTurnUpdate => update.sessionUpdate === "agent_turn",
+    );
+    assert.strictEqual(
+      agentTurns.length,
+      GEMINI_REACT_MAX_TOOL_ROUNDS + 1,
+      "every round emits an agent_turn plus one synthetic terminal envelope",
+    );
+    const terminal = agentTurns[agentTurns.length - 1];
+    assert.instanceOf(terminal.agentTurn, RunCompleted);
+    const completed = terminal.agentTurn as RunCompleted;
+    assert.strictEqual(completed.status, "failed");
+    assert.deepStrictEqual(completed.abort, { reason: "max-rounds" });
+    assert.match(completed.summary, new RegExp(`${GEMINI_REACT_MAX_TOOL_ROUNDS}`));
+    assert.strictEqual(mcpBridge.calls.length, 0, "no tool dispatched on a pure-THOUGHT loop");
+  });
+});
+
+// NOTE: the third early-termination site — `unexpected envelope kind` at the
+// foot of the for-loop body — is unreachable at runtime because
+// `parseAgentTurn` (Schema.decodeUnknownEffect on the closed AgentTurn union)
+// rejects any non-conforming envelope earlier. The synthetic RunCompleted
+// emit there is defense-in-depth for a future schema variant added to
+// AgentTurn but missing from the instanceof chain. The existing
+// "schema-violation guard" test above documents that the parser is the
+// active rejection surface today; keeping a unit test for the synthetic
+// emit on that branch would require deliberately bypassing the parser,
+// which the loop's contract doesn't allow.
 
 describe("runGeminiReactLoop error propagation", () => {
   it("surfaces a GeminiReactCallError when generateObject throws", async () => {
