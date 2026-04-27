@@ -1,5 +1,5 @@
 import { Effect, Predicate, Schema } from "effect";
-import { generateObject, jsonSchema, type LanguageModel } from "ai";
+import { generateObject, jsonSchema, type LanguageModel, type ModelMessage } from "ai";
 import type { JSONSchema7 } from "@ai-sdk/provider";
 import {
   Action,
@@ -39,10 +39,29 @@ export class GeminiReactCallError extends Schema.ErrorClass<GeminiReactCallError
 
 export type EmitUpdate = (update: AcpSessionUpdate) => void;
 
+interface ChatImage {
+  readonly data: string;
+  readonly mimeType: string;
+}
+
 interface ChatMessage {
   readonly role: "system" | "user" | "assistant";
   readonly content: string;
+  // R6 multi-modal: optional screenshots attached to a user observation. The
+  // ReAct loop captures one viewport PNG after every successful state-changing
+  // ACTION (`interact`/click/fill/hover/select) and pushes it on the next
+  // observation. Older summarized turns drop the bytes — text-only summaries
+  // by design.
+  readonly images?: ReadonlyArray<ChatImage>;
 }
+
+const STATE_CHANGING_TOOL_NAMES = new Set([
+  "interact",
+  "click",
+  "fill",
+  "hover",
+  "select",
+]);
 
 interface ToolCallFingerprint {
   readonly toolName: string;
@@ -117,16 +136,39 @@ const toRecord = (value: unknown): Record<string, unknown> =>
 const buildAiMessagesFromHistory = (
   systemPrompt: string,
   history: ReadonlyArray<ChatMessage>,
-) => {
+): Array<ModelMessage> => {
   const trajectoryView = rollTrajectory(history);
-  const messages: Array<{ readonly role: "system" | "user" | "assistant"; readonly content: string }> = [
+  const messages: Array<ModelMessage> = [
     { role: "system", content: systemPrompt },
   ];
   for (const message of trajectoryView.messages) {
-    messages.push({
-      role: message.role as "system" | "user" | "assistant",
-      content: message.content,
-    });
+    const role = message.role as "system" | "user" | "assistant";
+    const images = message.images;
+    if (role === "user" && images && images.length > 0) {
+      // R6: convert to AI SDK multipart shape — verified by Probe 2
+      // (2026-04-27, `docs/handover/multi-modal-react/probes/`). Gemini Flash
+      // 3 transcodes the `data:` URL to its native `inline_data` part.
+      messages.push({
+        role: "user",
+        content: [
+          { type: "text", text: message.content },
+          ...images.map((image) => ({
+            type: "image" as const,
+            image: `data:${image.mimeType};base64,${image.data}`,
+          })),
+        ],
+      });
+      continue;
+    }
+    if (role === "system") {
+      messages.push({ role: "system", content: message.content });
+      continue;
+    }
+    if (role === "assistant") {
+      messages.push({ role: "assistant", content: message.content });
+      continue;
+    }
+    messages.push({ role: "user", content: message.content });
   }
   return messages;
 };
@@ -406,10 +448,70 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
       const observationText = toolResult.isError
         ? `${toolResult.text}\n\nHint: Check the tool's call shape in its description. Wrap your arguments under the wrapper key shown in the example.`
         : toolResult.text;
-      history.push({
-        role: "user",
-        content: `<observation>${observationText}</observation>`,
-      });
+
+      // R6 multi-modal: after a successful state-changing ACTION, capture a
+      // viewport screenshot and attach to the next observation. Skip on
+      // observe/trace (state didn't change) and on failed actions (state
+      // didn't actually change). The capture runs through the same MCP
+      // bridge as any other tool call so token accounting + retry semantics
+      // stay consistent.
+      const captureScreenshot =
+        !toolResult.isError && STATE_CHANGING_TOOL_NAMES.has(toolName);
+      let observationImages: ReadonlyArray<ChatImage> | undefined;
+      if (captureScreenshot) {
+        const screenshotResult: McpToolCallResult = yield* Effect.promise(() =>
+          mcpBridge
+            .callTool("observe", {
+              action: { command: "screenshot", format: "png" },
+            })
+            .catch(
+              (cause) =>
+                ({
+                  text: cause instanceof Error ? cause.message : String(cause),
+                  isError: true,
+                }) satisfies McpToolCallResult,
+            ),
+        );
+        if (
+          !screenshotResult.isError &&
+          screenshotResult.images &&
+          screenshotResult.images.length > 0
+        ) {
+          observationImages = screenshotResult.images.map((image) => ({
+            data: image.data,
+            mimeType: image.mimeType,
+          }));
+          yield* Effect.logDebug("Gemini-react attached screenshot", {
+            sessionId,
+            round,
+            toolName,
+            screenshotBytes: screenshotResult.images.reduce(
+              (sum, image) => sum + image.data.length,
+              0,
+            ),
+          });
+        } else {
+          yield* Effect.logDebug("Gemini-react screenshot capture skipped", {
+            sessionId,
+            round,
+            toolName,
+            isError: screenshotResult.isError,
+            hasImages: Boolean(screenshotResult.images?.length),
+          });
+        }
+      }
+
+      const observationMessage: ChatMessage = observationImages
+        ? {
+            role: "user",
+            content: `<observation>${observationText}</observation>`,
+            images: observationImages,
+          }
+        : {
+            role: "user",
+            content: `<observation>${observationText}</observation>`,
+          };
+      history.push(observationMessage);
       continue;
     }
 
