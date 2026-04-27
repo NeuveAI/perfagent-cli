@@ -27,6 +27,19 @@ const MAX_TOOL_ROUNDS = 15;
 const DOOM_LOOP_THRESHOLD = 3;
 const TRACE_STOPPED_SENTINEL = "The performance trace has been stopped.";
 
+// R6 multi-modal: after a successful ACTION on one of these tools we capture
+// a viewport screenshot and attach to the next observation message. `interact`
+// covers navigate/click/fill/hover/etc.; the flat tools (`click`, `fill`,
+// `hover`, `select`) cover the legacy interactions tool surface. `observe`
+// and `trace` are excluded — they don't mutate state.
+const STATE_CHANGING_TOOL_NAMES = new Set([
+  "interact",
+  "click",
+  "fill",
+  "hover",
+  "select",
+]);
+
 // AgentTurn JSON Schema generated once at module load. Variant B (locked
 // 2026-04-25) constrains every Gemma turn to one of THOUGHT / ACTION /
 // PLAN_UPDATE / STEP_DONE / ASSERTION_FAILED / RUN_COMPLETED — Ollama's
@@ -467,10 +480,61 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
         }
       }
 
-      messages.push({
-        role: "user",
-        content: `<observation>${combinedLlmText}</observation>`,
-      });
+      // R6 multi-modal: after a successful state-changing ACTION (interact/
+      // click/fill/hover/select), capture a viewport PNG via `observe.screenshot`
+      // and attach to the next observation. Skipped on observe/trace (state
+      // unchanged) and on failed actions. The image bytes ride on
+      // `OllamaMessage.images` and serialize to Ollama's native `images: [...]`
+      // wire field via `toWireMessage`. See Probe 1 (2026-04-27).
+      let observationImages: ReadonlyArray<{ data: string; mimeType: string }> | undefined;
+      if (!isError && STATE_CHANGING_TOOL_NAMES.has(functionName)) {
+        let screenshotResult: McpToolCallResult;
+        try {
+          screenshotResult = await mcpBridge.callTool("observe", {
+            action: { command: "screenshot", format: "png" },
+          });
+        } catch (cause) {
+          screenshotResult = {
+            text: cause instanceof Error ? cause.message : String(cause),
+            isError: true,
+          };
+        }
+        if (
+          !screenshotResult.isError &&
+          screenshotResult.images &&
+          screenshotResult.images.length > 0
+        ) {
+          observationImages = screenshotResult.images.map((image) => ({
+            data: image.data,
+            mimeType: image.mimeType,
+          }));
+          log("attached screenshot to observation", {
+            tool: functionName,
+            screenshotBytes: screenshotResult.images.reduce(
+              (sum, image) => sum + image.data.length,
+              0,
+            ),
+          });
+        } else {
+          log("screenshot capture skipped", {
+            tool: functionName,
+            isError: screenshotResult.isError,
+            hasImages: Boolean(screenshotResult.images?.length),
+          });
+        }
+      }
+
+      const observationMessage = observationImages
+        ? {
+            role: "user" as const,
+            content: `<observation>${combinedLlmText}</observation>`,
+            images: observationImages,
+          }
+        : {
+            role: "user" as const,
+            content: `<observation>${combinedLlmText}</observation>`,
+          };
+      messages.push(observationMessage);
       continue;
     }
 

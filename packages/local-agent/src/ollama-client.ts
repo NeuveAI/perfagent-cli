@@ -52,10 +52,20 @@ export interface OllamaToolCall {
 
 export type OllamaMessageRole = "system" | "user" | "assistant" | "tool";
 
+export interface OllamaImage {
+  readonly data: string;
+  readonly mimeType: string;
+}
+
 export interface OllamaMessage {
   readonly role: OllamaMessageRole;
   readonly content: string;
   readonly toolCalls?: ReadonlyArray<OllamaToolCall>;
+  // R6 multi-modal: base64-encoded images attached to a user observation.
+  // The wire serializer in `toWireMessage` flattens these to the native
+  // Ollama `images: string[]` field (Probe 1, 2026-04-27 — verified shape
+  // for `gemma4:e4b` against `/api/chat`).
+  readonly images?: ReadonlyArray<OllamaImage>;
 }
 
 export interface OllamaToolDefinition {
@@ -153,17 +163,32 @@ interface WireMessage {
   readonly role: OllamaMessageRole;
   readonly content: string;
   readonly tool_calls?: ReadonlyArray<OllamaToolCall>;
+  readonly images?: ReadonlyArray<string>;
 }
 
 const toWireMessage = (message: OllamaMessage): WireMessage => {
+  const wire: {
+    role: OllamaMessageRole;
+    content: string;
+    tool_calls?: ReadonlyArray<OllamaToolCall>;
+    images?: ReadonlyArray<string>;
+  } = {
+    role: message.role,
+    content: message.content,
+  };
   if (message.toolCalls && message.toolCalls.length > 0) {
-    return {
-      role: message.role,
-      content: message.content,
-      tool_calls: message.toolCalls,
-    };
+    wire.tool_calls = message.toolCalls;
   }
-  return { role: message.role, content: message.content };
+  if (message.images && message.images.length > 0) {
+    // Ollama's native `/api/chat` carries images as `images: ["<base64>"]`
+    // siblings to `content` — raw base64 strings, no `data:` URL prefix.
+    // Probe 1 (2026-04-27, `docs/handover/multi-modal-react/probes/`) verified
+    // the shape against `gemma4:e4b`. We keep `mimeType` on `OllamaMessage`
+    // for parity with the gemini-react loop's AI SDK multipart shape, but
+    // discard it on the wire — Ollama infers format from the PNG/JPEG header.
+    wire.images = message.images.map((image) => image.data);
+  }
+  return wire;
 };
 
 interface RequestBody {

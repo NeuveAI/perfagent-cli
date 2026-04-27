@@ -11,13 +11,24 @@ interface McpServerConfig {
 }
 
 interface McpToolResult {
-  content: Array<{ type: string; text?: string }>;
+  content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
   isError?: boolean;
+}
+
+export interface McpImageContent {
+  readonly data: string;
+  readonly mimeType: string;
 }
 
 export interface McpToolCallResult {
   readonly text: string;
   readonly isError: boolean;
+  // R6 multi-modal: any `image` content blocks the MCP tool emitted (e.g.
+  // `take_screenshot` attaches `{ type: "image", data, mimeType }` for
+  // viewports under ~2 MB). Optional/undefined for text-only calls. Carried
+  // through so the ReAct loops can attach screenshot bytes to the next
+  // observation message.
+  readonly images?: ReadonlyArray<McpImageContent>;
 }
 
 export interface McpBridge {
@@ -244,6 +255,13 @@ export const createMcpBridge = async (
       .filter((item) => item.type === "text" && item.text)
       .map((item) => item.text)
       .join("\n");
+    const images: McpImageContent[] = [];
+    for (const item of result.content) {
+      if (item.type !== "image") continue;
+      if (typeof item.data !== "string" || item.data.length === 0) continue;
+      const mimeType = typeof item.mimeType === "string" ? item.mimeType : "image/png";
+      images.push({ data: item.data, mimeType });
+    }
 
     if (result.isError) {
       const errorText = joinedText || "Unknown tool error";
@@ -254,7 +272,10 @@ export const createMcpBridge = async (
       };
     }
 
-    return { text: joinedText, isError: false };
+    if (images.length === 0) {
+      return { text: joinedText, isError: false };
+    }
+    return { text: joinedText, isError: false, images };
   };
 
   const close = async () => {
