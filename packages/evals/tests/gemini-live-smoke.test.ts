@@ -4,8 +4,8 @@ import dotenv from "dotenv";
 import { Effect } from "effect";
 import { generateObject } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { assert, describe, it } from "vite-plus/test";
-import { Thought, parseAgentTurn } from "@neuve/shared/react-envelope";
+import { assert, describe, expect, it } from "vite-plus/test";
+import { Action, Thought, parseAgentTurn } from "@neuve/shared/react-envelope";
 import { AGENT_TURN_RESPONSE_SCHEMA } from "../src/runners/gemini-react-loop";
 import { GEMINI_REACT_DEFAULT_MODEL_ID } from "../src/runners/gemini-react-constants";
 
@@ -152,6 +152,71 @@ describe("gemini-react live smoke", () => {
           30_000,
           `multipart live call should finish under 30s; took ${elapsedMs}ms`,
         );
+      }).pipe(Effect.runPromise),
+  );
+
+  // R7 strict-tool-schema regression guard. Asks gemini-3-flash-preview to
+  // emit an ACTION envelope navigating to wikipedia. Asserts the strict
+  // schema's responseSchema constrains the result to a registered toolName
+  // (interact/observe/trace/click/fill/hover/select/wait_for) and that
+  // `parseAgentTurn` accepts it. Catches any regression where the strict
+  // per-tool args union or the anyOf→oneOf rewriter leaks an upstream tool
+  // name (e.g. `navigate_page`) or the gemini flat-action shape past the
+  // decode boundary. See `docs/research/gemini-investigation/why-gemini-fails.md`.
+  it.skipIf(!apiKeyPresent)(
+    "strict-schema responseSchema accepts only registered toolNames + per-tool args",
+    { timeout: 35_000 },
+    () =>
+      Effect.gen(function* () {
+        const provider = createGoogleGenerativeAI({ apiKey });
+        const model = provider(GEMINI_REACT_DEFAULT_MODEL_ID);
+
+        const result = yield* Effect.tryPromise({
+          try: () =>
+            generateObject({
+              model,
+              schema: AGENT_TURN_RESPONSE_SCHEMA,
+              schemaName: "AgentTurn",
+              schemaDescription:
+                "One ReAct envelope: THOUGHT, ACTION, PLAN_UPDATE, STEP_DONE, ASSERTION_FAILED, or RUN_COMPLETED.",
+              messages: [
+                {
+                  role: "system",
+                  content:
+                    "You are a ReAct agent. Emit exactly one AgentTurn JSON envelope per turn. Use the schema-enforced tool inventory.",
+                },
+                {
+                  role: "user",
+                  content:
+                    "Call the navigate command on the interact tool to go to https://wikipedia.org. Emit ONLY an ACTION envelope, nothing else.",
+                },
+              ],
+            }),
+          catch: (cause) =>
+            new Error(
+              `gemini-3-flash-preview strict-schema call failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+            ),
+        }).pipe(Effect.timeout("30 seconds"));
+
+        const envelope = yield* parseAgentTurn(result.object);
+        assert.instanceOf(
+          envelope,
+          Action,
+          `expected ACTION envelope under strict schema; got ${envelope._tag}`,
+        );
+        const REGISTERED = new Set([
+          "interact",
+          "observe",
+          "trace",
+          "click",
+          "fill",
+          "hover",
+          "select",
+          "wait_for",
+        ]);
+        if (envelope._tag === "ACTION") {
+          expect(REGISTERED.has(envelope.toolName)).toBe(true);
+        }
       }).pipe(Effect.runPromise),
   );
 });

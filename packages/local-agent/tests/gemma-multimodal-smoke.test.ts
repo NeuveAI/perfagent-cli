@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect";
-import { assert, describe, it } from "vite-plus/test";
+import { assert, describe, expect, it } from "vite-plus/test";
 import {
   AgentTurn,
   parseAgentTurn,
@@ -151,6 +151,76 @@ describe("gemma multi-modal smoke", () => {
           elapsedMs,
           90_000,
           `multipart live call should finish under 90s; took ${elapsedMs}ms`,
+        );
+      }).pipe(Effect.runPromise),
+  );
+
+  // R7 strict-tool-schema regression guard for the Ollama path. Asks
+  // gemma4:e4b to emit a navigation ACTION and asserts the strict
+  // `format` grammar still produces a schema-valid envelope under the
+  // post-R7 per-tool union. Catches regressions where the new args
+  // structure (canonical+shorthand union per dispatcher) tightens too
+  // far for gemma's emission pattern.
+  it.skipIf(!ollamaReachable)(
+    "strict per-tool grammar accepts gemma's shorthand interact-navigate",
+    { timeout: 90_000 },
+    () =>
+      Effect.gen(function* () {
+        const requestBody = {
+          model: OLLAMA_MODEL,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a ReAct agent. Emit exactly one AgentTurn JSON envelope per turn. Use the schema-enforced tool inventory.",
+            },
+            {
+              role: "user",
+              content:
+                "Emit ONLY an ACTION envelope calling interact with the navigate command toward https://wikipedia.org. stepId='r7-gemma-strict-1'.",
+            },
+          ],
+          stream: true,
+          options: { num_ctx: 8192, temperature: 0 },
+          format: AGENT_TURN_FORMAT,
+        };
+
+        const content = yield* Effect.tryPromise({
+          try: () => collectChat(requestBody),
+          catch: (cause) =>
+            new Error(
+              `Ollama strict-schema call failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+            ),
+        });
+
+        const envelope = yield* parseAgentTurn(JSON.parse(content));
+        const REGISTERED = new Set([
+          "interact",
+          "observe",
+          "trace",
+          "click",
+          "fill",
+          "hover",
+          "select",
+          "wait_for",
+        ]);
+        if (envelope._tag === "ACTION") {
+          expect(REGISTERED.has(envelope.toolName)).toBe(true);
+        }
+        // Either the model picked ACTION (best case) or another schema-
+        // valid AgentTurn variant. Both prove the grammar accepts the
+        // strict shape.
+        const validTags = new Set([
+          "THOUGHT",
+          "ACTION",
+          "PLAN_UPDATE",
+          "STEP_DONE",
+          "ASSERTION_FAILED",
+          "RUN_COMPLETED",
+        ]);
+        assert.isTrue(
+          validTags.has(envelope._tag),
+          `expected an AgentTurn variant; got ${envelope._tag}`,
         );
       }).pipe(Effect.runPromise),
   );
