@@ -90,6 +90,16 @@ interface RunLoopOptions {
 // remains the runtime gate the loop trusts. See
 // `feedback_no_test_only_injection_seams.md` (R5 strike) for context — this
 // regression hid behind `MockLanguageModelV4` for an entire wave.
+//
+// R7 — Effect emits `anyOf` for `Schema.Union`. The wave plan's locked
+// "render to oneOf" decision (per `colinhacks/zod #5807`) was tested live
+// (`docs/handover/strict-tool-schema/diary/r7-2026-04-27.md` Probe 1) and
+// REJECTED by gemini-3-flash-preview ("No object generated: response did
+// not match schema") for our 27 KB depth-6 strict schema. `anyOf` is the
+// shape Gemini-3 accepts in production today; keep it intact. The R5b/R6
+// baselines confirmed `anyOf` works for the top-level union; R7 adds
+// discriminated args underneath via the same combinator with the same
+// `anyOf` rendering and the same live behavior.
 const inlineJsonSchemaRefs = (
   schema: unknown,
   definitions: Record<string, unknown>,
@@ -120,7 +130,12 @@ const AGENT_TURN_JSON_SCHEMA = (() => {
 
 export const AGENT_TURN_RESPONSE_SCHEMA = jsonSchema<typeof AgentTurn.Type>(AGENT_TURN_JSON_SCHEMA, {
   validate: (value) => {
-    const decoded = Schema.decodeUnknownExit(AgentTurn)(value);
+    // R7: parse-options `onExcessProperty: "error"` mirrors `parseAgentTurn`
+    // so the AI SDK validate gate rejects gemini's malformed shapes (flat-
+    // action with extra keys, hallucinated tool names) at the same boundary
+    // the runtime gate uses. See `packages/shared/src/react-envelope.ts`
+    // for the strict-parse rationale.
+    const decoded = Schema.decodeUnknownExit(AgentTurn)(value, { onExcessProperty: "error" });
     if (decoded._tag === "Success") {
       return { success: true, value: decoded.value };
     }
