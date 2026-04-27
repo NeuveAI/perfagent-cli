@@ -255,7 +255,7 @@ describe("runGeminiReactLoop doom loop detection", () => {
       _tag: "ACTION",
       stepId: "step-01",
       toolName: "interact",
-      args: { command: "click", ref: "[5]" },
+      args: { command: "click", uid: "uid-5" },
     };
     const envelopes = [
       repeatedAction,

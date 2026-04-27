@@ -71,36 +71,34 @@ describe("parseAgentTurn — round-trip parse", () => {
     }
   });
 
-  it("decodes an ACTION envelope into an Action class instance with unknown args", async () => {
+  it("decodes an ACTION envelope with a registered toolName + canonical args", async () => {
     const wire = {
       _tag: "ACTION",
       stepId: "step-2",
-      toolName: "browser_navigate",
-      args: { url: "https://example.com" },
+      toolName: "interact",
+      args: { action: { command: "navigate", url: "https://example.com" } },
     };
     const result = await Effect.runPromise(parseAgentTurn(wire));
     assert.instanceOf(result, Action);
     if (result._tag === "ACTION") {
-      expect(result.toolName).toBe("browser_navigate");
-      assert.deepStrictEqual(result.args, { url: "https://example.com" });
+      expect(result.toolName).toBe("interact");
+      assert.deepStrictEqual(result.args, {
+        action: { command: "navigate", url: "https://example.com" },
+      });
     }
   });
 
-  it("preserves deeply-nested ACTION args verbatim through Schema.Unknown", async () => {
-    const deepArgs = {
-      selector: { ref: "5", strategy: "som" },
-      options: {
-        modifiers: ["shift", "alt"],
-        retries: 3,
-        timeout: { value: 1500, unit: "ms" },
-        nested: { level: { deeper: [{ id: 1 }, { id: 2 }] } },
-      },
+  it("decodes an ACTION envelope with shorthand args (gemma's emission shape)", async () => {
+    const wire = {
+      _tag: "ACTION",
+      stepId: "step-1",
+      toolName: "interact",
+      args: { command: "click", uid: "abc123" },
     };
-    const wire = { _tag: "ACTION", stepId: "step-1", toolName: "browser_click", args: deepArgs };
     const result = await Effect.runPromise(parseAgentTurn(wire));
     assert.instanceOf(result, Action);
     if (result._tag === "ACTION") {
-      assert.deepStrictEqual(result.args, deepArgs);
+      assert.deepStrictEqual(result.args, { command: "click", uid: "abc123" });
     }
   });
 
@@ -195,7 +193,12 @@ describe("parseAgentTurn — round-trip parse", () => {
 
 describe("parseAgentTurn — narrowed type access", () => {
   it("narrows Action to expose toolName only inside the Action branch", async () => {
-    const wire = { _tag: "ACTION", stepId: "step-1", toolName: "browser_click", args: {} };
+    const wire = {
+      _tag: "ACTION",
+      stepId: "step-1",
+      toolName: "click",
+      args: { ref: "12" },
+    };
     const result = await Effect.runPromise(parseAgentTurn(wire));
 
     let observedToolName: string | undefined;
@@ -203,7 +206,7 @@ describe("parseAgentTurn — narrowed type access", () => {
       observedToolName = result.toolName;
     }
 
-    expect(observedToolName).toBe("browser_click");
+    expect(observedToolName).toBe("click");
   });
 
   it("narrows AssertionFailed to expose category in its branch", async () => {
@@ -265,6 +268,195 @@ describe("parseAgentTurn — bad input rejection", () => {
       }),
     );
     expect(exit._tag).toBe("Failure");
+  });
+});
+
+// R7 strict tool-schema regression guards. Per the forensic report at
+// `docs/research/gemini-investigation/why-gemini-fails.md` §2.1-§2.3, gemini
+// emits three failure shapes the loose `Schema.Unknown` accepted: hallucinated
+// upstream tool names from the chrome-devtools-mcp v0.21.0 catalog,
+// flat-action `{action: "navigate"}` and array-action
+// `{action: ["navigate", "..."]}`. The strict per-tool union rejects each at
+// decode time so Gemini's responseSchema decoder loses the malformed-shape
+// option entirely.
+describe("parseAgentTurn — strict tool-schema rejection (R7)", () => {
+  it("rejects hallucinated upstream tool names (navigate_page)", async () => {
+    const wire = {
+      _tag: "ACTION",
+      stepId: "step-1",
+      toolName: "navigate_page",
+      args: { url: "https://example.com" },
+    };
+    const exit = await Effect.runPromiseExit(parseAgentTurn(wire));
+    expect(exit._tag).toBe("Failure");
+  });
+
+  it("rejects hallucinated upstream tool names (take_snapshot)", async () => {
+    const wire = { _tag: "ACTION", stepId: "step-1", toolName: "take_snapshot", args: {} };
+    const exit = await Effect.runPromiseExit(parseAgentTurn(wire));
+    expect(exit._tag).toBe("Failure");
+  });
+
+  it("rejects hallucinated upstream tool names (performance_start_trace)", async () => {
+    const wire = {
+      _tag: "ACTION",
+      stepId: "step-1",
+      toolName: "performance_start_trace",
+      args: { reload: true },
+    };
+    const exit = await Effect.runPromiseExit(parseAgentTurn(wire));
+    expect(exit._tag).toBe("Failure");
+  });
+
+  it("rejects flat-action gemini bug shape ({action: \"navigate\", url})", async () => {
+    const wire = {
+      _tag: "ACTION",
+      stepId: "step-1",
+      toolName: "interact",
+      args: { action: "navigate", url: "https://example.com" },
+    };
+    const exit = await Effect.runPromiseExit(parseAgentTurn(wire));
+    expect(exit._tag).toBe("Failure");
+  });
+
+  it("rejects array-action gemini bug shape ({action: [\"navigate\", \"...\"]})", async () => {
+    const wire = {
+      _tag: "ACTION",
+      stepId: "step-1",
+      toolName: "interact",
+      args: { action: ["navigate", "https://example.com"] },
+    };
+    const exit = await Effect.runPromiseExit(parseAgentTurn(wire));
+    expect(exit._tag).toBe("Failure");
+  });
+
+  it("rejects unknown command inside an interact dispatcher", async () => {
+    const wire = {
+      _tag: "ACTION",
+      stepId: "step-1",
+      toolName: "interact",
+      args: { action: { command: "teleport", url: "https://example.com" } },
+    };
+    const exit = await Effect.runPromiseExit(parseAgentTurn(wire));
+    expect(exit._tag).toBe("Failure");
+  });
+
+  it("accepts canonical interact-navigate envelope", async () => {
+    const wire = {
+      _tag: "ACTION",
+      stepId: "step-1",
+      toolName: "interact",
+      args: { action: { command: "navigate", url: "https://example.com" } },
+    };
+    const result = await Effect.runPromise(parseAgentTurn(wire));
+    assert.instanceOf(result, Action);
+  });
+
+  it("accepts canonical observe-snapshot envelope", async () => {
+    const wire = {
+      _tag: "ACTION",
+      stepId: "step-1",
+      toolName: "observe",
+      args: { action: { command: "snapshot" } },
+    };
+    const result = await Effect.runPromise(parseAgentTurn(wire));
+    assert.instanceOf(result, Action);
+  });
+
+  it("accepts canonical trace-start envelope", async () => {
+    const wire = {
+      _tag: "ACTION",
+      stepId: "step-1",
+      toolName: "trace",
+      args: {
+        action: { command: "start", reload: true, autoStop: true },
+      },
+    };
+    const result = await Effect.runPromise(parseAgentTurn(wire));
+    assert.instanceOf(result, Action);
+  });
+
+  it("accepts canonical trace-analyze envelope", async () => {
+    const wire = {
+      _tag: "ACTION",
+      stepId: "step-1",
+      toolName: "trace",
+      args: {
+        action: {
+          command: "analyze",
+          insightSetId: "NAVIGATION_0",
+          insightName: "LCPBreakdown",
+        },
+      },
+    };
+    const result = await Effect.runPromise(parseAgentTurn(wire));
+    assert.instanceOf(result, Action);
+  });
+
+  it("accepts gemma shorthand interact-navigate (auto-wrap path)", async () => {
+    const wire = {
+      _tag: "ACTION",
+      stepId: "step-1",
+      toolName: "interact",
+      args: { command: "navigate", url: "https://example.com" },
+    };
+    const result = await Effect.runPromise(parseAgentTurn(wire));
+    assert.instanceOf(result, Action);
+  });
+
+  it("accepts gemma shorthand observe-snapshot", async () => {
+    const wire = {
+      _tag: "ACTION",
+      stepId: "step-1",
+      toolName: "observe",
+      args: { command: "snapshot" },
+    };
+    const result = await Effect.runPromise(parseAgentTurn(wire));
+    assert.instanceOf(result, Action);
+  });
+
+  it("accepts gemma shorthand observe-screenshot with format", async () => {
+    const wire = {
+      _tag: "ACTION",
+      stepId: "step-1",
+      toolName: "observe",
+      args: { command: "screenshot", format: "png" },
+    };
+    const result = await Effect.runPromise(parseAgentTurn(wire));
+    assert.instanceOf(result, Action);
+  });
+
+  it("accepts flat click tool envelope", async () => {
+    const wire = {
+      _tag: "ACTION",
+      stepId: "step-1",
+      toolName: "click",
+      args: { ref: "12" },
+    };
+    const result = await Effect.runPromise(parseAgentTurn(wire));
+    assert.instanceOf(result, Action);
+  });
+
+  it("accepts flat fill tool envelope", async () => {
+    const wire = {
+      _tag: "ACTION",
+      stepId: "step-1",
+      toolName: "fill",
+      args: { ref: "7", text: "hello", clearFirst: true },
+    };
+    const result = await Effect.runPromise(parseAgentTurn(wire));
+    assert.instanceOf(result, Action);
+  });
+
+  it("accepts flat wait_for tool envelope", async () => {
+    const wire = {
+      _tag: "ACTION",
+      stepId: "step-1",
+      toolName: "wait_for",
+      args: { selector: "button.submit", state: "visible", timeout: 5000 },
+    };
+    const result = await Effect.runPromise(parseAgentTurn(wire));
+    assert.instanceOf(result, Action);
   });
 });
 
