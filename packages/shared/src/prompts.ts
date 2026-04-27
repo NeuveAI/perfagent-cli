@@ -148,6 +148,14 @@ export const buildLocalAgentSystemPrompt = (): string =>
     "- Emit STEP_DONE after a successful step. Do not emit RUN_COMPLETED while plan steps remain pending unless the previous envelope was ASSERTION_FAILED with category=abort.",
     "- One envelope per turn. No prose. No chained tool calls.",
     "</rules>",
+    "",
+    "<multi_modal_observations>",
+    "After every successful state-changing ACTION the next <observation> includes a viewport screenshot.",
+    "- Vision = grounding (where elements are, did content load, what state a control is in).",
+    "- Snapshot text = selectors (pull element UIDs from it; never click by visual coordinates).",
+    "- On disagreement, trust the snapshot for targets and the screenshot for post-action verification.",
+    "- observe/trace calls do NOT include a fresh screenshot — re-issue a state-changing action to refresh.",
+    "</multi_modal_observations>",
   ].join("\n");
 
 export const buildExecutionSystemPrompt = (browserMcpServerName?: string): string => {
@@ -226,6 +234,13 @@ export const buildExecutionSystemPrompt = (browserMcpServerName?: string): strin
     "- Stay on the happy path of the plan. If blocked, try one alternate action; if still blocked, abort.",
     "- One tool call per turn. Do not batch or chain speculatively.",
     "</rules>",
+    "<multi_modal_observations>",
+    "Each <observed_state> after a state-changing action includes a viewport screenshot.",
+    "- Vision = grounding (where elements are, did content load, what state a control is in).",
+    "- Snapshot text = selectors (derive refs/UIDs from it; prefer them over visual coordinates).",
+    "- On disagreement, trust the snapshot for targets and the screenshot for post-action verification.",
+    "- take_snapshot/list_console_messages/list_network_requests/perf-trace calls do NOT refresh the screenshot.",
+    "</multi_modal_observations>",
   ].join("\n");
 };
 

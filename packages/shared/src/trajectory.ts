@@ -16,9 +16,19 @@ import { stripThoughtChannel } from "./strip-thought-channel";
 
 const decodeAgentTurnFromString = Schema.decodeExit(Schema.fromJsonString(AgentTurn));
 
+export interface TrajectoryImage {
+  readonly data: string;
+  readonly mimeType: string;
+}
+
 export interface TrajectoryMessage {
   readonly role: "system" | "user" | "assistant" | "tool";
   readonly content: string;
+  // R6 multi-modal observations: an optional list of base64-encoded images
+  // attached to the message. Carried verbatim through the verbatim window
+  // and dropped during summarization (image bytes have no representation
+  // inside the `<event>` summary line — text-only summaries are intentional).
+  readonly images?: ReadonlyArray<TrajectoryImage>;
 }
 
 export interface TrajectoryTurn {
