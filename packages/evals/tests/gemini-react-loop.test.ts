@@ -189,8 +189,15 @@ describe("runGeminiReactLoop happy path", () => {
     assert.strictEqual(usageUpdates[0].promptTokens, 100);
     assert.strictEqual(usageUpdates[0].completionTokens, 50);
 
-    assert.strictEqual(mcpBridge.calls.length, 1);
+    // R6 multi-modal: a successful state-changing ACTION (interact) is
+    // followed by an automatic `observe { command: "screenshot" }` capture
+    // so the next observation can attach the post-action viewport.
+    assert.strictEqual(mcpBridge.calls.length, 2, "expected interact + screenshot capture");
     assert.strictEqual(mcpBridge.calls[0].name, "interact");
+    assert.strictEqual(mcpBridge.calls[1].name, "observe");
+    assert.deepStrictEqual(mcpBridge.calls[1].args, {
+      action: { command: "screenshot", format: "png" },
+    });
   });
 });
 
