@@ -154,8 +154,13 @@ describe("runToolLoop — AgentTurn envelope dispatch", () => {
     const { client, requests } = makeScriptedClient(scripted);
     const { connection, updates } = makeRecordingConnection();
     const { bridge, calls } = makeRecordingBridge(
-      new Map([
+      new Map<string, { text: string; isError: boolean }>([
         ["interact", { text: "Navigated to https://example.com", isError: false }],
+        // R6 multi-modal: a successful state-changing action triggers a
+        // follow-up `observe { command: "screenshot" }` call. Stub it to a
+        // text-only result so the test stays text-shape (no image bytes
+        // need to flow through the recording connection).
+        ["observe", { text: "Took a screenshot of the current page's viewport.", isError: false }],
       ]),
     );
     const messages = [{ role: "system" as const, content: "(system)" }];
@@ -190,12 +195,19 @@ describe("runToolLoop — AgentTurn envelope dispatch", () => {
       assert.isArray(formatSchema.anyOf, "format schema must be an anyOf union");
     }
 
-    // Tool was called exactly once with the navigate args from the ACTION envelope.
-    assert.strictEqual(calls.length, 1, "expected exactly one MCP tool call");
+    // R6: a successful state-changing ACTION (interact/click/fill/hover/select)
+    // is followed by an automatic `observe { command: "screenshot" }` capture
+    // so the next observation can attach the post-action viewport. Two calls
+    // expected: the ACTION itself and the screenshot.
+    assert.strictEqual(calls.length, 2, "expected ACTION + screenshot capture");
     assert.strictEqual(calls[0]?.name, "interact");
     assert.deepStrictEqual(calls[0]?.args, {
       command: "navigate",
       url: "https://example.com",
+    });
+    assert.strictEqual(calls[1]?.name, "observe");
+    assert.deepStrictEqual(calls[1]?.args, {
+      action: { command: "screenshot", format: "png" },
     });
 
     // Session updates: THOUGHT (agent_thought_chunk) + tool_call+tool_call_update +
