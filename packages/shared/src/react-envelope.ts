@@ -450,6 +450,41 @@ export const AgentTurn = Schema.Union([
 ]);
 export type AgentTurn = typeof AgentTurn.Type;
 
+// R7 phase 7 — split Ollama (loose) vs Gemini (strict) JSON-schema paths.
+// The strict per-tool union above is the right shape for Gemini's
+// `responseSchema` (gemini's structured-output decoder honors discriminated
+// `args` and physically rejects upstream-catalog hallucinations) but is too
+// complex for Ollama's llama.cpp grammar engine: the depth-6 anyOf 27 KB
+// schema overwhelms the compiler for ~35% of complex tasks, the model emits
+// zero bytes, and `result.content.length === 0` bails the loop before
+// progress (full-sweep R7 ev. — 7/20 gemma traces hit this mode). See
+// `docs/handover/strict-tool-schema/diary/r7-2026-04-27.md` Phase 6 for
+// the empty-content failure trace.
+//
+// `AgentTurnLoose` mirrors the R5b shape — `args: Schema.Unknown` on the
+// Action variant — so Ollama's grammar engine sees a flat, shallow schema.
+// Used ONLY by `tool-loop.ts` for the Ollama `format` parameter; runtime
+// validation of gemma's emissions still goes through `parseAgentTurn`
+// against the strict `AgentTurn` (gemma's typical canonical/shorthand
+// shapes are strict-valid; the empty-content failures don't reach the
+// parser anyway).
+const ActionLooseStruct = Schema.Struct({
+  _tag: Schema.tag("ACTION"),
+  stepId: Schema.String,
+  toolName: Schema.String,
+  args: Schema.Unknown,
+});
+
+export const AgentTurnLoose = Schema.Union([
+  Thought,
+  ActionLooseStruct,
+  PlanUpdate,
+  StepDone,
+  AssertionFailed,
+  RunCompleted,
+]);
+export type AgentTurnLoose = typeof AgentTurnLoose.Type;
+
 // R7 — `onExcessProperty: "error"` closes the strict-schema gap. Without it,
 // Effect's default `"ignore"` mode silently strips excess fields, so a gemini
 // malformed payload like `{toolName: "interact", args: {action: "navigate",
