@@ -5,6 +5,7 @@ import { parseTraceOutput } from "@neuve/shared/parse-trace-output";
 import {
   Action,
   AgentTurn,
+  AgentTurnLoose,
   AssertionFailed,
   PlanUpdate,
   RunCompleted,
@@ -46,8 +47,19 @@ const STATE_CHANGING_TOOL_NAMES = new Set([
 // `format` parameter applies this as a llama.cpp grammar so the model
 // physically cannot emit non-conforming output. The loop dispatches on
 // `_tag`; native `message.tool_calls` are intentionally ignored.
+//
+// R7 phase 7 — the format grammar uses `AgentTurnLoose` (Ollama-only path).
+// The strict per-tool union the gemini-react path uses for responseSchema
+// is too complex for llama.cpp's grammar engine: the depth-6 anyOf 27 KB
+// schema overwhelms the compiler for complex prompts, the model emits zero
+// bytes, and `result.content.length === 0` bails the loop. Full-sweep R7
+// evidence: 7/20 gemma traces hit this mode. The loose schema (`args:
+// Schema.Unknown`, no per-tool union) keeps the envelope contract intact
+// while shrinking the grammar back to R5b-equivalent complexity. Runtime
+// validation still goes through the strict `parseAgentTurnFromString`
+// below — gemma's typical canonical/shorthand emissions are strict-valid.
 const AGENT_TURN_FORMAT = (() => {
-  const document = Schema.toJsonSchemaDocument(AgentTurn);
+  const document = Schema.toJsonSchemaDocument(AgentTurnLoose);
   return { ...document.schema, $defs: document.definitions };
 })();
 
