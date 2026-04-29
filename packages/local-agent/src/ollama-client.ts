@@ -102,13 +102,13 @@ export interface OllamaChatResult {
 
 // --- Errors ---
 
-export class OllamaRequestError extends Schema.ErrorClass<OllamaRequestError>(
-  "OllamaRequestError",
-)({
-  _tag: Schema.tag("OllamaRequestError"),
-  status: Schema.Number,
-  body: Schema.String,
-}) {
+export class OllamaRequestError extends Schema.ErrorClass<OllamaRequestError>("OllamaRequestError")(
+  {
+    _tag: Schema.tag("OllamaRequestError"),
+    status: Schema.Number,
+    body: Schema.String,
+  },
+) {
   message = `Ollama /api/chat returned HTTP ${this.status}: ${this.body}`;
 }
 
@@ -121,9 +121,7 @@ export class OllamaTransportError extends Schema.ErrorClass<OllamaTransportError
   message = `Ollama /api/chat transport error: ${this.cause}`;
 }
 
-export class OllamaStreamError extends Schema.ErrorClass<OllamaStreamError>(
-  "OllamaStreamError",
-)({
+export class OllamaStreamError extends Schema.ErrorClass<OllamaStreamError>("OllamaStreamError")({
   _tag: Schema.tag("OllamaStreamError"),
   cause: Schema.String,
 }) {
@@ -151,10 +149,7 @@ export interface OllamaClient {
     OllamaChatResult,
     OllamaRequestError | OllamaTransportError | OllamaStreamError
   >;
-  readonly checkHealth: () => Effect.Effect<
-    void,
-    OllamaHealthCheckError | OllamaTransportError
-  >;
+  readonly checkHealth: () => Effect.Effect<void, OllamaHealthCheckError | OllamaTransportError>;
 }
 
 // --- Internal helpers ---
@@ -203,20 +198,36 @@ interface RequestBody {
   readonly format?: unknown;
 }
 
-const buildRequestBody = (
-  model: string,
-  options: OllamaCompletionOptions,
-): RequestBody => ({
-  model,
-  messages: options.messages.map(toWireMessage),
-  stream: true,
-  options: {
-    num_ctx: DEFAULT_NUM_CTX,
-    temperature: DEFAULT_TEMPERATURE,
-  },
-  ...(options.tools && options.tools.length > 0 ? { tools: options.tools } : {}),
-  ...(options.format !== undefined ? { format: options.format } : {}),
-});
+// `tools` and `format` are mutually exclusive on the wire. Passing both to
+// Ollama trips a llama.cpp grammar collision: the tool-call lazy grammar (the
+// conditional grammar that activates when the model decides to invoke a tool)
+// and the structured-output JSON Schema grammar share the same logits-masking
+// layer. LM Studio's llama.cpp runtime returns HTTP 400 `"Cannot combine
+// structured output constraints with lazy grammar"` for the same combination
+// (R8 probe-3 2026-04-30). Ollama 0.22.0 silently accepts both but the
+// collision intermittently emits zero tokens — the `done_reason="stop"` /
+// `content.length === 0` failure mode that surfaced on 30-35% of tasks per
+// sweep through R5b → R7. Production callers (`tool-loop.ts`) always set
+// `format` and treat native `message.tool_calls` as decorative (dispatch is
+// keyed on the AgentTurn envelope's `_tag`), so when `format` is present we
+// drop `tools` from the request. See
+// `docs/handover/ollama-empty-content/diary/r8-2026-04-30.md` for the full
+// hypothesis matrix and probe evidence.
+const buildRequestBody = (model: string, options: OllamaCompletionOptions): RequestBody => {
+  const includeTools =
+    options.format === undefined && options.tools !== undefined && options.tools.length > 0;
+  return {
+    model,
+    messages: options.messages.map(toWireMessage),
+    stream: true,
+    options: {
+      num_ctx: DEFAULT_NUM_CTX,
+      temperature: DEFAULT_TEMPERATURE,
+    },
+    ...(includeTools ? { tools: options.tools } : {}),
+    ...(options.format !== undefined ? { format: options.format } : {}),
+  };
+};
 
 const stripTrailingSlashes = (raw: string): string => {
   let result = raw;
@@ -255,10 +266,7 @@ interface AccumulatorState {
   doneReason: string | undefined;
 }
 
-const consumeChunk = (
-  state: AccumulatorState,
-  chunk: typeof OllamaChatChunk.Type,
-): void => {
+const consumeChunk = (state: AccumulatorState, chunk: typeof OllamaChatChunk.Type): void => {
   const message = chunk.message;
   if (message?.content) {
     state.content += message.content;
@@ -274,10 +282,7 @@ const consumeChunk = (
     }
   }
   if (chunk.done) {
-    if (
-      chunk.prompt_eval_count !== undefined &&
-      chunk.eval_count !== undefined
-    ) {
+    if (chunk.prompt_eval_count !== undefined && chunk.eval_count !== undefined) {
       state.usage = {
         promptEvalCount: chunk.prompt_eval_count,
         evalCount: chunk.eval_count,
@@ -299,9 +304,7 @@ export const createOllamaClient = (): OllamaClient => {
   // Config.string (validated, no raw process.env).
   const { baseUrl, model } = Effect.runSync(resolveStartupConfig);
 
-  const chat = Effect.fn("OllamaClient.chat")(function* (
-    options: OllamaCompletionOptions,
-  ) {
+  const chat = Effect.fn("OllamaClient.chat")(function* (options: OllamaCompletionOptions) {
     yield* Effect.annotateCurrentSpan({
       model,
       messageCount: options.messages.length,
