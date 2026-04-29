@@ -44,15 +44,10 @@ const makeRecordingConnection = (): {
   const updates: RecordedSessionUpdate[] = [];
   const extNotifications: RecordedExtNotification[] = [];
   const connection = {
-    sessionUpdate: async (
-      params: acp.SessionNotification,
-    ): Promise<void> => {
+    sessionUpdate: async (params: acp.SessionNotification): Promise<void> => {
       updates.push({ sessionId: params.sessionId, update: params.update });
     },
-    extNotification: async (
-      method: string,
-      params: Record<string, unknown>,
-    ): Promise<void> => {
+    extNotification: async (method: string, params: Record<string, unknown>): Promise<void> => {
       extNotifications.push({ method, params });
     },
   } as unknown as acp.AgentSideConnection;
@@ -67,9 +62,7 @@ const makeScriptedClient = (
 } => {
   const requests: RecordedChatRequest[] = [];
   let cursor = 0;
-  const chat = (
-    options: OllamaCompletionOptions,
-  ): ReturnType<OllamaClient["chat"]> => {
+  const chat = (options: OllamaCompletionOptions): ReturnType<OllamaClient["chat"]> => {
     requests.push({ options });
     const next = scriptedResults[cursor];
     cursor += 1;
@@ -300,7 +293,10 @@ describe("runToolLoop — AgentTurn envelope dispatch", () => {
   ): Promise<{
     updates: RecordedSessionUpdate[];
     calls: RecordedToolCall[];
-    messages: Array<{ readonly role: "system" | "user" | "assistant" | "tool"; readonly content: string }>;
+    messages: Array<{
+      readonly role: "system" | "user" | "assistant" | "tool";
+      readonly content: string;
+    }>;
   }> => {
     const scripted = [
       okResult(envelope(midTurnEnvelope)),
@@ -346,12 +342,15 @@ describe("runToolLoop — AgentTurn envelope dispatch", () => {
       return text.includes("PLAN_UPDATE") && text.includes("step-02") && text.includes("insert");
     });
     assert.isTrue(matched, "expected PLAN_UPDATE to surface as agent_thought_chunk");
-    assert.deepStrictEqual(messages.map((m) => m.role), [
-      "system",
-      "assistant", // PLAN_UPDATE envelope
-      "user", // observation feedback
-      "assistant", // RUN_COMPLETED
-    ]);
+    assert.deepStrictEqual(
+      messages.map((m) => m.role),
+      [
+        "system",
+        "assistant", // PLAN_UPDATE envelope
+        "user", // observation feedback
+        "assistant", // RUN_COMPLETED
+      ],
+    );
   });
 
   it("dispatches STEP_DONE through agent_message_chunk and continues the loop", async () => {
@@ -371,12 +370,15 @@ describe("runToolLoop — AgentTurn envelope dispatch", () => {
       return text.startsWith("[STEP_DONE step-01]");
     });
     assert.isTrue(matched, "expected STEP_DONE to surface as agent_message_chunk");
-    assert.deepStrictEqual(messages.map((m) => m.role), [
-      "system",
-      "assistant", // STEP_DONE envelope
-      "user", // observation feedback
-      "assistant", // RUN_COMPLETED
-    ]);
+    assert.deepStrictEqual(
+      messages.map((m) => m.role),
+      [
+        "system",
+        "assistant", // STEP_DONE envelope
+        "user", // observation feedback
+        "assistant", // RUN_COMPLETED
+      ],
+    );
   });
 
   it("dispatches ASSERTION_FAILED through agent_message_chunk and continues the loop", async () => {
@@ -403,11 +405,14 @@ describe("runToolLoop — AgentTurn envelope dispatch", () => {
       );
     });
     assert.isTrue(matched, "expected ASSERTION_FAILED to surface as agent_message_chunk");
-    assert.deepStrictEqual(messages.map((m) => m.role), [
-      "system",
-      "assistant", // ASSERTION_FAILED envelope
-      "user", // observation feedback
-      "assistant", // RUN_COMPLETED
-    ]);
+    assert.deepStrictEqual(
+      messages.map((m) => m.role),
+      [
+        "system",
+        "assistant", // ASSERTION_FAILED envelope
+        "user", // observation feedback
+        "assistant", // RUN_COMPLETED
+      ],
+    );
   });
 });

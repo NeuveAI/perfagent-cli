@@ -1,9 +1,6 @@
 import { Effect, Schema } from "effect";
 import { assert, describe, expect, it } from "vite-plus/test";
-import {
-  AgentTurn,
-  parseAgentTurn,
-} from "@neuve/shared/react-envelope";
+import { AgentTurn, parseAgentTurn } from "@neuve/shared/react-envelope";
 
 // R6 multi-modal: live regression guard for the Ollama `/api/chat` multipart
 // shape the gemma-react production loop ships. Probe 1 (2026-04-27) verified
@@ -99,8 +96,7 @@ describe("gemma multi-modal smoke", () => {
           messages: [
             {
               role: "system",
-              content:
-                "You are a ReAct agent. Emit exactly one AgentTurn JSON envelope per turn.",
+              content: "You are a ReAct agent. Emit exactly one AgentTurn JSON envelope per turn.",
             },
             {
               role: "user",

@@ -64,9 +64,7 @@ const makeScriptedClient = (
 } => {
   const requests: RecordedChatRequest[] = [];
   let cursor = 0;
-  const chat = (
-    options: OllamaCompletionOptions,
-  ): ReturnType<OllamaClient["chat"]> => {
+  const chat = (options: OllamaCompletionOptions): ReturnType<OllamaClient["chat"]> => {
     requests.push({ options });
     const next = scriptedResults[cursor];
     cursor += 1;
@@ -236,11 +234,7 @@ describe("runToolLoop — R4 trajectory rolling", () => {
         ),
       );
     }
-    scripted.push(
-      okResult(
-        envelope({ _tag: "RUN_COMPLETED", status: "passed", summary: "done" }),
-      ),
-    );
+    scripted.push(okResult(envelope({ _tag: "RUN_COMPLETED", status: "passed", summary: "done" })));
     const { client, requests } = makeScriptedClient(scripted);
     const { connection } = makeRecordingConnection();
     const messages: OllamaMessage[] = [

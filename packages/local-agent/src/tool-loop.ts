@@ -15,11 +15,7 @@ import {
 } from "@neuve/shared/react-envelope";
 import { rollTrajectory } from "@neuve/shared/trajectory";
 
-import type {
-  OllamaClient,
-  OllamaMessage,
-  OllamaToolDefinition,
-} from "./ollama-client.js";
+import type { OllamaClient, OllamaMessage, OllamaToolDefinition } from "./ollama-client.js";
 import type { McpBridge, McpToolCallResult } from "./mcp-bridge.js";
 
 import { log } from "./log.js";
@@ -33,13 +29,7 @@ const TRACE_STOPPED_SENTINEL = "The performance trace has been stopped.";
 // covers navigate/click/fill/hover/etc.; the flat tools (`click`, `fill`,
 // `hover`, `select`) cover the legacy interactions tool surface. `observe`
 // and `trace` are excluded — they don't mutate state.
-const STATE_CHANGING_TOOL_NAMES = new Set([
-  "interact",
-  "click",
-  "fill",
-  "hover",
-  "select",
-]);
+const STATE_CHANGING_TOOL_NAMES = new Set(["interact", "click", "fill", "hover", "select"]);
 
 // AgentTurn JSON Schema generated once at module load. Variant B (locked
 // 2026-04-25) constrains every Gemma turn to one of THOUGHT / ACTION /
@@ -109,9 +99,7 @@ interface ParseFailure {
   readonly cause: string;
 }
 
-const parseEnvelope = (
-  content: string,
-): Promise<typeof AgentTurn.Type | ParseFailure> =>
+const parseEnvelope = (content: string): Promise<typeof AgentTurn.Type | ParseFailure> =>
   Effect.runPromise(
     parseAgentTurnFromString(content).pipe(
       Effect.catchTag("SchemaError", (cause) =>
