@@ -1,4 +1,4 @@
-import { Effect, Option } from "effect";
+import { Effect, Option, Schema } from "effect";
 import { assert, describe, expect, it } from "vite-plus/test";
 import {
   AnalysisStep,
@@ -12,6 +12,8 @@ import {
 } from "../src/models";
 import {
   Action,
+  AgentTurn,
+  AgentTurnLoose,
   AssertionFailed,
   parseAgentTurn,
   parseAgentTurnFromString,
@@ -657,5 +659,86 @@ describe("ExecutedPerfPlan.applyPlanUpdate", () => {
     });
     expect(turn._tag).toBe("PLAN_UPDATE");
     expect(event._tag).toBe("PlanUpdate");
+  });
+});
+
+// R7 phase 7 — guard the Ollama format-grammar size + nesting depth.
+// Empirical evidence (`docs/handover/strict-tool-schema/diary/r7-2026-04-27.md`
+// Phase 6): the strict per-tool union (depth-6 anyOf, ~27 KB) overwhelmed
+// llama.cpp's grammar engine on 7/20 gemma tasks (35%) — model emitted zero
+// bytes ("empty content at round 1 with done_reason='stop'"). The loose
+// variant `AgentTurnLoose` mirrors R5b's shape (`args: Schema.Unknown`) so
+// the grammar is small + shallow. These thresholds catch drift toward the
+// strict shape on the Ollama path.
+describe("AgentTurnLoose — Ollama format-grammar size + depth bounds (R7 phase 7)", () => {
+  const document = Schema.toJsonSchemaDocument(AgentTurnLoose);
+  const json = JSON.stringify({ ...document.schema, $defs: document.definitions });
+
+  const measureMaxAnyOfOneOfDepth = (node: unknown, depth = 0): number => {
+    if (Array.isArray(node)) {
+      return node.reduce<number>(
+        (max, entry) => Math.max(max, measureMaxAnyOfOneOfDepth(entry, depth)),
+        depth,
+      );
+    }
+    if (typeof node !== "object" || node === null) return depth;
+    let max = depth;
+    for (const [key, value] of Object.entries(node)) {
+      const childDepth =
+        key === "anyOf" || key === "oneOf"
+          ? measureMaxAnyOfOneOfDepth(value, depth + 1)
+          : measureMaxAnyOfOneOfDepth(value, depth);
+      if (childDepth > max) max = childDepth;
+    }
+    return max;
+  };
+
+  it("emits a small grammar (≤ 8 KB) so llama.cpp's compiler doesn't choke", () => {
+    expect(json.length).toBeLessThanOrEqual(8 * 1024);
+  });
+
+  it("keeps anyOf/oneOf nesting shallow (≤ 2 levels)", () => {
+    const depth = measureMaxAnyOfOneOfDepth(document.schema);
+    expect(depth).toBeLessThanOrEqual(2);
+  });
+
+  it("preserves the 6-variant union of envelope shapes (THOUGHT/ACTION/...)", () => {
+    const top = document.schema as { anyOf?: unknown[] };
+    expect(Array.isArray(top.anyOf)).toBe(true);
+    expect(top.anyOf?.length).toBe(6);
+  });
+
+  it("Ollama-loose Action variant accepts arbitrary args (Schema.Unknown surface)", async () => {
+    // Through the LOOSE schema, an envelope with an unregistered toolName +
+    // exotic args still decodes — Ollama's format grammar must allow what
+    // gemma actually emits today (canonical/shorthand variants the bridge
+    // auto-wrap normalizes).
+    const decoded = await Effect.runPromise(
+      Schema.decodeUnknownEffect(AgentTurnLoose)({
+        _tag: "ACTION",
+        stepId: "s-1",
+        toolName: "interact",
+        args: { command: "navigate", url: "https://example.com" },
+      }),
+    );
+    expect(decoded._tag).toBe("ACTION");
+  });
+
+  it("strict AgentTurn still rejects gemini's flat-action bug shape (regression guard)", async () => {
+    // Both schemas are exported; the strict one keeps protecting the Gemini
+    // path. This test pins the contract so a future change can't silently
+    // weaken Gemini's enforcement while loosening Ollama.
+    const exit = await Effect.runPromiseExit(
+      Schema.decodeUnknownEffect(AgentTurn)(
+        {
+          _tag: "ACTION",
+          stepId: "s-1",
+          toolName: "interact",
+          args: { action: "navigate", url: "https://example.com" },
+        },
+        { onExcessProperty: "error" },
+      ),
+    );
+    expect(exit._tag).toBe("Failure");
   });
 });
