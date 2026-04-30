@@ -3,7 +3,15 @@ export interface ParsedNetworkRequest {
   method: string;
   status?: number;
   statusText?: string;
-  resourceType?: "document" | "stylesheet" | "script" | "image" | "font" | "fetch" | "xhr" | "other";
+  resourceType?:
+    | "document"
+    | "stylesheet"
+    | "script"
+    | "image"
+    | "font"
+    | "fetch"
+    | "xhr"
+    | "other";
   transferSizeKb?: number;
   durationMs?: number;
   failed?: boolean;

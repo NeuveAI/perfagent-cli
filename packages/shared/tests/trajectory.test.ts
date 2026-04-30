@@ -113,10 +113,7 @@ describe("partitionTrajectory", () => {
 });
 
 describe("summarizeTrajectoryTurn", () => {
-  const make = (
-    assistant: TrajectoryMessage,
-    observationContent: string,
-  ): TrajectoryTurn => ({
+  const make = (assistant: TrajectoryMessage, observationContent: string): TrajectoryTurn => ({
     assistant,
     observation: observation(observationContent),
   });
@@ -138,9 +135,7 @@ describe("summarizeTrajectoryTurn", () => {
 
   it("formats a PLAN_UPDATE envelope as <event>PLAN_UPDATE action stepId → outcome</event>", () => {
     const turn = make(assistantPlanUpdate("step-1", "insert"), "ok");
-    expect(summarizeTrajectoryTurn(turn)).toEqual(
-      "<event>PLAN_UPDATE insert step-1 → ok</event>",
-    );
+    expect(summarizeTrajectoryTurn(turn)).toEqual("<event>PLAN_UPDATE insert step-1 → ok</event>");
   });
 
   it("formats a STEP_DONE envelope", () => {
@@ -157,9 +152,7 @@ describe("summarizeTrajectoryTurn", () => {
 
   it("formats a RUN_COMPLETED envelope", () => {
     const turn = make(assistantRunCompleted("passed", "all good"), "ack");
-    expect(summarizeTrajectoryTurn(turn)).toEqual(
-      "<event>RUN_COMPLETED passed → ack</event>",
-    );
+    expect(summarizeTrajectoryTurn(turn)).toEqual("<event>RUN_COMPLETED passed → ack</event>");
   });
 
   it("emits UNPARSED for assistant content that is not valid AgentTurn JSON", () => {

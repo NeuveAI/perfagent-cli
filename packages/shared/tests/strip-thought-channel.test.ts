@@ -22,8 +22,7 @@ describe("stripThoughtChannel", () => {
   });
 
   it("strips multiple consecutive channel blocks", () => {
-    const input =
-      "<|channel>thought\nfirst\n<channel|><|channel>thought\nsecond\n<channel|>final";
+    const input = "<|channel>thought\nfirst\n<channel|><|channel>thought\nsecond\n<channel|>final";
     expect(stripThoughtChannel(input)).toEqual("final");
   });
 

@@ -106,9 +106,7 @@ describe("parseInsightDetail", () => {
     expect(parsed.title).toBe("LCP breakdown");
     expect(parsed.summary).toContain("This insight is used to analyze the time spent");
     expect(parsed.analysis).toContain("- Time to first byte: 7 ms (7.4% of total LCP time)");
-    expect(parsed.analysis).toContain(
-      "- Element render delay: 92 ms (92.6% of total LCP time)",
-    );
+    expect(parsed.analysis).toContain("- Element render delay: 92 ms (92.6% of total LCP time)");
     expect(parsed.estimatedSavings).toBeUndefined();
     expect(parsed.externalResources).toEqual([
       "https://developer.chrome.com/docs/performance/insights/lcp-breakdown",
@@ -123,9 +121,7 @@ describe("parseInsightDetail", () => {
     if (!parsed) return;
     expect(parsed.insightName).toBe("DocumentLatency");
     expect(parsed.title).toBe("Document request latency");
-    expect(parsed.analysis).toContain(
-      "## Document network request: https://agent.perflab.io/",
-    );
+    expect(parsed.analysis).toContain("## Document network request: https://agent.perflab.io/");
     expect(parsed.analysis).toContain("The request was not redirected: PASSED");
     expect(parsed.estimatedSavings).toBe("FCP 0 ms, LCP 0 ms");
     expect(parsed.externalResources.length).toBeGreaterThan(0);

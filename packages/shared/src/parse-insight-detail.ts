@@ -62,9 +62,7 @@ const deriveInsightName = (title: string): string => {
   const mapped = TITLE_TO_INSIGHT_NAME[normalized];
   if (mapped) return mapped;
   const collapsed = title.replace(/\s+/g, "");
-  const match = KNOWN_INSIGHT_NAMES.find(
-    (name) => name.toLowerCase() === collapsed.toLowerCase(),
-  );
+  const match = KNOWN_INSIGHT_NAMES.find((name) => name.toLowerCase() === collapsed.toLowerCase());
   if (match) return match;
   return collapsed;
 };
@@ -133,9 +131,7 @@ const extractExternalResources = (body: string): string[] => {
   return urls;
 };
 
-export const parseInsightDetail = (
-  toolResultText: string,
-): ParsedInsightDetail | undefined => {
+export const parseInsightDetail = (toolResultText: string): ParsedInsightDetail | undefined => {
   if (!toolResultText) return undefined;
   const trimmedStart = toolResultText.replace(/^\s+/, "");
   if (!trimmedStart.startsWith(TITLE_HEADING)) return undefined;
@@ -158,18 +154,8 @@ export const parseInsightDetail = (
 
   const title = sliceSectionBody(lines, spans.titleStart, titleEnd, TITLE_HEADING);
   const summary = sliceSectionBody(lines, spans.summaryStart, summaryEnd, SUMMARY_HEADING);
-  const analysis = sliceSectionBody(
-    lines,
-    spans.analysisStart,
-    analysisEnd,
-    ANALYSIS_HEADING,
-  );
-  const savingsRaw = sliceSectionBody(
-    lines,
-    spans.savingsStart,
-    savingsEnd,
-    SAVINGS_HEADING,
-  );
+  const analysis = sliceSectionBody(lines, spans.analysisStart, analysisEnd, ANALYSIS_HEADING);
+  const savingsRaw = sliceSectionBody(lines, spans.savingsStart, savingsEnd, SAVINGS_HEADING);
   const resourcesBody = sliceSectionBody(
     lines,
     spans.resourcesStart,

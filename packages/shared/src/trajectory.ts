@@ -61,8 +61,8 @@ const collapseWhitespace = (text: string): string => {
   let previousWasWhitespace = false;
   for (let index = 0; index < text.length; index++) {
     const character = text[index];
-    const isWhitespace = character === " " || character === "\t" || character === "\n" ||
-      character === "\r";
+    const isWhitespace =
+      character === " " || character === "\t" || character === "\n" || character === "\r";
     if (isWhitespace) {
       if (!previousWasWhitespace && result.length > 0) {
         result += " ";
@@ -115,14 +115,9 @@ const summarizeAgentTurn = (turn: AgentTurn): string => {
   return "UNKNOWN";
 };
 
-const formatEventLine = (
-  turn: TrajectoryTurn,
-  observationCharLimit: number,
-): string => {
+const formatEventLine = (turn: TrajectoryTurn, observationCharLimit: number): string => {
   const decodeExit = decodeAgentTurnFromString(turn.assistant.content);
-  const head = Exit.isFailure(decodeExit)
-    ? "UNPARSED"
-    : summarizeAgentTurn(decodeExit.value);
+  const head = Exit.isFailure(decodeExit) ? "UNPARSED" : summarizeAgentTurn(decodeExit.value);
   const outcome = summarizeObservation(turn.observation.content, observationCharLimit);
   if (outcome.length === 0) return `<event>${head}</event>`;
   return `<event>${head} → ${outcome}</event>`;
@@ -197,12 +192,7 @@ export const rollTrajectory = (
   const summaryMessage = buildSummaryMessage(olderTurns, observationCharLimit);
   const recentFlattened = recentTurns.flatMap((turn) => [turn.assistant, turn.observation]);
   return {
-    messages: [
-      ...partitioned.preface,
-      summaryMessage,
-      ...recentFlattened,
-      ...partitioned.trailing,
-    ],
+    messages: [...partitioned.preface, summaryMessage, ...recentFlattened, ...partitioned.trailing],
     summarizedTurnCount: olderTurns.length,
     verbatimTurnCount: recentTurns.length,
   };

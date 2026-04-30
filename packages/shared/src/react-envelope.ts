@@ -45,10 +45,13 @@ const describe = <S>(schema: S, description: string): S =>
 const InteractNavigate = Schema.Struct({
   command: describe(
     Schema.Literal("navigate"),
-    'Navigate the active page. Use `url` for fresh navigations or `direction` for back/forward/reload.',
+    "Navigate the active page. Use `url` for fresh navigations or `direction` for back/forward/reload.",
   ),
   url: Schema.optional(
-    describe(Schema.String, "Target URL for `direction: \"url\"` navigations. Must be a valid absolute URL."),
+    describe(
+      Schema.String,
+      'Target URL for `direction: "url"` navigations. Must be a valid absolute URL.',
+    ),
   ),
   direction: Schema.optional(
     describe(

@@ -37,8 +37,20 @@ const TTFB_POOR_MIN_MS = 1800;
 const SECOND_THRESHOLD_MS = 1000;
 
 export const CWV_THRESHOLDS: Record<CwvMetric, CwvThreshold> = {
-  LCP: { metric: "LCP", key: "lcpMs", goodMax: LCP_GOOD_MAX_MS, poorMin: LCP_POOR_MIN_MS, unit: "ms" },
-  FCP: { metric: "FCP", key: "fcpMs", goodMax: FCP_GOOD_MAX_MS, poorMin: FCP_POOR_MIN_MS, unit: "ms" },
+  LCP: {
+    metric: "LCP",
+    key: "lcpMs",
+    goodMax: LCP_GOOD_MAX_MS,
+    poorMin: LCP_POOR_MIN_MS,
+    unit: "ms",
+  },
+  FCP: {
+    metric: "FCP",
+    key: "fcpMs",
+    goodMax: FCP_GOOD_MAX_MS,
+    poorMin: FCP_POOR_MIN_MS,
+    unit: "ms",
+  },
   CLS: {
     metric: "CLS",
     key: "clsScore",
@@ -46,7 +58,13 @@ export const CWV_THRESHOLDS: Record<CwvMetric, CwvThreshold> = {
     poorMin: CLS_POOR_MIN_SCORE,
     unit: "score",
   },
-  INP: { metric: "INP", key: "inpMs", goodMax: INP_GOOD_MAX_MS, poorMin: INP_POOR_MIN_MS, unit: "ms" },
+  INP: {
+    metric: "INP",
+    key: "inpMs",
+    goodMax: INP_GOOD_MAX_MS,
+    poorMin: INP_POOR_MIN_MS,
+    unit: "ms",
+  },
   TTFB: {
     metric: "TTFB",
     key: "ttfbMs",

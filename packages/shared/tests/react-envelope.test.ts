@@ -310,7 +310,7 @@ describe("parseAgentTurn — strict tool-schema rejection (R7)", () => {
     expect(exit._tag).toBe("Failure");
   });
 
-  it("rejects flat-action gemini bug shape ({action: \"navigate\", url})", async () => {
+  it('rejects flat-action gemini bug shape ({action: "navigate", url})', async () => {
     const wire = {
       _tag: "ACTION",
       stepId: "step-1",
@@ -321,7 +321,7 @@ describe("parseAgentTurn — strict tool-schema rejection (R7)", () => {
     expect(exit._tag).toBe("Failure");
   });
 
-  it("rejects array-action gemini bug shape ({action: [\"navigate\", \"...\"]})", async () => {
+  it('rejects array-action gemini bug shape ({action: ["navigate", "..."]})', async () => {
     const wire = {
       _tag: "ACTION",
       stepId: "step-1",

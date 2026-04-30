@@ -83,7 +83,9 @@ describe("parseTraceOutput", () => {
   - insight name: ShouldNotBeIncluded
 `;
     const result = parseTraceOutput(payload);
-    expect(result[0].insights.find((insight) => insight.insightName === "ShouldNotBeIncluded")).toBeUndefined();
+    expect(
+      result[0].insights.find((insight) => insight.insightName === "ShouldNotBeIncluded"),
+    ).toBeUndefined();
   });
 
   it("leaves lcpMs undefined when LCP line is absent", () => {
