@@ -16,6 +16,8 @@ import {
 } from "../src/distill/filters";
 import { SidecarScore, sidecarPathForTrace } from "../src/distill/sidecar-score";
 import {
+  Action as ActionTurn,
+  parseAgentTurn,
   parseAgentTurnFromString,
   PlanUpdate as PlanUpdateTurn,
 } from "@neuve/shared/react-envelope";
@@ -788,6 +790,139 @@ describe("TeacherDataExporter", () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
+  it("Path B conformance: every emitted assistant.toolCalls[].arguments round-trips through parseAgentTurn as a strict ACTION envelope (R11 P3)", async () => {
+    // This is the regression guard for the wire format browsing-gemma
+    // is being trained to emit. The exporter renders OpenAI-style
+    // tool-calls with `arguments` as JSON strings; in production the
+    // model emits a Path B `ACTION` envelope at
+    // `_tag: "ACTION", stepId, toolName: <ToolName literal>, args: <variant>`
+    // (via Ollama's `format` JSON Schema grammar override). For the
+    // training data to teach the right wire shape, the args inside
+    // every emitted tool call must conform to the strict per-tool
+    // `ActionVariantArgs` union that production `parseAgentTurn`
+    // enforces. Schema drift in the exporter (e.g. emitting unknown
+    // arg keys, mistyping `command`, or shape-shifting `args`) would
+    // teach browsing-gemma to emit envelopes the production reducer
+    // would reject — the third-strike pattern from
+    // `feedback_no_test_only_injection_seams.md`.
+    const tempDir = makeTempDir();
+    const tracePath = path.join(tempDir, "real__path-b-conformance.ndjson");
+    // Use the canonical shapes the runtime parser accepts. The synthetic
+    // sample data has `mcp__browser__interact` MCP-prefixed names; the
+    // production parser uses bare tool names. We exercise both paths
+    // here: bare tool name on the trace event ↔ direct decode through
+    // parseAgentTurn.
+    const pathBEvents: ReadonlyArray<unknown> = [
+      { type: "agent_message", ts: 1, turn: 1, content: "I will navigate then snapshot." },
+      {
+        type: "tool_call",
+        ts: 2,
+        turn: 1,
+        id: "tc-000",
+        name: "interact",
+        args: JSON.stringify({ action: { command: "navigate", url: "https://example.com" } }),
+      },
+      {
+        type: "tool_result",
+        ts: 3,
+        id: "tc-000",
+        result: "Successfully navigated to https://example.com.",
+        ok: true,
+      },
+      {
+        type: "tool_call",
+        ts: 4,
+        turn: 2,
+        id: "tc-001",
+        name: "observe",
+        args: JSON.stringify({ action: { command: "snapshot" } }),
+      },
+      {
+        type: "tool_result",
+        ts: 5,
+        id: "tc-001",
+        result: "snapshot ok",
+        ok: true,
+      },
+      {
+        type: "tool_call",
+        ts: 6,
+        turn: 3,
+        id: "tc-002",
+        name: "trace",
+        args: JSON.stringify({
+          action: { command: "start", reload: true, autoStop: true },
+        }),
+      },
+      { type: "status_marker", ts: 7, marker: "RUN_COMPLETED", payload: ["passed", "done"] },
+    ];
+    writeNdjson(tracePath, pathBEvents);
+    const task = buildTask("path-b-conformance", "Visit example.com.");
+    const effect = Effect.gen(function* () {
+      const exporter = yield* TeacherDataExporter;
+      return yield* exporter.export({
+        tracePaths: [tracePath],
+        tasks: [task],
+        options: new ExportOptions({
+          teacherModel: SAMPLE_TEACHER,
+          systemPrompt: SAMPLE_SYSTEM_PROMPT,
+        }),
+      });
+    });
+    const exit = await runExportEffect(effect);
+    assert.strictEqual(exit._tag, "Success", JSON.stringify(exit));
+    const result =
+      exit._tag === "Success"
+        ? (exit.value as {
+            samples: ReadonlyArray<{
+              messages: ReadonlyArray<{
+                role: string;
+                toolCalls?: ReadonlyArray<{ name: string; arguments: string }>;
+              }>;
+            }>;
+          })
+        : undefined;
+    assert.isDefined(result);
+    if (result === undefined) return;
+    assert.strictEqual(result.samples.length, 1);
+
+    // Walk every assistant turn's emitted toolCalls[] and assert each
+    // one's `arguments` JSON parses into a strict ACTION envelope.
+    let validatedCount = 0;
+    for (const message of result.samples[0].messages) {
+      if (message.role !== "assistant") continue;
+      const toolCalls = message.toolCalls;
+      if (toolCalls === undefined) continue;
+      for (const toolCall of toolCalls) {
+        const parsedArgs = JSON.parse(toolCall.arguments) as unknown;
+        // Synthesize the Path B ACTION envelope a production model
+        // would emit on the wire. stepId is ad-hoc here (doesn't appear
+        // in the OpenAI tool-call shape the exporter emits) — the
+        // assertion is on the args structure conformance, which is the
+        // load-bearing piece for browsing-gemma's wire format.
+        const envelope = {
+          _tag: "ACTION",
+          stepId: `step-${validatedCount + 1}`,
+          toolName: toolCall.name,
+          args: parsedArgs,
+        };
+        const decoded = await Effect.runPromise(parseAgentTurn(envelope));
+        assert.instanceOf(
+          decoded,
+          ActionTurn,
+          `tool_call args must round-trip through parseAgentTurn as Action: name=${toolCall.name} args=${toolCall.arguments}`,
+        );
+        validatedCount += 1;
+      }
+    }
+    assert.strictEqual(
+      validatedCount,
+      3,
+      "all three emitted tool calls (interact + observe + trace) round-tripped through parseAgentTurn",
+    );
+
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
 
   it("serializes samples to valid JSONL via renderSamplesToJsonl", async () => {
     const tempDir = makeTempDir();
