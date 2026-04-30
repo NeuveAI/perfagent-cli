@@ -479,12 +479,19 @@ export class TeacherDataExporter extends ServiceMap.Service<
       const granularity: ExportGranularity = input.options.granularity ?? "per-trajectory";
       const shouldRollTrajectory = input.options.rollTrajectory ?? false;
       const strict = input.options.strict ?? false;
+      const runnerFilterRaw = input.options.runnerFilter;
+      const runnerAllowlist =
+        runnerFilterRaw !== undefined && runnerFilterRaw.length > 0
+          ? new Set(runnerFilterRaw)
+          : undefined;
       yield* Effect.annotateCurrentSpan({
         traceCount: input.tracePaths.length,
         taskCount: input.tasks.length,
         granularity,
         rollTrajectory: shouldRollTrajectory,
         strict,
+        runnerAllowlist:
+          runnerAllowlist === undefined ? "all" : Array.from(runnerAllowlist).join(","),
       });
 
       const samples: TrainingSample[] = [];
@@ -496,6 +503,7 @@ export class TeacherDataExporter extends ServiceMap.Service<
       let strictRejectedNoSidecar = 0;
       let strictRejectedFinalState = 0;
       let strictRejectedStepCoverage = 0;
+      let runnerFilterRejected = 0;
 
       for (const tracePath of input.tracePaths) {
         tracesScanned += 1;
@@ -539,6 +547,16 @@ export class TeacherDataExporter extends ServiceMap.Service<
         if (parsedName === undefined) {
           tracesRejected += 1;
           yield* Effect.logWarning("Trace rejected (unparseable filename)", { tracePath });
+          continue;
+        }
+        if (runnerAllowlist !== undefined && !runnerAllowlist.has(parsedName.runner)) {
+          tracesRejected += 1;
+          runnerFilterRejected += 1;
+          yield* Effect.logDebug("Trace rejected (runner not in allowlist)", {
+            tracePath,
+            runner: parsedName.runner,
+            allowlist: Array.from(runnerAllowlist),
+          });
           continue;
         }
         const task = tasksById.get(parsedName.taskId);
@@ -599,6 +617,7 @@ export class TeacherDataExporter extends ServiceMap.Service<
         strictRejectedNoSidecar,
         strictRejectedFinalState,
         strictRejectedStepCoverage,
+        runnerFilterRejected,
       });
 
       return {

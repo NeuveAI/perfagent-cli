@@ -108,4 +108,29 @@ export class ExportOptions extends Schema.Class<ExportOptions>("@evals/distill/E
    * sweep over R10 traces can be audited.
    */
   strict: Schema.optional(Schema.Boolean),
+  /**
+   * R11 P2.1 — runner-name allowlist (teacher-only by default).
+   *
+   * Distillation philosophy says train on TEACHER trajectories only.
+   * Including the student's own strict-pass traces (e.g.
+   * `gemma-react`) teaches the student what it already does — near-zero
+   * gradient on already-mastered tasks. R10 elected `gemini-react`
+   * (Pro 3) as the canonical teacher.
+   *
+   * When set: the exporter rejects any trace whose parsed runner is
+   * not in the allowlist (after the strict tri-criterion check). Even
+   * `gemma-react__calibration-1` strict-clean is excluded if the
+   * allowlist is `["gemini-react"]`.
+   *
+   * When absent (or empty array): no runner gating — the exporter
+   * accepts traces from every runner. R12 multi-sweep cross-runner
+   * mixing experiments use this mode.
+   *
+   * Lives on the library boundary (not just at the script level)
+   * because the P4 training driver and R12's pipeline are pure
+   * consumers of the exporter — they should NOT carry runner-aware
+   * logic. Filtering at the exporter keeps the separation of concerns
+   * clean.
+   */
+  runnerFilter: Schema.optional(Schema.Array(Schema.String)),
 }) {}

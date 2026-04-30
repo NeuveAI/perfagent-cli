@@ -790,6 +790,106 @@ describe("TeacherDataExporter", () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
+  it("strict mode + runnerFilter: gemini-react allowlist accepts gemini-react traces and rejects gemma-react even when both pass strict tri-criterion (R11 P2.1 teacher-only default)", async () => {
+    // Lead's flag: distillation philosophy = teacher-only at the
+    // export boundary. Even when gemma-react traces pass the strict
+    // gate (which can happen on calibration-shape tasks where the
+    // student already saturates), they must NOT enter the training
+    // set — including them teaches the student what it already does
+    // (near-zero gradient, with a pollution risk on multi-runner
+    // mixing). The runnerFilter allowlist enforces this at the
+    // exporter library boundary so the P4 training driver can stay
+    // a pure consumer of teacher JSONL.
+    const tempDir = makeTempDir();
+    // Two traces with distinct task IDs (so post-dedup-hash both
+    // candidate samples survive — the dedup compares content hashes
+    // across traces). Filenames carry distinct runner prefixes so the
+    // allowlist gate has something to test.
+    const geminiTracePath = path.join(tempDir, "gemini-react__gemini-task.ndjson");
+    const gemmaTracePath = path.join(tempDir, "gemma-react__gemma-task.ndjson");
+    writeNdjson(geminiTracePath, successfulTraceEvents);
+    writeNdjson(gemmaTracePath, successfulTraceEvents);
+    const cleanSidecar = JSON.stringify(
+      new SidecarScore({ status: "passed", finalState: 1, stepCoverage: 1 }),
+    );
+    fs.writeFileSync(sidecarPathForTrace(geminiTracePath), cleanSidecar + "\n", "utf8");
+    fs.writeFileSync(sidecarPathForTrace(gemmaTracePath), cleanSidecar + "\n", "utf8");
+
+    // Both traces strict-pass independently — verifies the test premise.
+    assert.isTrue(
+      isTraceStrictlyClean(
+        successfulTraceEvents as never,
+        new SidecarScore({ status: "passed", finalState: 1, stepCoverage: 1 }),
+      ),
+    );
+
+    const tasks = [
+      buildTask("gemini-task", "Visit example.com via gemini"),
+      buildTask("gemma-task", "Visit example.com via gemma"),
+    ];
+
+    const effect = Effect.gen(function* () {
+      const exporter = yield* TeacherDataExporter;
+      return yield* exporter.export({
+        tracePaths: [geminiTracePath, gemmaTracePath],
+        tasks,
+        options: new ExportOptions({
+          teacherModel: SAMPLE_TEACHER,
+          systemPrompt: SAMPLE_SYSTEM_PROMPT,
+          strict: true,
+          runnerFilter: ["gemini-react"],
+        }),
+      });
+    });
+    const exit = await runExportEffect(effect);
+    assert.strictEqual(exit._tag, "Success", JSON.stringify(exit));
+    const result =
+      exit._tag === "Success"
+        ? (exit.value as {
+            samples: ReadonlyArray<{ metadata: { runnerName: string; sourceTrace: string } }>;
+            summary: { samplesWritten: number; tracesAccepted: number; tracesRejected: number };
+          })
+        : undefined;
+    assert.isDefined(result);
+    if (result === undefined) return;
+    assert.strictEqual(result.summary.tracesAccepted, 1, "only gemini-react accepted");
+    assert.strictEqual(result.summary.tracesRejected, 1, "gemma-react rejected by allowlist");
+    assert.strictEqual(result.summary.samplesWritten, 1);
+    assert.strictEqual(result.samples.length, 1);
+    assert.strictEqual(result.samples[0].metadata.runnerName, "gemini-react");
+    assert.include(result.samples[0].metadata.sourceTrace, "gemini-react__");
+
+    // Sanity: same input WITHOUT runnerFilter accepts both (proves the
+    // gate is what rejects gemma, not some other path).
+    const noFilterEffect = Effect.gen(function* () {
+      const exporter = yield* TeacherDataExporter;
+      return yield* exporter.export({
+        tracePaths: [geminiTracePath, gemmaTracePath],
+        tasks,
+        options: new ExportOptions({
+          teacherModel: SAMPLE_TEACHER,
+          systemPrompt: SAMPLE_SYSTEM_PROMPT,
+          strict: true,
+        }),
+      });
+    });
+    const noFilterExit = await runExportEffect(noFilterEffect);
+    assert.strictEqual(noFilterExit._tag, "Success");
+    const noFilterResult =
+      noFilterExit._tag === "Success"
+        ? (noFilterExit.value as {
+            summary: { tracesAccepted: number };
+          })
+        : undefined;
+    assert.strictEqual(
+      noFilterResult?.summary.tracesAccepted,
+      2,
+      "without runnerFilter, both gemini-react + gemma-react strict-clean are accepted",
+    );
+
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
   it("Path B conformance: every emitted assistant.toolCalls[].arguments round-trips through parseAgentTurn as a strict ACTION envelope (R11 P3)", async () => {
     // This is the regression guard for the wire format browsing-gemma
     // is being trained to emit. The exporter renders OpenAI-style
