@@ -12,7 +12,7 @@ describe("buildModelfile", () => {
   it("produces FROM, PARAMETER, SYSTEM, and ADAPTER directives in order", () => {
     const output = buildModelfile({
       baseModel: "gemma4:e4b",
-      adapterPath: "./adapters/gemma4-perfagent.gguf",
+      adapterPath: "./adapters/browsing-gemma.gguf",
       systemPrompt: "You are a test agent.",
       parameters: [
         { name: "temperature", value: 0.1 },
@@ -20,7 +20,7 @@ describe("buildModelfile", () => {
       ],
     });
     const fromIdx = output.indexOf("FROM gemma4:e4b");
-    const adapterIdx = output.indexOf("ADAPTER ./adapters/gemma4-perfagent.gguf");
+    const adapterIdx = output.indexOf("ADAPTER ./adapters/browsing-gemma.gguf");
     const paramIdx = output.indexOf("PARAMETER temperature 0.1");
     const systemIdx = output.indexOf("SYSTEM ");
     assert.isAbove(fromIdx, -1);

@@ -4,6 +4,8 @@
 **Task:** #10
 **Status:** 5.A + 5.B feature-complete; real LoRA training deferred to provisioned-GPU infra per plan scope.
 
+> Superseded for identity by R11 — gemma4-perfagent and perfagent-smoke-finetune are renamed to browsing-gemma and browsing-gemma-smoke respectively. See docs/research/distillation-pipeline/plan.md §P1.
+
 ## What this wave ships
 
 A complete distillation pipeline with three CLI surfaces:

@@ -13,7 +13,7 @@ import { TrainingSample } from "../../src/distill/types";
 const DEFAULT_BASE_MODEL = "gemma4:e4b";
 const DEFAULT_INPUT = "packages/evals/data/distill/out/teacher-data.jsonl";
 const DEFAULT_OUTPUT = "packages/evals/data/distill/out/Modelfile";
-const DEFAULT_ADAPTER = "./adapters/gemma4-perfagent.gguf";
+const DEFAULT_ADAPTER = "./adapters/browsing-gemma.gguf";
 
 const decodeSample = Schema.decodeUnknownSync(TrainingSample);
 const JsonLine = Schema.fromJsonString(Schema.Unknown);

@@ -39,7 +39,7 @@ import { TrainingSample } from "../../src/distill/types";
 
 const DEFAULT_BASE_MODEL = "gemma4:e4b";
 const DEFAULT_INPUT = "packages/evals/data/distill/out/teacher-data.jsonl";
-const DEFAULT_SMOKE_MODEL_NAME = "perfagent-smoke-finetune";
+const DEFAULT_SMOKE_MODEL_NAME = "browsing-gemma-smoke";
 const DEFAULT_OLLAMA_URL = "http://localhost:11434";
 const SMOKE_GENERATE_TIMEOUT_MS = 120_000;
 
@@ -161,7 +161,7 @@ const readFirstSample = (jsonlPath: string): TrainingSample | undefined => {
 };
 
 const acquireTempDir = Effect.acquireRelease(
-  Effect.sync(() => fs.mkdtempSync(path.join(os.tmpdir(), "perfagent-smoke-"))),
+  Effect.sync(() => fs.mkdtempSync(path.join(os.tmpdir(), "browsing-gemma-smoke-"))),
   (dir) =>
     Effect.sync(() => {
       try {
