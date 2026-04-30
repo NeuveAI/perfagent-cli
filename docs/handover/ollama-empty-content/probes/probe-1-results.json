@@ -1,0 +1,109 @@
+{
+  "summary": {
+    "reps": 5,
+    "emptyCount": 0,
+    "emptyRate": 0,
+    "contentLengths": [
+      176,
+      176,
+      164,
+      173,
+      173
+    ],
+    "doneReasons": [
+      "stop",
+      "stop",
+      "stop",
+      "stop",
+      "stop"
+    ],
+    "promptEvalCounts": [
+      2689,
+      2689,
+      2689,
+      2689,
+      2689
+    ],
+    "evalCounts": [
+      42,
+      42,
+      40,
+      42,
+      42
+    ],
+    "elapsedMs": [
+      22493,
+      3073,
+      3309,
+      3777,
+      3090
+    ]
+  },
+  "results": [
+    {
+      "iteration": 0,
+      "ok": true,
+      "elapsedMs": 22493,
+      "contentLength": 176,
+      "contentPreview": "{\"_tag\":\"THOUGHT\",\"stepId\":\"2\",\"thought\":\"The first step is to find and click the link or button that initiates the guided product selection wizard on the TurboTax homepage.\"}\n",
+      "toolCallCount": 0,
+      "doneReason": "stop",
+      "promptEvalCount": 2689,
+      "evalCount": 42,
+      "totalDurationNs": 22466738250,
+      "chunkCount": 109
+    },
+    {
+      "iteration": 1,
+      "ok": true,
+      "elapsedMs": 3073,
+      "contentLength": 176,
+      "contentPreview": "{\"_tag\":\"THOUGHT\",\"stepId\":\"2\",\"thought\":\"The first step is to find and click the link or button that initiates the guided product selection wizard on the TurboTax homepage.\"}\n",
+      "toolCallCount": 0,
+      "doneReason": "stop",
+      "promptEvalCount": 2689,
+      "evalCount": 42,
+      "totalDurationNs": 3065405958,
+      "chunkCount": 123
+    },
+    {
+      "iteration": 2,
+      "ok": true,
+      "elapsedMs": 3309,
+      "contentLength": 164,
+      "contentPreview": "{\"_tag\":\"THOUGHT\",\"stepId\":\"2\",\"thought\":\"The first step is to locate and click the entry point for the guided product selection wizard on the TurboTax homepage.\"}\n",
+      "toolCallCount": 0,
+      "doneReason": "stop",
+      "promptEvalCount": 2689,
+      "evalCount": 40,
+      "totalDurationNs": 3299589625,
+      "chunkCount": 120
+    },
+    {
+      "iteration": 3,
+      "ok": true,
+      "elapsedMs": 3777,
+      "contentLength": 173,
+      "contentPreview": "{\"_tag\":\"THOUGHT\",\"stepId\":\"2\",\"thought\":\"The first step is to find and click the link or button that starts the guided product selection wizard on the TurboTax homepage.\"}\n",
+      "toolCallCount": 0,
+      "doneReason": "stop",
+      "promptEvalCount": 2689,
+      "evalCount": 42,
+      "totalDurationNs": 3768880667,
+      "chunkCount": 122
+    },
+    {
+      "iteration": 4,
+      "ok": true,
+      "elapsedMs": 3090,
+      "contentLength": 173,
+      "contentPreview": "{\"_tag\":\"THOUGHT\",\"stepId\":\"2\",\"thought\":\"The first step is to find and click the link or button that starts the guided product selection wizard on the TurboTax homepage.\"}\n",
+      "toolCallCount": 0,
+      "doneReason": "stop",
+      "promptEvalCount": 2689,
+      "evalCount": 42,
+      "totalDurationNs": 3079284958,
+      "chunkCount": 122
+    }
+  ]
+}

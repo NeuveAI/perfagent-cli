@@ -1,0 +1,1240 @@
+{
+  "model": "gemma4:e4b",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a performance analysis agent backed by Chrome DevTools.\nEvery turn you emit exactly one AgentTurn JSON envelope. The output grammar\nis enforced server-side; non-conforming output is impossible. No prose, no markdown.\n\n<envelopes>\nEach envelope is a JSON object with a `_tag` discriminator. Dispatch by `_tag`.\n- THOUGHT          { \"_tag\":\"THOUGHT\",\"stepId\":\"...\",\"thought\":\"...\" }\n- ACTION           { \"_tag\":\"ACTION\",\"stepId\":\"...\",\"toolName\":\"...\",\"args\":{...} }\n- PLAN_UPDATE      { \"_tag\":\"PLAN_UPDATE\",\"stepId\":\"...\",\"action\":\"insert|replace|remove|replace_step\",\"payload\":{...} }\n- STEP_DONE        { \"_tag\":\"STEP_DONE\",\"stepId\":\"...\",\"summary\":\"...\" }\n- ASSERTION_FAILED { \"_tag\":\"ASSERTION_FAILED\",\"stepId\":\"...\",\"category\":\"...\",\"domain\":\"...\",\"reason\":\"...\",\"evidence\":\"...\" }\n- RUN_COMPLETED    { \"_tag\":\"RUN_COMPLETED\",\"status\":\"passed|failed\",\"summary\":\"...\" }\n</envelopes>\n\n<thought_protocol>\nBefore each ACTION emit a THOUGHT envelope with one sentence stating why this action.\nOne tag per turn — never concatenate THOUGHT and ACTION.\n</thought_protocol>\n\n<plan_update_protocol>\nEmit PLAN_UPDATE when the existing plan needs revision (new step, replacement, removal).\n`action` is one of: insert | replace | remove | replace_step (replace_step is an alias of replace).\n`payload` is an AnalysisStep object describing the new or replacement step.\n</plan_update_protocol>\n\n<reflect_trigger>\nAfter 2 consecutive ASSERTION_FAILED envelopes on the same stepId, the next turn's\nobservation will contain a REFLECT directive. Read it and revise your approach via\nPLAN_UPDATE or by trying a different ACTION path.\n</reflect_trigger>\n\n<failure_categories>\nbudget-violation | regression | resource-blocker | memory-leak | abort\n</failure_categories>\n\n<failure_domains>\ndesign | responsive | perf | a11y | other — choose the narrowest match.\n</failure_domains>\n\n<tool_catalog>  // toolName ∈ {interact,observe,trace,click,fill,hover,select,wait_for}; args schema-enforced\n- interact — navigate, click, type, fill. command=\"navigate\" with `url` is the entry path.\n- observe — read page state. command=\"snapshot\" returns element UIDs; \"screenshot\" / \"console\" / \"network\" for visuals and logs.\n- trace — profile performance. command=\"start\" begins a trace; \"stop\" returns CWV + insight IDs; \"analyze\" drills into one insight (insightSetId + insightName required).\n</tool_catalog>\n\n<cwv_targets>\n- LCP < 2500 ms\n- FCP < 1800 ms\n- CLS < 0.1\n- INP < 200 ms\n- TTFB < 800 ms\n</cwv_targets>\n\n<rules>\n- Begin every run with ACTION → interact { command: \"navigate\", url: ... }.\n- Before clicking, typing, or filling, ACTION → observe { command: \"snapshot\" } to obtain element UIDs.\n- Cold-load performance: ACTION → trace { command: \"start\", reload: true, autoStop: true } — records, auto-stops, returns CWV + insights in one call.\n- Interaction profiling (INP): trace { command: \"start\", reload: false, autoStop: false } → interact … → trace { command: \"stop\" }.\n- Drill every insight returned by `trace stop`: emit ACTION → trace { action: { command: \"analyze\", insightSetId, insightName } } for each insight name (LCPBreakdown, CLSCulprits, RenderBlocking, NetworkDependencyTree, DocumentLatency, and any others). Skipping insights leaves the report incomplete.\n- Emit STEP_DONE after a successful step. Do not emit RUN_COMPLETED while plan steps remain pending unless the previous envelope was ASSERTION_FAILED with category=abort.\n- One envelope per turn. No prose. No chained tool calls.\n</rules>\n\n<multi_modal_observations>\nAfter every successful state-changing ACTION the next <observation> includes a viewport screenshot.\n- Vision = grounding (where elements are, did content load, what state a control is in).\n- Snapshot text = selectors (pull element UIDs from it; never click by visual coordinates).\n- On disagreement, trust the snapshot for targets and the screenshot for post-action verification.\n- observe/trace calls do NOT include a fresh screenshot — re-issue a state-changing action to refresh.\n</multi_modal_observations>\n"
+    },
+    {
+      "role": "user",
+      "content": "On the TurboTax marketing site, start the guided product selection wizard, answer the initial questions using plausible responses, and continue through at least three consecutive wizard steps until a recommendation or review screen is shown. Do not submit any payment information."
+    },
+    {
+      "role": "assistant",
+      "content": "{\"_tag\":\"ACTION\",\"stepId\":\"1\",\"toolName\":\"interact\",\"args\":{\"command\":\"navigate\",\"url\":\"https://www.turbotax.com/\"}}"
+    },
+    {
+      "role": "user",
+      "content": "<observation>Successfully navigated to https://www.turbotax.com/.\n## Pages\n1: https://turbotax.intuit.com/ [selected]</observation>"
+    }
+  ],
+  "stream": true,
+  "options": {
+    "num_ctx": 131072,
+    "temperature": 0.1
+  },
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "interact",
+        "description": "Call shape: { \"action\": { \"command\": \"<name>\", ...args } }\n\nExamples:\n  { \"action\": { \"command\": \"navigate\", \"url\": \"https://example.com\" } }\n  { \"action\": { \"command\": \"click\", \"uid\": \"abc123\" } }\n  { \"action\": { \"command\": \"fill\", \"uid\": \"abc123\", \"value\": \"hello\" } }\n  { \"action\": { \"command\": \"wait_for\", \"text\": [\"ready\"], \"timeout\": 5000 } }\n\nCommands: navigate, click, type, fill, press_key, hover, drag, fill_form,\nupload_file, handle_dialog, wait_for, resize, new_tab, switch_tab, close_tab.\n\nPerform user-like interactions on the page using real CDP input events.\nThese trigger real browser behavior (INP, focus, event handlers) — unlike evaluate_script which uses synthetic JS events.\n\nUse `observe snapshot` first to discover element UIDs, then pass them to click, fill, hover, etc.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "navigate"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "direction": {
+                      "default": "url",
+                      "type": "string",
+                      "enum": [
+                        "url",
+                        "back",
+                        "forward",
+                        "reload"
+                      ]
+                    },
+                    "ignoreCache": {
+                      "type": "boolean"
+                    },
+                    "handleBeforeUnload": {
+                      "type": "string",
+                      "enum": [
+                        "accept",
+                        "decline"
+                      ]
+                    },
+                    "initScript": {
+                      "type": "string"
+                    },
+                    "timeout": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "command"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "click"
+                    },
+                    "uid": {
+                      "type": "string"
+                    },
+                    "double": {
+                      "type": "boolean"
+                    },
+                    "includeSnapshot": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "command",
+                    "uid"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "type"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "submitKey": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "command",
+                    "text"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "fill"
+                    },
+                    "uid": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "string"
+                    },
+                    "includeSnapshot": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "command",
+                    "uid",
+                    "value"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "press_key"
+                    },
+                    "key": {
+                      "type": "string"
+                    },
+                    "includeSnapshot": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "command",
+                    "key"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "hover"
+                    },
+                    "uid": {
+                      "type": "string"
+                    },
+                    "includeSnapshot": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "command",
+                    "uid"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "drag"
+                    },
+                    "fromUid": {
+                      "type": "string"
+                    },
+                    "toUid": {
+                      "type": "string"
+                    },
+                    "includeSnapshot": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "command",
+                    "fromUid",
+                    "toUid"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "fill_form"
+                    },
+                    "elements": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "uid": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "uid",
+                          "value"
+                        ]
+                      }
+                    },
+                    "includeSnapshot": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "command",
+                    "elements"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "upload_file"
+                    },
+                    "uid": {
+                      "type": "string"
+                    },
+                    "filePath": {
+                      "type": "string"
+                    },
+                    "includeSnapshot": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "command",
+                    "uid",
+                    "filePath"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "handle_dialog"
+                    },
+                    "accept": {
+                      "type": "boolean"
+                    },
+                    "promptText": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "command",
+                    "accept"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "wait_for"
+                    },
+                    "text": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "timeout": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "command",
+                    "text"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "resize"
+                    },
+                    "width": {
+                      "type": "number"
+                    },
+                    "height": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "command",
+                    "width",
+                    "height"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "new_tab"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "background": {
+                      "type": "boolean"
+                    },
+                    "isolatedContext": {
+                      "type": "string"
+                    },
+                    "timeout": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "command",
+                    "url"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "switch_tab"
+                    },
+                    "pageId": {
+                      "type": "number"
+                    },
+                    "bringToFront": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "command",
+                    "pageId"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "close_tab"
+                    },
+                    "pageId": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "command",
+                    "pageId"
+                  ]
+                }
+              ]
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "observe",
+        "description": "Call shape: { \"action\": { \"command\": \"<name>\", ...args } }\n\nExamples:\n  { \"action\": { \"command\": \"snapshot\" } }\n  { \"action\": { \"command\": \"console\" } }\n  { \"action\": { \"command\": \"network\" } }\n  { \"action\": { \"command\": \"evaluate\", \"function\": \"() => document.title\" } }\n\nCommands: snapshot, screenshot, console, network, pages, evaluate.\n\nRead page state without side effects.\n\nUse `snapshot` to get the accessibility tree with element UIDs — this is the primary way\nto discover elements before interacting with them via the `interact` tool.\nUse `screenshot` for visual inspection. Use `console` and `network` to inspect logs and requests.\nUse `evaluate` only when no other tool covers your need — prefer real interactions via `interact`.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "snapshot"
+                    },
+                    "verbose": {
+                      "type": "boolean"
+                    },
+                    "filePath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "command"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "screenshot"
+                    },
+                    "format": {
+                      "type": "string",
+                      "enum": [
+                        "png",
+                        "jpeg",
+                        "webp"
+                      ]
+                    },
+                    "quality": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "uid": {
+                      "type": "string"
+                    },
+                    "fullPage": {
+                      "type": "boolean"
+                    },
+                    "filePath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "command"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "console"
+                    },
+                    "msgid": {
+                      "type": "number"
+                    },
+                    "types": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "log",
+                          "debug",
+                          "info",
+                          "error",
+                          "warn",
+                          "dir",
+                          "dirxml",
+                          "table",
+                          "trace",
+                          "clear",
+                          "startGroup",
+                          "startGroupCollapsed",
+                          "endGroup",
+                          "assert",
+                          "profile",
+                          "profileEnd",
+                          "count",
+                          "timeEnd",
+                          "verbose",
+                          "issue"
+                        ]
+                      }
+                    },
+                    "pageSize": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "pageIdx": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "includePreservedMessages": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "command"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "network"
+                    },
+                    "reqid": {
+                      "type": "number"
+                    },
+                    "resourceTypes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "document",
+                          "stylesheet",
+                          "image",
+                          "media",
+                          "font",
+                          "script",
+                          "texttrack",
+                          "xhr",
+                          "fetch",
+                          "prefetch",
+                          "eventsource",
+                          "websocket",
+                          "manifest",
+                          "signedexchange",
+                          "ping",
+                          "cspviolationreport",
+                          "preflight",
+                          "fedcm",
+                          "other"
+                        ]
+                      }
+                    },
+                    "pageSize": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "pageIdx": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "includePreservedRequests": {
+                      "type": "boolean"
+                    },
+                    "requestFilePath": {
+                      "type": "string"
+                    },
+                    "responseFilePath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "command"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "pages"
+                    }
+                  },
+                  "required": [
+                    "command"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "evaluate"
+                    },
+                    "function": {
+                      "type": "string"
+                    },
+                    "args": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "command",
+                    "function"
+                  ]
+                }
+              ]
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "trace",
+        "description": "Call shape: { \"action\": { \"command\": \"<name>\", ...args } }\n\nCold-load profiling is one-shot: call `start` with `reload: true, autoStop: true` to record -> auto-stop -> return CWV + insights in a single response.\nManual profiling (INP / interactions): call `start` with `reload: false, autoStop: false`, then perform user actions via `interact`, then call `stop`.\n\nExamples:\n  { \"action\": { \"command\": \"start\", \"reload\": true, \"autoStop\": true } }   # cold-load, one-shot\n  { \"action\": { \"command\": \"stop\" } }                                       # manual profiling only\n  { \"action\": { \"command\": \"analyze\", \"insightSetId\": \"NAVIGATION_0\", \"insightName\": \"LCPBreakdown\" } }\n  { \"action\": { \"command\": \"emulate\", \"cpuThrottling\": 4, \"network\": \"Slow 3G\" } }\n\nCommands: start, stop, analyze, memory, lighthouse, emulate.\n\nPerformance profiling and analysis.\n\nWorkflow: `emulate` (optional throttling) -> `start` (begins trace; for cold-load pass reload=true, autoStop=true) ->\n`analyze` (drill into specific insights like LCPBreakdown, RenderBlocking, DocumentLatency).\n\nFor interaction profiling: start with reload=false, autoStop=false, perform real interactions via `interact`,\nthen call `stop` to capture INP and other interaction metrics.\nUse `memory` for heap snapshots to detect memory leaks.\nUse `lighthouse` for accessibility, SEO, and best-practices audits (NOT for performance — use traces).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "start"
+                    },
+                    "reload": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "autoStop": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "filePath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "command"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "stop"
+                    },
+                    "filePath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "command"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "analyze"
+                    },
+                    "insightSetId": {
+                      "type": "string"
+                    },
+                    "insightName": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "command",
+                    "insightSetId",
+                    "insightName"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "memory"
+                    },
+                    "filePath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "command",
+                    "filePath"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "lighthouse"
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "navigation",
+                        "snapshot"
+                      ]
+                    },
+                    "device": {
+                      "type": "string",
+                      "enum": [
+                        "desktop",
+                        "mobile"
+                      ]
+                    },
+                    "outputDirPath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "command"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "const": "emulate"
+                    },
+                    "cpuThrottling": {
+                      "type": "number",
+                      "minimum": 1,
+                      "maximum": 20
+                    },
+                    "network": {
+                      "type": "string",
+                      "enum": [
+                        "Offline",
+                        "Slow 3G",
+                        "Fast 3G",
+                        "Slow 4G",
+                        "4G"
+                      ]
+                    },
+                    "viewport": {
+                      "type": "string"
+                    },
+                    "colorScheme": {
+                      "type": "string",
+                      "enum": [
+                        "dark",
+                        "light",
+                        "auto"
+                      ]
+                    },
+                    "geolocation": {
+                      "type": "string"
+                    },
+                    "userAgent": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "command"
+                  ]
+                }
+              ]
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "click",
+        "description": "Click an element by its ref. The ref is an opaque string from the last snapshot\n(numbered from the Set-of-Mark overlay, or a chrome-devtools-mcp uid).\n\nExample: { \"ref\": \"3\" }\n\nAfter the click, waits for the network to go idle and returns a fresh snapshot\nso the next turn observes the post-click state.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "button": {
+              "type": "string",
+              "enum": [
+                "left",
+                "right",
+                "middle"
+              ]
+            },
+            "clickCount": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "ref"
+          ],
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "fill",
+        "description": "Fill an input element by its ref with the given text.\n\nExample: { \"ref\": \"7\", \"text\": \"hello\", \"clearFirst\": true }\n\nclearFirst empties the field before writing. Returns a post-action snapshot.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "text": {
+              "type": "string"
+            },
+            "clearFirst": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "ref",
+            "text"
+          ],
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "hover",
+        "description": "Hover over an element by its ref. Triggers CSS hover states and menu reveals.\n\nExample: { \"ref\": \"3\" }",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "ref"
+          ],
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "select",
+        "description": "Select an option from a <select> element by its ref. The option can be a value\nstring or an index.\n\nExample: { \"ref\": \"12\", \"option\": \"red\" }",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "option": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          },
+          "required": [
+            "ref",
+            "option"
+          ],
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "wait_for",
+        "description": "Wait for a target element or text to reach a given state.\nProvide exactly one of: ref, selector, aria.\n\nExample: { \"selector\": \"button.submit\", \"state\": \"visible\", \"timeout\": 5000 }\n\nstate defaults to visible, timeout defaults to 5000ms.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "type": "string"
+            },
+            "selector": {
+              "type": "string"
+            },
+            "aria": {
+              "type": "string"
+            },
+            "timeout": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "visible",
+                "hidden",
+                "attached",
+                "detached"
+              ]
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      }
+    }
+  ],
+  "format": {
+    "anyOf": [
+      {
+        "$ref": "#/$defs/THOUGHT"
+      },
+      {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": [
+              "ACTION"
+            ]
+          },
+          "stepId": {
+            "type": "string"
+          },
+          "toolName": {
+            "type": "string"
+          },
+          "args": {}
+        },
+        "required": [
+          "_tag",
+          "stepId",
+          "toolName",
+          "args"
+        ],
+        "additionalProperties": false
+      },
+      {
+        "$ref": "#/$defs/PLAN_UPDATE"
+      },
+      {
+        "$ref": "#/$defs/STEP_DONE"
+      },
+      {
+        "$ref": "#/$defs/ASSERTION_FAILED"
+      },
+      {
+        "$ref": "#/$defs/RUN_COMPLETED"
+      }
+    ],
+    "$defs": {
+      "THOUGHT": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": [
+              "THOUGHT"
+            ]
+          },
+          "stepId": {
+            "type": "string"
+          },
+          "thought": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "_tag",
+          "stepId",
+          "thought"
+        ],
+        "additionalProperties": false
+      },
+      "PLAN_UPDATE": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": [
+              "PLAN_UPDATE"
+            ]
+          },
+          "stepId": {
+            "type": "string"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "insert"
+                ]
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "replace"
+                ]
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "remove"
+                ]
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "replace_step"
+                ]
+              }
+            ]
+          },
+          "payload": {}
+        },
+        "required": [
+          "_tag",
+          "stepId",
+          "action",
+          "payload"
+        ],
+        "additionalProperties": false
+      },
+      "STEP_DONE": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": [
+              "STEP_DONE"
+            ]
+          },
+          "stepId": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "_tag",
+          "stepId",
+          "summary"
+        ],
+        "additionalProperties": false
+      },
+      "ASSERTION_FAILED": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": [
+              "ASSERTION_FAILED"
+            ]
+          },
+          "stepId": {
+            "type": "string"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "budget-violation"
+                ]
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "regression"
+                ]
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "resource-blocker"
+                ]
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "memory-leak"
+                ]
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "abort"
+                ]
+              }
+            ]
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "design"
+                ]
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "responsive"
+                ]
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "perf"
+                ]
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "a11y"
+                ]
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "other"
+                ]
+              }
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "abortReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "_tag",
+          "stepId",
+          "category",
+          "domain",
+          "reason",
+          "evidence"
+        ],
+        "additionalProperties": false
+      },
+      "RUN_COMPLETED": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": [
+              "RUN_COMPLETED"
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "passed"
+                ]
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "failed"
+                ]
+              }
+            ]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "abort": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "_tag",
+          "status",
+          "summary"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

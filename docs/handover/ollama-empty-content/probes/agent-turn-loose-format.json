@@ -1,0 +1,304 @@
+{
+  "anyOf": [
+    {
+      "$ref": "#/$defs/THOUGHT"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "_tag": {
+          "type": "string",
+          "enum": [
+            "ACTION"
+          ]
+        },
+        "stepId": {
+          "type": "string"
+        },
+        "toolName": {
+          "type": "string"
+        },
+        "args": {}
+      },
+      "required": [
+        "_tag",
+        "stepId",
+        "toolName",
+        "args"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "$ref": "#/$defs/PLAN_UPDATE"
+    },
+    {
+      "$ref": "#/$defs/STEP_DONE"
+    },
+    {
+      "$ref": "#/$defs/ASSERTION_FAILED"
+    },
+    {
+      "$ref": "#/$defs/RUN_COMPLETED"
+    }
+  ],
+  "$defs": {
+    "THOUGHT": {
+      "type": "object",
+      "properties": {
+        "_tag": {
+          "type": "string",
+          "enum": [
+            "THOUGHT"
+          ]
+        },
+        "stepId": {
+          "type": "string"
+        },
+        "thought": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "stepId",
+        "thought"
+      ],
+      "additionalProperties": false
+    },
+    "PLAN_UPDATE": {
+      "type": "object",
+      "properties": {
+        "_tag": {
+          "type": "string",
+          "enum": [
+            "PLAN_UPDATE"
+          ]
+        },
+        "stepId": {
+          "type": "string"
+        },
+        "action": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "insert"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "replace"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "remove"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "replace_step"
+              ]
+            }
+          ]
+        },
+        "payload": {}
+      },
+      "required": [
+        "_tag",
+        "stepId",
+        "action",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "STEP_DONE": {
+      "type": "object",
+      "properties": {
+        "_tag": {
+          "type": "string",
+          "enum": [
+            "STEP_DONE"
+          ]
+        },
+        "stepId": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "stepId",
+        "summary"
+      ],
+      "additionalProperties": false
+    },
+    "ASSERTION_FAILED": {
+      "type": "object",
+      "properties": {
+        "_tag": {
+          "type": "string",
+          "enum": [
+            "ASSERTION_FAILED"
+          ]
+        },
+        "stepId": {
+          "type": "string"
+        },
+        "category": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "budget-violation"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "regression"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "resource-blocker"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "memory-leak"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "abort"
+              ]
+            }
+          ]
+        },
+        "domain": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "design"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "responsive"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "perf"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "a11y"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "other"
+              ]
+            }
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "abortReason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "_tag",
+        "stepId",
+        "category",
+        "domain",
+        "reason",
+        "evidence"
+      ],
+      "additionalProperties": false
+    },
+    "RUN_COMPLETED": {
+      "type": "object",
+      "properties": {
+        "_tag": {
+          "type": "string",
+          "enum": [
+            "RUN_COMPLETED"
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "passed"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "failed"
+              ]
+            }
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "abort": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reason"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "_tag",
+        "status",
+        "summary"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
