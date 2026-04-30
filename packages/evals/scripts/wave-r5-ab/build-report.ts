@@ -46,6 +46,7 @@ import {
   type PerRunnerSummary,
   type PerTaskRollup,
 } from "./aggregate";
+import { SidecarScore, sidecarPathForTrace } from "../../src/distill/sidecar-score";
 import { calibration1SingleNavPythonDocs } from "../../tasks/calibration-1-single-nav-python-docs";
 import { calibration2SingleNavNews } from "../../tasks/calibration-2-single-nav-news";
 import { calibration3TwoStepDocs } from "../../tasks/calibration-3-two-step-docs";
@@ -133,10 +134,7 @@ const decodeJsonOption = Schema.decodeUnknownOption(UnknownJsonShape);
 const URL_FROM_TOOL_RESULT_PATTERN = /Successfully navigated to (\S+)/;
 const URL_FROM_TOOL_INPUT_PATTERN = /"url"\s*:\s*"([^"]+)"/;
 
-const extractUrlFromText = (
-  pattern: RegExp,
-  value: unknown,
-): string | undefined => {
+const extractUrlFromText = (pattern: RegExp, value: unknown): string | undefined => {
   if (typeof value !== "string") return undefined;
   const match = pattern.exec(value);
   if (!match) return undefined;
@@ -299,8 +297,7 @@ const formatStatus = (status: PerTaskRollup["runFinishedStatus"]): string => {
 const buildAggregateTable = (summaries: ReadonlyArray<PerRunnerSummary>): string => {
   const header =
     "| Runner | Tasks | Pass | Fail | Incomplete | Mean step-coverage | Mean final-state | Mean tool-validity | Mean furthest-key-node | Mean total tokens | Mean peak prompt | Mean turns | Mean PLAN_UPDATEs |";
-  const divider =
-    "|---|---|---|---|---|---|---|---|---|---|---|---|---|";
+  const divider = "|---|---|---|---|---|---|---|---|---|---|---|---|---|";
   const rows = summaries.map(
     (summary) =>
       `| ${summary.runnerName} | ${summary.taskCount} | ${summary.passedCount} | ${summary.failedCount} | ${summary.unfinishedCount} | ${formatNumber(summary.meanStepCoverage, 3)} | ${formatNumber(summary.meanFinalState, 3)} | ${formatNumber(summary.meanToolCallValidity, 3)} | ${formatNumber(summary.meanFurthestKeyNode, 3)} | ${formatNumber(summary.meanTotalTokens, 0)} | ${formatNumber(summary.meanPeakPromptTokens, 0)} | ${formatNumber(summary.meanTurnCount, 1)} | ${formatNumber(summary.meanPlanUpdateCount, 1)} |`,
@@ -311,8 +308,7 @@ const buildAggregateTable = (summaries: ReadonlyArray<PerRunnerSummary>): string
 const buildPerTaskTable = (
   rollupsByRunnerByTask: ReadonlyMap<string, ReadonlyMap<string, PerTaskRollup>>,
 ): string => {
-  const header =
-    "| Task | gemma-react | gemini-react | gemma-oracle-plan |";
+  const header = "| Task | gemma-react | gemini-react | gemma-oracle-plan |";
   const divider = "|---|---|---|---|";
   const rows: string[] = [];
   for (const task of TASK_REGISTRY) {
@@ -405,6 +401,7 @@ const main = Effect.gen(function* () {
     rollupsByRunnerByTask.set(runnerName, new Map());
   }
 
+  let sidecarsWritten = 0;
   for (const fileName of ndjsonFiles) {
     const parsed = parseTraceFilename(fileName);
     if (parsed === undefined) {
@@ -419,7 +416,8 @@ const main = Effect.gen(function* () {
       });
       continue;
     }
-    const ndjson = readTraceFile(path.join(traceDir, fileName));
+    const tracePath = path.join(traceDir, fileName);
+    const ndjson = readTraceFile(tracePath);
     const projection = buildExecutedTrace(task, ndjson);
     const rollup: PerTaskRollup = {
       ...score(task, projection),
@@ -434,6 +432,22 @@ const main = Effect.gen(function* () {
     }
     rollupsByRunner.get(parsed.runnerName)!.push(rollup);
     rollupsByRunnerByTask.get(parsed.runnerName)!.set(parsed.taskId, rollup);
+
+    // R11 P2 — emit sidecar score JSON next to the ndjson so the
+    // distillation strict filter (`isTraceStrictlyClean`) has the
+    // finalState + stepCoverage signal it needs. Build-report is the
+    // canonical scoring layer; sidecar emission piggybacks on this
+    // single pass. Re-running this script over an existing trace
+    // archive (e.g. `evals/traces/wave-r10-pro-preview/`) retroactively
+    // backfills sidecars without re-running the eval sweep.
+    const sidecar = new SidecarScore({
+      status: rollup.runFinishedStatus,
+      finalState: rollup.scores.finalState,
+      stepCoverage: rollup.scores.stepCoverage,
+    });
+    const sidecarPath = sidecarPathForTrace(tracePath);
+    fs.writeFileSync(sidecarPath, JSON.stringify(sidecar) + "\n", "utf8");
+    sidecarsWritten += 1;
   }
 
   const summaries: PerRunnerSummary[] = [];
@@ -450,9 +464,7 @@ const main = Effect.gen(function* () {
   const aggregateTable = buildAggregateTable(summaries);
   const perTaskTable = buildPerTaskTable(rollupsByRunnerByTask);
   const flaggedBlock = buildFlaggedRegressionsBlock(
-    Object.fromEntries(
-      Array.from(rollupsByRunner.entries()).map(([key, value]) => [key, value]),
-    ),
+    Object.fromEntries(Array.from(rollupsByRunner.entries()).map(([key, value]) => [key, value])),
   );
 
   const lines = [
@@ -492,6 +504,7 @@ const main = Effect.gen(function* () {
     outputPath,
     runnerCount: summaries.length,
     taskCount,
+    sidecarsWritten,
   });
 }).pipe(Effect.withSpan("WaveR5AbReport.build"));
 
