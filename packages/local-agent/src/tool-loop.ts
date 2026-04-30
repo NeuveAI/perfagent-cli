@@ -18,6 +18,7 @@ import { rollTrajectory } from "@neuve/shared/trajectory";
 import type { OllamaClient, OllamaMessage, OllamaToolDefinition } from "./ollama-client.js";
 import type { McpBridge, McpToolCallResult } from "./mcp-bridge.js";
 
+import { coerceAgentTurnArgs } from "./args-coerce.js";
 import { log } from "./log.js";
 
 const MAX_TOOL_ROUNDS = 15;
@@ -173,12 +174,11 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
       contentPreview: result.content.slice(0, 200),
     });
 
-    // The format-grammar guarantees the assistant message IS an AgentTurn JSON
-    // envelope. Append it verbatim to message history so subsequent turns
-    // see the prior envelopes.
-    messages.push({ role: "assistant", content: result.content });
-
     if (result.content.length === 0) {
+      // The format-grammar guarantees a non-empty AgentTurn JSON envelope.
+      // Push raw (empty) content so debug history reflects the bailout, then
+      // surface to the user.
+      messages.push({ role: "assistant", content: result.content });
       await connection.sessionUpdate({
         sessionId,
         update: {
@@ -192,7 +192,18 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
       return;
     }
 
-    const envelope = await parseEnvelope(result.content);
+    // R9 Option 4 — pre-parse coercion for known gemma 4 E4B verb-vs-dispatcher
+    // confusions the strict AgentTurn parser would reject (see
+    // `packages/local-agent/src/args-coerce.ts`). When the rule fires we push
+    // the COERCED content into message history so subsequent turns see a
+    // self-consistent past (model "remembers" emitting the canonical shape) —
+    // matches the R7-era message-history convention and avoids the past-vs-
+    // observation inconsistency that arises if we keep the raw `type+uid` in
+    // history while the dispatcher acted on the rewritten `fill+uid+value`.
+    const coerced = coerceAgentTurnArgs(result.content);
+    messages.push({ role: "assistant", content: coerced.content });
+
+    const envelope = await parseEnvelope(coerced.content);
 
     if (envelope._tag === "__parse_failure__") {
       log("schema-invalid envelope", { cause: envelope.cause });
