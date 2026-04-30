@@ -13,6 +13,7 @@ import {
   GEMMA_REACT_RUNNER_NAME,
   GEMINI_REACT_RUNNER_NAME,
   GEMMA_ORACLE_PLAN_RUNNER_NAME,
+  BROWSING_GEMMA_REACT_RUNNER_NAME,
 } from "../src/runners/runner-names";
 
 const buildTraceLines = (events: ReadonlyArray<unknown>): string =>
@@ -213,7 +214,12 @@ describe("summarizeRunner", () => {
         runnerName: "gemma-react",
         taskId: "task-1",
         scores: { stepCoverage: 1, finalState: 1, toolCallValidity: 1, furthestKeyNode: 1 },
-        tokenomics: { totalTokens: 1000, peakPromptTokens: 500, turnCount: 4, executorTokens: 1000 },
+        tokenomics: {
+          totalTokens: 1000,
+          peakPromptTokens: 500,
+          turnCount: 4,
+          executorTokens: 1000,
+        },
         toolCallCount: 5,
         planUpdateCount: 2,
         stepDoneCount: 3,
@@ -289,8 +295,7 @@ describe("comparePair", () => {
     stepDoneCount: 0,
     assertionFailedCount: 0,
     runFinishedStatus: finalState === 1 ? "passed" : "failed",
-    streamTerminationReason:
-      finalState === 1 ? "run_finished:passed" : "run_finished:failed",
+    streamTerminationReason: finalState === 1 ? "run_finished:passed" : "run_finished:failed",
     remainingSteps: 0,
     finalUrl: "",
   });
@@ -356,12 +361,11 @@ describe("comparePair", () => {
 });
 
 describe("RUNNER_NAMES contract", () => {
-  it("exposes the three Wave R5 runner names in canonical order", () => {
-    assert.deepEqual([...RUNNER_NAMES], [
-      "gemma-react",
-      "gemini-react",
-      "gemma-oracle-plan",
-    ]);
+  it("exposes the four Wave R5+R11 runner names in canonical order", () => {
+    assert.deepEqual(
+      [...RUNNER_NAMES],
+      ["gemma-react", "gemini-react", "gemma-oracle-plan", "browsing-gemma-react"],
+    );
   });
 
   // C1 contract test: the trace-filename pattern produced by `buildTracePath`
@@ -408,8 +412,10 @@ describe("RUNNER_NAMES contract", () => {
     assert.strictEqual(GEMMA_REACT_RUNNER_NAME, "gemma-react");
     assert.strictEqual(GEMINI_REACT_RUNNER_NAME, "gemini-react");
     assert.strictEqual(GEMMA_ORACLE_PLAN_RUNNER_NAME, "gemma-oracle-plan");
+    assert.strictEqual(BROWSING_GEMMA_REACT_RUNNER_NAME, "browsing-gemma-react");
     assert.include([...RUNNER_NAMES], GEMMA_REACT_RUNNER_NAME);
     assert.include([...RUNNER_NAMES], GEMINI_REACT_RUNNER_NAME);
     assert.include([...RUNNER_NAMES], GEMMA_ORACLE_PLAN_RUNNER_NAME);
+    assert.include([...RUNNER_NAMES], BROWSING_GEMMA_REACT_RUNNER_NAME);
   });
 });

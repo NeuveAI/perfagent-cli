@@ -308,8 +308,12 @@ const buildAggregateTable = (summaries: ReadonlyArray<PerRunnerSummary>): string
 const buildPerTaskTable = (
   rollupsByRunnerByTask: ReadonlyMap<string, ReadonlyMap<string, PerTaskRollup>>,
 ): string => {
-  const header = "| Task | gemma-react | gemini-react | gemma-oracle-plan |";
-  const divider = "|---|---|---|---|";
+  // Build header dynamically from RUNNER_NAMES so adding a runner
+  // (e.g. browsing-gemma-react in R11 P6) lights up the column without
+  // touching this file.
+  const headerCells = ["Task", ...RUNNER_NAMES];
+  const header = `| ${headerCells.join(" | ")} |`;
+  const divider = `|${headerCells.map(() => "---").join("|")}|`;
   const rows: string[] = [];
   for (const task of TASK_REGISTRY) {
     const cells: string[] = [task.id];
@@ -338,6 +342,14 @@ const buildFlaggedRegressionsBlock = (
     ["gemma-react", "gemini-react"],
     ["gemma-react", "gemma-oracle-plan"],
     ["gemma-oracle-plan", "gemini-react"],
+    // R11 DoD #8 regression check: browsing-gemma vs base-gemma. Right-
+    // direction means browsing-gemma is BETTER than base; left-direction
+    // means regression. R11 plan §"Wave gates" #8 says
+    // browsing-gemma step-cov ≥ gemma-react step-cov − 0.05.
+    ["gemma-react", "browsing-gemma-react"],
+    // R11 lift ceiling: browsing-gemma vs gemini Pro 3 (the teacher).
+    // R12 owns capability lift; R11 just measures the gap.
+    ["browsing-gemma-react", "gemini-react"],
   ];
   for (const [left, right] of pairs) {
     const leftRollups = rollupsByRunner[left] ?? [];
@@ -474,8 +486,9 @@ const main = Effect.gen(function* () {
     "",
     "**Runners:**",
     "- `gemma-react` — production runtime; Gemma 4 E4B owns plan + execute via the ReAct loop.",
-    "- `gemini-react` — frontier baseline; Gemini Flash 3 driving the same ReAct loop.",
+    "- `gemini-react` — frontier baseline; Gemini Pro 3 (R10 teacher) driving the same ReAct loop.",
     "- `gemma-oracle-plan` — ablation; Gemini decomposes upfront, Gemma executes via ReAct.",
+    "- `browsing-gemma-react` — R11 distilled LoRA on Gemma 4 E4B base; served by `llama-server --lora` (Path B runtime fork per locked decision #9).",
     "",
     "## Aggregate scoreboard",
     "",

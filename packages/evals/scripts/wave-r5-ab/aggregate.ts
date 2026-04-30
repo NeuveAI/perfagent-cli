@@ -4,6 +4,7 @@ import {
   GEMMA_REACT_RUNNER_NAME,
   GEMINI_REACT_RUNNER_NAME,
   GEMMA_ORACLE_PLAN_RUNNER_NAME,
+  BROWSING_GEMMA_REACT_RUNNER_NAME,
 } from "../../src/runners/runner-names";
 
 // Pure aggregation helpers for the Wave R5 A:B regression sweep. Reads
@@ -15,6 +16,7 @@ export const RUNNER_NAMES = [
   GEMMA_REACT_RUNNER_NAME,
   GEMINI_REACT_RUNNER_NAME,
   GEMMA_ORACLE_PLAN_RUNNER_NAME,
+  BROWSING_GEMMA_REACT_RUNNER_NAME,
 ] as const;
 export type RunnerName = (typeof RUNNER_NAMES)[number];
 
@@ -24,7 +26,12 @@ export type RunnerName = (typeof RUNNER_NAMES)[number];
 // A drift between any of them silently produces empty rows in the
 // regression report (the C1 review finding); failing loud at boot here
 // prevents that class of bug going forward.
-const expectedNames = ["gemma-react", "gemini-react", "gemma-oracle-plan"] as const;
+const expectedNames = [
+  "gemma-react",
+  "gemini-react",
+  "gemma-oracle-plan",
+  "browsing-gemma-react",
+] as const;
 for (let index = 0; index < expectedNames.length; index += 1) {
   const expected = expectedNames[index];
   const actual = RUNNER_NAMES[index];

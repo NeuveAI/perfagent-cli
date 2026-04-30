@@ -18,6 +18,7 @@ import {
 } from "../src/runners/gemma-oracle-plan";
 import { makeGeminiRunner } from "../src/runners/gemini";
 import { GEMINI_REACT_RUNNER_NAME } from "../src/runners/gemini-react-constants";
+import { BROWSING_GEMMA_REACT_RUNNER_NAME } from "../src/runners/runner-names";
 import type { EvalRunner } from "../src/runners/types";
 import { ExecutedTrace, EvalTask } from "../src/task";
 import { calibration1SingleNavPythonDocs } from "../tasks/calibration-1-single-nav-python-docs";
@@ -123,9 +124,7 @@ const TRACE_DIR_CONFIG = Config.string("EVAL_TRACE_DIR").pipe(
 );
 const BASE_URL_CONFIG = Config.option(Config.string("EVAL_BASE_URL"));
 const HEADED_CONFIG = stringWithSchemaDefault("EVAL_HEADED", Config.Boolean, "false");
-const GEMMA_MODEL_CONFIG = Config.string("EVAL_GEMMA_MODEL").pipe(
-  Config.withDefault("gemma4:e4b"),
-);
+const GEMMA_MODEL_CONFIG = Config.string("EVAL_GEMMA_MODEL").pipe(Config.withDefault("gemma4:e4b"));
 const GEMMA_BASE_URL_CONFIG = Config.string("EVAL_OLLAMA_URL").pipe(
   Config.withDefault("http://localhost:11434/v1/"),
 );
@@ -134,16 +133,12 @@ const GEMMA_BASE_URL_CONFIG = Config.string("EVAL_OLLAMA_URL").pipe(
 // surviving traces stay on disk, so re-running ONLY the broken runner
 // avoids re-paying API and wall-clock for the others. Default empty
 // (run all three).
-const SKIP_RUNNERS_CONFIG = Config.string("EVAL_R5_SKIP_RUNNERS").pipe(
-  Config.withDefault(""),
-);
+const SKIP_RUNNERS_CONFIG = Config.string("EVAL_R5_SKIP_RUNNERS").pipe(Config.withDefault(""));
 // Task filter: comma-separated EvalTask ids (e.g. "calibration-3-two-step-docs").
 // Pairs with EVAL_R5_SKIP_RUNNERS for tight partial reruns — e.g. verifying a
 // single doom-loop task exits cleanly after a termination fix without
 // re-paying API cost on the other 19 tasks. Default empty (run all tasks).
-const TASK_FILTER_CONFIG = Config.string("EVAL_TASK_FILTER").pipe(
-  Config.withDefault(""),
-);
+const TASK_FILTER_CONFIG = Config.string("EVAL_TASK_FILTER").pipe(Config.withDefault(""));
 
 const resolveEvalConfig = Effect.gen(function* () {
   const traceDir = yield* TRACE_DIR_CONFIG;
@@ -281,3 +276,32 @@ const gemmaOraclePlanRunner: EvalRunner = makeGemmaOraclePlanRunner({
 // for the registry skip-filter only.
 void GEMMA_ORACLE_PLAN_RUNNER_NAME;
 registerSuite(gemmaOraclePlanRunner, "wave-r5 a:b sweep");
+
+// R11 P6 — browsing-gemma-react. Runs only when EVAL_BROWSING_GEMMA_ADAPTER
+// is set (path to the GGUF LoRA adapter). The operator must have already
+// started llama-server with `--lora <adapter>` and set
+// PERF_AGENT_LLAMA_SERVER_URL to its address; the runner spins up an
+// OllamaApiAdapter HTTP proxy per task to translate Ollama /api/chat
+// into llama-server /v1/chat/completions (locked decision #9).
+//
+// When EVAL_BROWSING_GEMMA_ADAPTER is unset, this runner skips so CI
+// without a built adapter still runs the other 3 lanes cleanly.
+const browsingGemmaAdapterPath = process.env["EVAL_BROWSING_GEMMA_ADAPTER"];
+if (browsingGemmaAdapterPath !== undefined && browsingGemmaAdapterPath.length > 0) {
+  const browsingGemmaRunner: EvalRunner = makeGemmaRunner({
+    ...evalConfig.baseGemmaOptions,
+    plannerMode: "gemma-react",
+    runnerName: BROWSING_GEMMA_REACT_RUNNER_NAME,
+    runtime: "llama-server",
+    adapterPath: browsingGemmaAdapterPath,
+    // Model name reaches local-agent via PERF_AGENT_LOCAL_MODEL — when
+    // routing through the OllamaApiAdapter the server-side model name
+    // is whatever llama-server was launched with; this string is only
+    // used in trace annotations so we set it to the canonical adapter
+    // name per project_lora_name.md.
+    model: "browsing-gemma",
+  });
+  registerSuite(browsingGemmaRunner, "wave-r5 a:b sweep");
+} else {
+  void BROWSING_GEMMA_REACT_RUNNER_NAME;
+}
