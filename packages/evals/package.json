@@ -15,6 +15,7 @@
     "distill:export": "tsx ./scripts/distill/export-teacher-data.ts",
     "distill:build-modelfile": "tsx ./scripts/distill/build-modelfile.ts",
     "distill:smoke-finetune": "tsx ./scripts/distill/smoke-finetune.ts",
+    "distill:train": "tsx ./scripts/distill/train.ts",
     "lint": "vp lint && tsc --noEmit",
     "format": "vp fmt",
     "format:check": "vp fmt --check",
