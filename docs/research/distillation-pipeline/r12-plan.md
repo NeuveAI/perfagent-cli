@@ -6,7 +6,7 @@ _Wave dispatched after R11 (pipeline plumbing) ships the end-to-end automation. 
 
 A bigger, cleaner training corpus + a defensible LoRA hyperparameter pick + a capability-lift gate the LoRA actually clears. Concretely: grow the strict-pass dataset from R10's 2/20 floor up to ≥ Wave-5's 15/5-task minimum threshold (engineer-documented in `docs/handover/harness-evals/diary/wave-5-distillation.md:233`), train under at least 9 hyperparameter configurations against a held-out comparison set, blend in off-task chat data to head off catastrophic narrowing, and ship a `browsing-gemma-react` lane that beats `gemma-react` on full wave-r5-ab by at least the noise band.
 
-R12 ships behavioral lift. R11's gate 8 was "no significant regression vs base-gemma" (≥ −0.05 step-cov). R12's gate is "browsing-gemma-react step-cov ≥ base-gemma-react + 0.10" — measured on a multi-sweep distribution, not a single anchor.
+R12 ships behavioral lift. R11's gate 8 was "no significant regression vs base-gemma" (≥ −0.05 step-cov). R12's headline gate is `median Δstep-cov ≥ +0.10` across N≥2 zero-code-change sweeps — distribution-form, not single-sample anchor. R11's floor stays in force as a conjunctive safety net (ships only if both hold). Dataset target: 50 traces, ship floor: 30.
 
 ## What we're explicitly NOT building
 
@@ -28,16 +28,14 @@ R12 ships behavioral lift. R11's gate 8 was "no significant regression vs base-g
 | 4 | **UltraChat 200k SFT split as off-task replay data** (RQ4) | HuggingFaceH4/ultrachat_200k (`https://huggingface.co/datasets/HuggingFaceH4/ultrachat_200k`) — 207,865 multi-turn chat samples in OpenAI-shape JSONL, MIT license, used to train Zephyr-7B-β. Schema matches our `TrainingSample` (messages array with role+content). Sample 200-500 random conversations as the off-task replay set; final blend ratio chosen from the hyperparam sweep (anchor: 25% off-task per the LoRA-Learns-Less-and-Forgets-Less arXiv:2405.09673 community signal). |
 | 5 | **Hyperparam matrix: 27 configs total, 9-config Latin-square first sweep** (RQ5) | rank ∈ {8, 16, 32}, epochs ∈ {1, 2, 3}, lr ∈ {5e-5, 1e-4, 5e-4}. Per Thinking Machines "LoRA Without Regret" (`https://thinkingmachines.ai/blog/lora/`): LoRA optimal LR is ~10× full-FT LR (so 1e-4 to 5e-4 dominates), apply LoRA to ALL layers (not attention-only), batch size <32, single-epoch usually enough on tiny data. Our 5e-5 is the conservative anchor R11 ships under; R12 sweeps both directions. Latin-square 9-of-27 gives one-axis-at-a-time signal cheaply, then Bayesian narrow on top-3 winners. |
 | 6 | **Vertex defer until dataset > ~500 samples** (RQ6) | At R12 scale (50-100 traces × 3 epochs), MLX-LM on M4 finishes a single config in ~2-5 minutes; Vertex provisioning alone ($21.25/h base node + $2.93/h A100) eats 3+ minutes before training begins. 9-config Latin-square × 5 min = 45 min on M4 = $0. Same on Vertex = ~$5-10 plus 30 min provisioning overhead. Vertex flips to economical only when training time per config > ~30 min, which happens at dataset > ~500 samples or when 27-config full sweep parallelizes (Vertex can run all 27 in parallel; M4 serializes). R12 stays MLX-LM. The $300 GCP free trial credit (`https://cloud.google.com/free` — confirmed valid for new accounts April 2026) is an option for R13 if dataset crosses the threshold. |
-| 7 | **Capability-lift gate: MID (+0.10 step-cov over base-gemma)** (RQ7) | Floor (+0.05) is below R7-phase-7's documented 0.07 step-cov noise band — indistinguishable from variance. Mid (+0.10) just clears noise + matches what WebLlama achieved on out-of-domain WebLINX with 100K traces (their abs-delta scaled to our metric). Stretch (≥ Pro 3) is unrealistic at 30-100 traces — student-beats-teacher requires order-of-magnitude more data than we have. Mid is the actually-meaningful, actually-achievable bar. |
-| 8 | **Distribution gate, not point gate** (per `project_baseline_eval_strategy.md` 2026-04-30 update) | R10 closure widened gates to distributions because 3-run gemma sweep showed 0.307/0.321/0.372 spread (Δ=0.065). R12's gate is "mean(browsing-gemma step-cov over N≥3 runs) ≥ mean(base-gemma step-cov over the SAME N runs) + 0.10." Same-run-pair design controls for sweep-day environmental drift (rate-limiting, caching, time-of-day). Single-sample gate would re-create the R9 ≤2/20-anchored-on-one-run mistake. |
+| 7 | **Capability-lift gate: MID (+0.10 step-cov over base-gemma), distribution-form** (RQ7 + lead directive 1) | Floor (+0.05) is below R7-phase-7's documented 0.07 step-cov noise band — indistinguishable from variance. Mid (+0.10) just clears noise + matches what WebLlama achieved on out-of-domain WebLINX with 100K traces (their abs-delta scaled to our metric). Stretch (≥ Pro 3) is unrealistic at 30-100 traces — student-beats-teacher requires order-of-magnitude more data than we have. Mid is the actually-meaningful, actually-achievable bar. **Gate form (per lead directive 2026-04-30, anchored on `project_baseline_eval_strategy.md` "don't anchor wave gates on single-sample observations")**: `median Δstep-cov ≥ +0.10 across N≥2 zero-code-change sweeps, with R10's 2-5/20 schema-invalid band as the variance-floor reference.` Same-run-pair design (each sweep runs all four lanes — gemma-react, gemini-react, gemma-oracle-plan, browsing-gemma-react — against the same task set on the same day) controls for sweep-day environmental drift (rate-limiting, caching, time-of-day). |
+| 8 | **R11 floor + R12 mid-gate apply as conjunction** (lead directive 2026-04-30) | R12 ships only if BOTH gates hold simultaneously: (a) R11 floor `median(browsing-gemma step-cov) ≥ median(base-gemma step-cov) − 0.05` across N≥2 sweeps (catches catastrophic narrowing — browsing-gemma lifts step-cov on some tasks but tails-abort on others, net delta could be positive while real capability regressed); AND (b) R12 mid-gate `median Δstep-cov ≥ +0.10` across the same N≥2 sweeps (lift target). Floor is the safety net, mid-gate is the lift target. Distribution-form on both. |
 | 9 | **Same-codebase same-prompt invariant** (per `feedback_avoid_prompt_overfitting.md`) | The LoRA learns from teacher trajectories; the production system prompt (`buildLocalAgentSystemPrompt()`) does NOT change in R12. browsing-gemma must emit production-shaped envelopes against the production prompt. No prompt rewrites for "what makes the LoRA happy." Site patterns live in trajectory data. |
-
-## Open questions for lead
-
-- **Dataset target — 30 vs 50 vs 100 strict-pass traces?** Wave 5 engineer's "15 traces across 5 tasks" minimum is the floor. R10 strict-pass is 2/20 single-sweep. Multi-sweep × 5 runs of R10 corpus is upper-bound 10/20 (if every sweep produces independent strict-pass on different tasks; realistically ~30-50% overlap → 4-7 traces). Combining with new-task additions (P2) targeting +10-15 small-shape tasks where Pro reliably finalState=1.0 → realistic R12 dataset = 30-60 traces. Lead picks the floor target before the sweep dispatch.
-- **Off-task blend ratio — 10%, 25%, or 50%?** Community signal says LoRA forgets less than full-FT, so blend ratio can be lower. Current pick: 25% (anchor; goes into hyperparam matrix). Lead can override to 10% (riskier — saves training token budget) or 50% (safer — less narrow specialization).
-- **27-config full sweep, or stop at 9 + Bayesian?** Latin-square 9 gets one-axis signal. Full 27 is exhaustive but ~4× wall-clock. Stop-at-9 is the recommendation; lead can authorize full-27 if 9-results are ambiguous.
-- **Behavioral floor still binding?** R11 gate 8 (≥ −0.05 vs base-gemma) is the regression-check. R12 also keeps it: if `browsing-gemma-react` lifts step-cov but introduces tail aborts or schema-invalid spikes, the floor catches it. Lead confirms R12 keeps R11's regression gate.
+| 10 | **Dataset target: 50 traces target, 30 traces floor** (lead directive 2026-04-30) | 3× Wave 5 engineer's 15/5-task minimum (`docs/handover/harness-evals/diary/wave-5-distillation.md:233`). Explicitly small-data regime — the whole point of small-LM distillation is sample efficiency. R12 ships if dataset reaches the 30-trace floor; 50 is the target where the +0.10 mid-gate becomes plausibly defensible. P1 multi-sweep + P2 new-task additions + P3 cleanup recovery target the 50; lead authorizes ship at 30 if the gate holds. |
+| 11 | **Off-task blend ratio: 25% anchor with 10%/50% in matrix** (lead directive 2026-04-30) | Anchor at 25% (LoRA-Learns-Less-and-Forgets-Less community signal). Hyperparam matrix carries 10% (less narrowing protection, frees training-token budget) and 50% (heavier protection, slower task-specialization) as additional configs to characterize the trade-off curve. P5 reports per-blend step-cov delta; winning config picks the empirically-best blend, not the anchor. |
+| 12 | **Hyperparam sweep: Latin-9 + Bayesian narrow on top-3** (lead directive 2026-04-30) | Stop at the 9-config Latin-square; engineer surfaces top-3 to lead; lead authorizes a Bayesian narrow (~6-9 additional configs centered on top-3 with held-out axis variance). Skip the full 27-config grid. |
+| 13 | **Trajectory cleanup: bounded synthesis + per-record provenance** (lead directive 2026-04-30) | P3's `truncateAtLastStepDone` is authorized with three locked constraints: **(a)** truncate only at honest STEP_DONE boundaries — never fabricate STEP_DONE markers; **(b)** synthesize `RUN_COMPLETED:passed` only when the truncated trace's STEP_DONE set covers ALL KeyNodes from the source `EvalTask` (`packages/evals/src/task.ts:25` `EvalTask.keyNodes`); when STEP_DONE coverage is partial, the trace is rejected (no synthesis); **(c)** every emitted `TrainingSample` derived from a synthesized RUN_COMPLETED carries `metadata._synthesized: true` AND `metadata._origin: "trajectory-cleanup-v1"` so we can A/B-train with-vs-without and reviewer can audit which samples were derived. Annotation-on-the-marker alone (the original P3 plan) was not enough — synthesis must be bounded by the source EvalTask's KeyNode definition. |
+| 14 | **New-task seam: `wave-r12-extended.eval.ts`** (lead directive 2026-04-30) | Extending `wave-r5-ab.eval.ts` would confound R10/R11 baseline comparisons (those reports were 20-task, the eval entry-point identity matters for diff'ing). New eval entry point at `packages/evals/evals/wave-r12-extended.eval.ts` with the union of original 20 + new 10 R12 tasks. R10/R11 baselines remain comparable on the original 20; R12 baselines run against the union. |
 
 ## Prior work to build on
 
@@ -182,8 +180,7 @@ new EvalTask({
 
 **Touched**:
 - 10 new files under `packages/evals/tasks/trivial-3-*.ts` through `trivial-12-*.ts` (or named by site — `trivial-mdn-homepage.ts`, etc; engineer picks).
-- `packages/evals/evals/wave-r5-ab.eval.ts` — register the new tasks alongside existing 20 (R5 wave-r5-ab task list currently imports each task explicitly; new tasks added to that imports + registrations list).
-- New `packages/evals/evals/wave-r12-extended.eval.ts` (alternative seam) — separate eval entry point with the union of original 20 + new 10. Lead picks which seam: extending wave-r5-ab risks confounding R10/R11 baseline comparisons (baseline reports were 20-task); a new wave-r12-extended is cleaner. Recommend the new-eval seam.
+- New `packages/evals/evals/wave-r12-extended.eval.ts` (LOCKED per Decision 14) — separate eval entry point with the union of original 20 + new 10. **Do NOT extend `wave-r5-ab.eval.ts`** — extending it would confound R10/R11 baseline comparisons (those reports were 20-task; the eval entry-point identity matters for diff-ability). R5 wave-r5-ab stays exactly as-is for R10/R11 baseline preservation; R12 baselines run against `wave-r12-extended`.
 - No source changes to `packages/evals/src/runners/` — the runners consume `EvalTask` via the harness, no awareness of which set the task came from.
 
 **Validation pass before committing tasks**:
@@ -191,42 +188,54 @@ new EvalTask({
 - Probe trace dir: `evals/traces/wave-r12-task-probe/`.
 
 **DoD — Behavior**:
-- 10 new `EvalTask` files exist + registered in either `wave-r5-ab.eval.ts` or `wave-r12-extended.eval.ts` (lead-decided seam).
+- 10 new `EvalTask` files exist + registered in `wave-r12-extended.eval.ts` (LOCKED seam per Decision 14).
+- `wave-r5-ab.eval.ts` is byte-identical to the R11-shipped version — confirms R10/R11 baseline preservation.
 - Pre-commit Pro 3 probe sweep on the new tasks produces ≥ 7/10 tasks at finalState=1.0 and stepCoverage=1.0 (R10 base-rate is 2/20 = 10%; new-shape constraint should bump that to ≥ 70%).
-- Existing 20-task baseline reports (R10, R11) remain comparable — the new task set is additive, not a replacement.
+- Running `pnpm --filter @neuve/evals eval:wave-r12-extended` produces 30-task × 4-runner = 120 trace files per sweep.
 
 **Effort**: medium. Authoring 10 small EvalTasks is small; the probe-then-cull discipline adds wall-clock + cost (one extra Pro 3 run per task = ~$0.50 each = ~$5 total).
 
-### P3 — Trajectory cleanup (truncate-at-last-STEP_DONE for over-execution recovery)
+### P3 — Trajectory cleanup (bounded truncate + KeyNode-coverage-gated synthesis)
 
-**Goal**: Recover the over-execution traces (`FAIL cov=1.0` shape — Pro hit all KeyNodes then kept tooling). Truncating the trajectory at the last `STEP_DONE` event before MAX_TOOL_ROUNDS converts these from rejected-by-strict-filter to clean training data.
+**Goal**: Recover over-execution traces (`FAIL cov=1.0` shape — Pro hit all KeyNodes then kept tooling) by truncating at the last honest STEP_DONE boundary. **Synthesis of `RUN_COMPLETED:passed` is gated on the truncated trace's STEP_DONE set covering ALL KeyNodes from the source `EvalTask`** — synthesis is bounded by the source EvalTask's own KeyNode definition, not by the trace's internal markers (per lead directive 2026-04-30, Decision 13).
 
 **Touched**:
-- New `packages/evals/src/distill/trajectory-cleanup.ts` — pure function `truncateAtLastStepDone(events: TraceEvent[]): TraceEvent[] | undefined`. Returns undefined when:
-  - The trace already passed `isTraceStrictlyClean` (no truncation needed).
-  - The trace has no `STEP_DONE` events (incomplete-coverage shape — not recoverable by truncation).
-  - The last `STEP_DONE` is followed only by `RUN_COMPLETED:passed` (already a clean trace).
-- The function emits a synthetic `RUN_COMPLETED:passed` marker after the last STEP_DONE if the original trace ended in `RUN_COMPLETED:failed` (over-execution). **This is the only place R12 manufactures status markers** — engineer surfaces this in P3 review explicitly. The synthetic marker carries an annotation `{ source: "trajectory-cleanup-synth", originalLastEvent: <event-type> }` in the metadata so downstream consumers can audit which traces were synthesized vs captured.
-- `packages/evals/src/distill/teacher-data-exporter.ts` — extend to take an optional `cleanupMode: "off" | "truncate-overexec"` option. Default `off` (R11 behavior). When `truncate-overexec`, runs `truncateAtLastStepDone` on each trace before passing to `isTraceStrictlyClean`. Sidecar score recomputed against the truncated trajectory: `finalState` and `stepCoverage` reflect the truncated trace's KeyNode hits.
-- `packages/evals/scripts/distill/recompute-sidecars.ts` — NEW Effect script: takes a sweep dir, runs each trace through truncation, recomputes sidecar scores via the existing scorer code path (same code that R11 P2 ships in `wave-r5-ab/build-report.ts`), writes `<runner>__<taskId>.cleanup-truncate.scores.json` next to the original sidecar.
+- New `packages/evals/src/distill/trajectory-cleanup.ts` — pure function `truncateAtLastStepDone(events: TraceEvent[], task: EvalTask): TraceEvent[] | undefined`.
+  - **(Constraint a — honest boundaries)**: identifies the last `STEP_DONE` marker in the original trace; truncates at that marker. Never fabricates STEP_DONE markers — only uses ones the agent actually emitted.
+  - **(Constraint b — KeyNode-coverage-gated synthesis)**: after truncation, computes the set of KeyNodes covered by the truncated trace's `key_node_reached` events (existing `TraceEventSchema` event type). Synthesizes `RUN_COMPLETED:passed` ONLY when the covered set equals `task.keyNodes` (full coverage). Partial-coverage truncation returns undefined (rejected, no synthesis).
+  - Returns undefined when:
+    - The trace already passed `isTraceStrictlyClean` (no truncation needed).
+    - The trace has no `STEP_DONE` events (incomplete-coverage shape — not recoverable by truncation).
+    - The last `STEP_DONE` is followed only by `RUN_COMPLETED:passed` (already a clean trace).
+    - Truncation produces partial KeyNode coverage (synthesis not authorized — Constraint b).
+  - The synthesized `RUN_COMPLETED:passed` marker carries an annotation `{ source: "trajectory-cleanup-synth", originalLastEvent: <event-type>, coveredKeyNodes: <count>/<total> }` in payload metadata.
+- `packages/evals/src/distill/teacher-data-exporter.ts` — extend to take an optional `cleanupMode: "off" | "truncate-overexec"` option. Default `off` (R11 behavior). When `truncate-overexec`, runs `truncateAtLastStepDone(events, task)` on each trace before passing to `isTraceStrictlyClean`. Sidecar score recomputed against the truncated trajectory: `finalState` and `stepCoverage` reflect the truncated trace's KeyNode hits.
+- **(Constraint c — per-record provenance metadata)**: when the exporter emits a `TrainingSample` derived from a synthesized RUN_COMPLETED, the sample's `metadata` object carries `_synthesized: true` AND `_origin: "trajectory-cleanup-v1"`. Captured-as-emitted samples carry `_synthesized: false` (or omit the key — engineer picks; tests assert presence on synthesized, absence/false on captured). This enables A/B-train with-vs-without synthesized data + reviewer audit.
+- `packages/evals/src/distill/types.ts` — `TrainingSample.metadata` schema extended with optional `_synthesized: Schema.optional(Schema.Boolean)` + `_origin: Schema.optional(Schema.String)` fields.
+- `packages/evals/scripts/distill/recompute-sidecars.ts` — NEW Effect script: takes a sweep dir, runs each trace through truncation against its source `EvalTask` (looked up via the existing `task-registry.ts:allEvalTasks` map; this is the seam that gives cleanup access to KeyNode definitions), recomputes sidecar scores via the existing scorer code path (same code that R11 P2 ships in `wave-r5-ab/build-report.ts`), writes `<runner>__<taskId>.cleanup-truncate.scores.json` next to the original sidecar.
 - `packages/evals/tests/trajectory-cleanup.test.ts` — at minimum:
   1. Trace ending in `RUN_COMPLETED:passed` after final `STEP_DONE` returns undefined (already clean; no truncation).
-  2. Trace ending in `RUN_COMPLETED:failed` with `STEP_DONE` reaching all KeyNodes earlier returns truncated trace ending at `RUN_COMPLETED:passed` synthetic marker.
-  3. Trace with no `STEP_DONE` returns undefined (incomplete-coverage; not recoverable).
-  4. Synthesized marker carries `source: "trajectory-cleanup-synth"` annotation.
-  5. Live smoke against R10's `wave-r10-pro-preview/gemini-react__calibration-2-single-nav-news.ndjson` (FAIL cov=1.0 — known over-execution): runs cleanup, recomputes sidecar via the real scorer, asserts cleanup output passes `isTraceStrictlyClean`. (`it.skipIf` if R10 trace dir absent.)
+  2. Trace ending in `RUN_COMPLETED:failed` with STEP_DONE set covering all `task.keyNodes` returns truncated trace + synthesized `RUN_COMPLETED:passed` (full-coverage synthesis authorized).
+  3. **(Constraint b regression)** Trace ending in `RUN_COMPLETED:failed` with STEP_DONE set covering only 1/2 KeyNodes returns undefined (synthesis NOT authorized on partial coverage).
+  4. Trace with no `STEP_DONE` returns undefined (incomplete-coverage; not recoverable).
+  5. Synthesized marker payload contains `source: "trajectory-cleanup-synth"` AND `coveredKeyNodes: N/N` annotation.
+  6. **(Constraint c regression)** `TrainingSample` derived from a synthesized RUN_COMPLETED carries `metadata._synthesized: true` AND `metadata._origin: "trajectory-cleanup-v1"`; sample derived from a captured RUN_COMPLETED does NOT.
+  7. Live smoke against R10's `wave-r10-pro-preview/gemini-react__calibration-2-single-nav-news.ndjson` (FAIL cov=1.0 — known over-execution, single KeyNode `^https://www\.bbc\.co\.uk/news/?$`): runs cleanup against the source EvalTask, asserts STEP_DONE coverage = 1/1, asserts cleanup output passes `isTraceStrictlyClean`, asserts emitted `TrainingSample.metadata._synthesized === true`. (`it.skipIf` if R10 trace dir absent.)
 
-**Why this is fail-closed by default**: R12's strict filter still rejects any trace that doesn't satisfy `isTraceStrictlyClean` over its sidecar. Cleanup runs BEFORE the filter — if cleanup can't recover the trace, the trace is rejected. Cleanup expanding the dataset is a positive add, not a relaxation of the filter.
+**Why this is fail-closed by default + bounded by EvalTask definition**: R12's strict filter still rejects any trace that doesn't satisfy `isTraceStrictlyClean` over its sidecar. Cleanup runs BEFORE the filter — if cleanup can't recover the trace, the trace is rejected. Synthesis bounded by `task.keyNodes` set means the LoRA never learns to declare done on a trajectory that didn't actually cover the source task's KeyNodes — the source EvalTask is the ground-truth definition of "done", not the agent's emitted markers.
+
+**A/B-train hook (Decision 13 constraint c)**: P5's hyperparam matrix can include a "synthesized-data on/off" axis as a future variant. R12 P5 doesn't sweep it explicitly (we have 27 configs already), but lead-or-engineer can split the corpus by `metadata._synthesized` flag for ablation analysis post-P6.
 
 **DoD — Behavior**:
-- Running `pnpm --filter @neuve/evals distill:recompute-sidecars EVAL_SWEEP_DIR=evals/traces/wave-r10-pro-preview` produces `<runner>__<taskId>.cleanup-truncate.scores.json` files for each Pro 3 trace where `truncateAtLastStepDone` returned a non-undefined trajectory (expected: ~2-4 traces per sweep, the over-execution shapes).
+- Running `pnpm --filter @neuve/evals distill:recompute-sidecars EVAL_SWEEP_DIR=evals/traces/wave-r10-pro-preview` produces `<runner>__<taskId>.cleanup-truncate.scores.json` files for each Pro 3 trace where `truncateAtLastStepDone` returned a non-undefined trajectory (expected: ~2-4 traces per sweep, the over-execution shapes that also satisfy KeyNode-full-coverage).
 - Running `pnpm --filter @neuve/evals distill:export EVAL_TRACE_DIR=evals/traces/wave-r10-pro-preview EVAL_DISTILL_CLEANUP=truncate-overexec` accepts ≥ 4 strict-pass traces from R10 (vs R10's 2 status-only-strict before cleanup). Cleanup recovers the over-execution shapes.
-- The 5 R10 "passed-only" tasks (calibration-3, journey-6, moderate-1, moderate-2, trivial-2) remain rejected — confirmed not recoverable via truncation alone (premature + incomplete-coverage shapes).
-- Synthetic markers in cleaned traces appear with `source: "trajectory-cleanup-synth"` in JSONL metadata; an exporter test asserts at least one cleaned sample carries this annotation.
+- The 5 R10 "passed-only" tasks (calibration-3 cov=0.50, journey-6 cov=1.0 finalState=0, moderate-1 cov=0.33, moderate-2 cov=0.33, trivial-2 cov=1.0 finalState=0) remain rejected — confirmed not recoverable via truncation alone (premature + incomplete-coverage shapes).
+- Every emitted `TrainingSample` derived from a synthesized RUN_COMPLETED carries `metadata._synthesized: true` AND `metadata._origin: "trajectory-cleanup-v1"`. An exporter test asserts presence on synthesized, absence/false on captured.
+- Running the exporter with `EVAL_DISTILL_CLEANUP=truncate-overexec` on a synthetic 1-KeyNode task whose trace's STEP_DONE set covers 0/1 KeyNodes returns 0 accepted samples (Constraint b enforced).
 
-**Risk flagged**: synthesizing a `RUN_COMPLETED:passed` marker is a manufactured signal. Engineer must surface this in the P3 review. The annotation tag + the audit-trail (sidecar suffix `.cleanup-truncate.scores.json` distinct from the original) preserves traceability — a reviewer or future debug pass can always identify which traces were synthesized.
+**Risk flagged**: synthesizing a `RUN_COMPLETED:passed` marker is a manufactured signal. Bounded by Constraint b (full KeyNode coverage in the source EvalTask) + Constraint c (per-record provenance) per lead directive. Reviewer must spot-check at least one cleaned trace + verify the `_synthesized` metadata flag flows through to the JSONL output. Audit trail is the sidecar suffix `.cleanup-truncate.scores.json` distinct from the original — a reviewer or future debug pass can always identify which traces were synthesized.
 
-**Effort**: medium. Pure function + scorer-recompute reuse + tests + synthesizing-marker discipline.
+**Effort**: medium. Pure function + scorer-recompute reuse + tests + synthesizing-marker discipline + KeyNode-coverage gate.
 
 ### P4 — Off-task replay blend (UltraChat 200k, configurable ratio)
 
@@ -293,29 +302,30 @@ Latin-square constraint: each rank value paired with each epochs value exactly o
 
 ### P6 — Final config train + capability-lift validation sweep
 
-**Goal**: Train browsing-gemma on the winning config (full corpus, not held-out), then run the full wave-r5-ab sweep + N=3 multi-sweep variance check, to validate the capability-lift gate.
+**Goal**: Train browsing-gemma on the winning config (full corpus, not held-out), then run N≥2 full multi-sweep zero-code-change validation against `wave-r12-extended.eval.ts` to validate the gate-conjunction (Decision 8).
 
 **Touched**:
 - `packages/evals/scripts/distill/train.ts` — used as-is from R11; called with the winning config from P5.
 - `packages/evals/scripts/distill/convert-gguf.ts` — used as-is.
 - `packages/evals/scripts/distill/build-modelfile.ts` — emit `Modelfile` referencing the final adapter; create `browsing-gemma` (no config suffix) Ollama tag.
-- `packages/evals/scripts/wave-r5-ab/build-report.ts` — already handles the 4-runner column shape from R11 P7. R12 reuses verbatim, runs aggregate over 3 sweep dirs.
-- New `evals/traces/wave-r12-final-{1,2,3}/` — three full sweeps (gemma-react + gemini-react + gemma-oracle-plan + browsing-gemma-react × 20 tasks each = 80 traces per sweep × 3 = 240 traces).
-- New `docs/handover/harness-evals/baselines/wave-r12-browsing-gemma.md` — auto-generated by build-report, hand-augmented with capability-lift gate verdict, multi-sweep variance table, off-task chat regression (manual probe — see below).
+- `packages/evals/scripts/wave-r5-ab/build-report.ts` — already handles the 4-runner column shape from R11 P7. R12 reuses the report logic but points it at `wave-r12-extended` traces. Aggregate runs over N sweep dirs.
+- New `evals/traces/wave-r12-final-{1,2}/` (N=2 ship floor) or `wave-r12-final-{1,2,3}/` (N=3 lead-recommended) — full sweeps against `wave-r12-extended.eval.ts` (30 tasks × 4 runners = 120 traces per sweep).
+- New `docs/handover/harness-evals/baselines/wave-r12-browsing-gemma.md` — auto-generated by build-report, hand-augmented with gate-conjunction verdict (mid-gate AND R11-floor both holding), multi-sweep median table, R10-2-5/20 schema-invalid variance-floor reference, off-task chat regression (manual probe — see below).
 
 **Off-task chat regression probe**: a 10-prompt non-browsing prompt set (sample: "Explain recursion in two sentences"; "Sum 23 + 47"; "What's the capital of Brazil?"; etc). Run against `gemma4:e4b` and `browsing-gemma` via direct `/api/generate`. Score: response non-empty AND on-topic (LLM-judge or manual). Catastrophic narrowing manifests as `browsing-gemma` failing prompts that `gemma4:e4b` answers cleanly. Probe runs at end of P6, results captured in baseline report.
 
-**DoD — Behavior**:
-- After the 3-sweep capture completes, the baseline report `wave-r12-browsing-gemma.md` shows:
-  - Mean over 3 runs of `browsing-gemma-react` step-cov ≥ mean over 3 runs of `gemma-react` step-cov + 0.10 (the capability-lift gate).
-  - 95% confidence interval on the step-cov delta (computed from the 3-run distribution) excludes 0.05 (i.e. the lower bound of the CI is above the noise floor).
-  - R8/R9/R10 invariants: empty-content 0/20 across all 3 sweeps on `gemma-react`; schema-invalid ≤ 5/20 (R9 widened gate per `project_baseline_eval_strategy.md`).
+**DoD — Behavior** (gate conjunction per Decision 8):
+- After the N≥2-sweep capture completes (N=3 recommended; floor N=2 if budget cuts), the baseline report `wave-r12-browsing-gemma.md` shows BOTH gates simultaneously holding:
+  - **R12 mid-gate** (lift target, Decision 7): `median(browsing-gemma-react step-cov) − median(gemma-react step-cov) ≥ +0.10` across the N sweeps. R10's 2-5/20 schema-invalid band is the variance-floor reference for what counts as zero-code-change drift.
+  - **R11 floor** (catastrophic-narrowing safety net, Decision 8): `median(browsing-gemma-react step-cov) − median(gemma-react step-cov) ≥ −0.05` across the same N sweeps. Floor is the regression check — catches the case where browsing-gemma lifts step-cov on some tasks but tails-abort on others (median delta could pass mid-gate while real capability regressed on subset).
+  - R8/R9/R10 invariants per sweep: empty-content 0/20 each sweep on `gemma-react`; schema-invalid ≤ 5/20 each sweep (R9 widened gate per `project_baseline_eval_strategy.md`).
   - Off-task chat probe: ≥ 9/10 prompts pass on `browsing-gemma` (parity-or-better with `gemma4:e4b` baseline; <9/10 = catastrophic narrowing flag, ship blocked).
 - Existing `gemma-react`, `gemini-react`, `gemma-oracle-plan` lanes remain within their R10 / R11 distribution bands.
+- Report includes per-sweep delta + median-of-N + same-day-pair design assertion (each sweep ran all four lanes against the same task set on the same day, controlling for sweep-day environmental drift).
 
-**Effort**: medium-large. Three full 4-runner sweeps × 20 tasks ≈ 6+ hr each (gemma lane is the bottleneck); the off-task regression probe + report augmentation adds a small amount on top.
+**Effort**: medium-large. N≥2 full 4-runner sweeps × 30 tasks ≈ 6-8 hr each (gemma lane is the bottleneck on the extended set; +50% wall-clock vs the 20-task sweep); the off-task regression probe + report augmentation adds a small amount on top.
 
-**Cost**: ~$50-75 in Pro 3 tokens (3 × R10's $17-25). MLX-LM training + browsing-gemma local eval = $0.
+**Cost**: ~$35-50 (N=2) or $50-75 (N=3) in Pro 3 tokens, scaled for the 30-task extended set vs R10's 20-task baseline.
 
 ### P7 — Promotion + capability-lift sign-off
 
@@ -340,22 +350,25 @@ Latin-square constraint: each rank value paired with each epochs value exactly o
 
 ## Wave gates / DoD
 
-1. **Multi-sweep dataset growth**: aggregating sweeps 0+1+2 yields ≥ 6 strict-pass traces (R10 floor ×3, allowing for ~50% inter-sweep overlap).
-2. **New task set Pro-friendly**: pre-commit Pro 3 probe on the 10 new EvalTasks produces ≥ 7/10 finalState=1.0 + stepCoverage=1.0.
-3. **Trajectory cleanup recovery**: cleanup-mode `truncate-overexec` exporter run accepts ≥ 4 strict-pass traces from R10's `wave-r10-pro-preview/` (vs 2 without cleanup); no recoverable traces show synthesized markers without the audit-trail annotation.
-4. **Off-task replay corpus**: blended JSONL (30 teacher + 10 off-task at ratio 0.25) decodes through `TrainingSample` schema and round-trips through the exporter without rejection; off-task samples carry `metadata.source = "ultrachat-200k"`.
-5. **Hyperparam sweep numbers**: 9-config Latin-square produces 9 valid `summary.json` rows; engineer surfaces top-3 to lead with concrete step-cov deltas vs gemma-react on the held-out 7-task subset.
-6. **Capability-lift gate (PRIMARY)**: full 3-sweep wave-r5-ab on the winning config produces `mean(browsing-gemma-react step-cov) ≥ mean(gemma-react step-cov) + 0.10` with the 95% CI lower bound > 0.05.
-7. **No catastrophic narrowing**: 10-prompt off-task chat regression probe scores ≥ 9/10 on browsing-gemma (parity-or-better vs base-gemma).
-8. **R8/R9/R10 invariants intact** on `gemma-react` lane: empty-content 0/20 each sweep, schema-invalid ≤ 5/20 each sweep.
-9. **R11 behavioral floor preserved**: `browsing-gemma-react step-cov ≥ base-gemma-react step-cov − 0.05` on every individual sweep (regression check; stronger gates above subsume this but the floor catches catastrophic per-sweep drift).
-10. **Reproducibility**: a fresh repo + fresh Ollama install can reconstruct `browsing-gemma` from committed artifacts via `ollama create` in < 30 seconds.
+1. **Multi-sweep dataset growth**: aggregating sweeps 0+1+2 yields ≥ 6 strict-pass traces (R10 floor ×3, allowing for ~50% inter-sweep overlap). Combined with P2 + P3 contributions, the full R12 dataset reaches the 30-trace ship-floor (Decision 10) and ideally the 50-trace target.
+2. **New task set Pro-friendly**: pre-commit Pro 3 probe on the 10 new EvalTasks produces ≥ 7/10 finalState=1.0 + stepCoverage=1.0; tasks registered in `wave-r12-extended.eval.ts` (NOT `wave-r5-ab.eval.ts` per Decision 14); R10/R11 baselines on `wave-r5-ab` remain bit-identical.
+3. **Trajectory cleanup recovery**: cleanup-mode `truncate-overexec` exporter run accepts ≥ 4 strict-pass traces from R10's `wave-r10-pro-preview/` (vs 2 without cleanup); every emitted `TrainingSample` derived from a synthesized RUN_COMPLETED carries `metadata._synthesized: true` AND `metadata._origin: "trajectory-cleanup-v1"` (Decision 13 constraint c); partial-KeyNode-coverage traces are rejected, not synthesized (Decision 13 constraint b).
+4. **Off-task replay corpus**: blended JSONL (e.g. 30 teacher + 10 off-task at ratio 0.25) decodes through `TrainingSample` schema and round-trips through the exporter without rejection; off-task samples carry `metadata.source = "ultrachat-200k"`. Matrix carries 10% / 25% / 50% blend axes per Decision 11.
+5. **Hyperparam sweep numbers**: 9-config Latin-square produces 9 valid `summary.json` rows; engineer surfaces top-3 to lead; lead authorizes Bayesian narrow on top-3 (Decision 12). Skip full 27-config grid.
+6. **Capability-lift gate conjunction (PRIMARY, distribution-form per Decisions 7+8)**: across N≥2 zero-code-change full sweeps of `wave-r12-extended` on the winning config, BOTH must hold:
+   - `median(browsing-gemma-react step-cov) − median(gemma-react step-cov) ≥ +0.10` (mid-gate / lift target).
+   - `median(browsing-gemma-react step-cov) − median(gemma-react step-cov) ≥ −0.05` (R11 floor / safety net).
+   The conjunction is the ship gate. Ship at N=2 if both hold; lead can authorize N=3 for tighter variance characterization.
+7. **No catastrophic narrowing**: 10-prompt off-task chat regression probe scores ≥ 9/10 on browsing-gemma (parity-or-better vs base-gemma). Probe includes 2-3 AgentTurn-shape envelope-emission prompts to catch protocol-narrowing.
+8. **R8/R9/R10 invariants intact** on `gemma-react` lane: empty-content 0/20 each sweep, schema-invalid ≤ 5/20 each sweep (R9 widened-to-distribution gate).
+9. **Reproducibility**: a fresh repo + fresh Ollama install can reconstruct `browsing-gemma` from committed artifacts via `ollama create` in < 30 seconds.
+10. **R5 baseline preservation**: `packages/evals/evals/wave-r5-ab.eval.ts` is byte-identical to the R11-shipped version; R10/R11 baseline reports remain comparable to any future R12+ wave-r5-ab run.
 
 ## Risk areas
 
 1. **Multi-sweep convergence below threshold**. If sweeps 1+2 produce < 4 new strict-pass traces (heavy task overlap with sweep 0), dataset stays at ~4 traces — below the 15/5 minimum. Mitigation: P2 new-task additions are the main hedge; if both P1 and P2 underdeliver, R12 ships at "behavioral-floor only" (R11's gate, not the +0.10 gate) and lead authorizes either an additional sweep round or scope-cut.
 2. **Catastrophic narrowing despite off-task blend**. Gate 7 (off-task regression probe) catches it. Mitigation: increase blend ratio in P5's sweep (one of the matrix configs is 0.50 if the lower ratios fail).
-3. **Synthesized RUN_COMPLETED markers from P3 cleanup pollute training data**. Annotation tag + sidecar suffix audit trail mitigates. Reviewer must spot-check at least one cleaned trace in the P3 review. If reviewer disagrees with synthesis as a class, drop P3 and ship without cleanup (loses ~2 traces per sweep but preserves training-data purity).
+3. **Synthesized RUN_COMPLETED markers from P3 cleanup pollute training data**. Three locked constraints (Decision 13) bound the risk: (a) honest STEP_DONE boundaries only — no fabricated markers; (b) synthesis gated on full KeyNode coverage from the source `EvalTask` definition — partial-coverage truncation is rejected; (c) per-record provenance metadata (`_synthesized: true`, `_origin: "trajectory-cleanup-v1"`) on every derived `TrainingSample`. Reviewer must spot-check at least one cleaned trace in the P3 review + verify the metadata flag flows through to JSONL output. The provenance metadata also enables A/B-train ablation (split corpus by `_synthesized` flag) post-P6 if synthesis quality is questioned. If reviewer disagrees with synthesis as a class even with the constraints, drop P3 and ship without cleanup (loses ~2 traces per sweep but preserves training-data purity).
 4. **Held-out subset overfit**. P5's 7-task held-out is small (calibration-1..5 + trivial-1, trivial-2). The winning hyperparams might overfit to the held-out shape and underperform on full wave-r5-ab. Mitigation: P6's full sweep is the actual capability-lift validation; P5's held-out is a config-ranking signal only, not the gate. If P6 shows the P5-winner regresses on full-set, lead authorizes re-sweep over top-3 configs against the full-set.
 5. **GCP free trial $300 expired** (if R13 needs Vertex). Out of R12 scope but flagged: free trial valid 90 days; if R12 work spans >90 days from initial signup, the trial may have expired by the time R13 starts. Workaround: pay-as-you-go billing kicks in automatically — Vertex pricing tables are visible to R13 planners.
 6. **MLX-LM Gemma 4 LoRA-rank-32 wall-clock surprise**. R11 P4 verifies rank=8 on Gemma 4 E4B. Rank=32 has ~4× the trainable params; on M4 hardware this might push training time per config from ~5 min to ~20 min. P5's 9-config sweep wall-clock could grow to ~3 hr. If this happens, P5 falls back to rank ∈ {8, 16} only (6-config Latin-square instead of 9).
@@ -412,13 +425,13 @@ R12 does NOT solve, R13 owns:
 
 | Phase | Cost | Source |
 |---|---|---|
-| P1 (sweeps 1+2) | $35-50 | Pro 3 tokens (R10 baseline ×2) |
+| P1 (sweeps 1+2 on 20-task wave-r5-ab gemini-only lane) | $35-50 | Pro 3 tokens (R10 baseline ×2) |
 | P2 (probe sweep on 10 new tasks) | $5 | Pro 3 tokens (~$0.50 per task) |
 | P3 (cleanup + recompute) | $0 | Local-only |
 | P4 (UltraChat fetch + blend) | $0 | Local-only; HF datasets free tier |
-| P5 (9-config Latin-square) | $0 | MLX-LM local + held-out 7-task eval is local |
-| P6 (3-sweep validation) | $50-75 | Pro 3 tokens (R10 baseline ×3) |
+| P5 (9-config Latin-square + Bayesian narrow on top-3) | $0 | MLX-LM local + held-out 7-task eval is local |
+| P6 (N=2 ship-floor validation; or N=3 lead-recommended) on 30-task wave-r12-extended | $35-75 | Pro 3 tokens (range covers N=2 to N=3) |
 | P7 (promotion) | $0 | Local-only |
-| **Total** | **$90-130** | Conservative, dominated by Pro 3 token spend |
+| **Total** | **$75-130** | Conservative; dominated by Pro 3 token spend; floor-N=2 lower bound, recommended-N=3 upper bound |
 
-Within the same envelope as R10's $17-25 sweep × roughly 4-5 sweeps. No GCP / Vertex cost in R12 (deferred to R13).
+Within the same envelope as R10's $17-25 sweep × roughly 3-5 sweeps. No GCP / Vertex cost in R12 (deferred to R13).
