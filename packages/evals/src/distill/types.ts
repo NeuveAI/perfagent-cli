@@ -87,4 +87,25 @@ export class ExportOptions extends Schema.Class<ExportOptions>("@evals/distill/E
    * samples are full traces by definition.
    */
   rollTrajectory: Schema.optional(Schema.Boolean),
+  /**
+   * R11 P2 strict tri-criterion filter (R10 closure note).
+   *
+   * When true: the exporter rejects traces that do not satisfy
+   *   `RUN_COMPLETED:passed AND finalState == 1.0 AND stepCoverage == 1.0`.
+   * The latter two come from a sidecar score file
+   * (`<runner>__<taskId>.scores.json`) emitted by `wave-r5-ab/build-report.ts`.
+   * Missing sidecar → reject (fail-closed; no status-only fallback).
+   *
+   * When false (default for back-compat with Wave 5 fixtures): the
+   * exporter falls back to the status-only `isTraceSuccessful` filter —
+   * RUN_COMPLETED:passed without abort, no sidecar consulted.
+   *
+   * Production scripts (`scripts/distill/export-teacher-data.ts`) flip
+   * this to true so the strict R11 contract is the default for any
+   * teacher-data export. The `EVAL_DISTILL_STRICT=false` env-var lets
+   * operators temporarily relax the gate during diagnostics without
+   * code change. Per-trace inclusion decision logs at debug level so a
+   * sweep over R10 traces can be audited.
+   */
+  strict: Schema.optional(Schema.Boolean),
 }) {}

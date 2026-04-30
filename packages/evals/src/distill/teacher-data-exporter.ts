@@ -6,7 +6,13 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import type { EvalTask } from "../task";
 import { TraceEventSchema, type TraceEvent } from "../runners/trace-recorder";
 import { rollTrajectory } from "@neuve/shared/trajectory";
-import { containsSensitiveData, isTraceSuccessful, redactSensitiveKeys } from "./filters";
+import {
+  containsSensitiveData,
+  isTraceStrictlyClean,
+  isTraceSuccessful,
+  redactSensitiveKeys,
+} from "./filters";
+import { SidecarScore, SidecarScoreFromJsonString, sidecarPathForTrace } from "./sidecar-score";
 import {
   ExportOptions,
   ExportSummary,
@@ -86,6 +92,34 @@ const parseTraceFileWith = (fileSystem: FileSystem.FileSystem) =>
       events.push(event);
     }
     return events;
+  });
+
+const decodeSidecar = Schema.decodeUnknownEffect(SidecarScoreFromJsonString);
+
+/**
+ * readSidecarScoreWith — load and decode the
+ * `<runner>__<taskId>.scores.json` sidecar that lives next to a trace
+ * ndjson, returning Option-shaped success/missing/malformed.
+ *
+ * Missing sidecar (`PlatformError` reason="NotFound") → undefined;
+ * `isTraceStrictlyClean` then rejects under strict mode (fail-closed).
+ *
+ * Malformed sidecar (decode failure) → die. The build-report writer
+ * always emits canonical `SidecarScore`-shaped JSON; a malformed
+ * sidecar means either a hand-edited file or a writer bug — both are
+ * unrecoverable per CLAUDE.md "Unrecoverable Errors Must Defect."
+ */
+const readSidecarScoreWith = (fileSystem: FileSystem.FileSystem) =>
+  Effect.fn("TeacherDataExporter.readSidecarScore")(function* (sidecarPath: string) {
+    const contents = yield* fileSystem.readFileString(sidecarPath).pipe(
+      Effect.catchReason("PlatformError", "NotFound", () => Effect.succeed(undefined)),
+      Effect.catchTags({ PlatformError: Effect.die }),
+    );
+    if (contents === undefined) return undefined;
+    const decoded = yield* decodeSidecar(contents).pipe(
+      Effect.catchTags({ SchemaError: Effect.die }),
+    );
+    return decoded as SidecarScore;
   });
 
 // Filename shape from `buildTracePath`: `${runnerName}__${runId}.ndjson`.
@@ -434,6 +468,7 @@ export class TeacherDataExporter extends ServiceMap.Service<
   static make = Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const parseTraceFile = parseTraceFileWith(fileSystem);
+    const readSidecarScore = readSidecarScoreWith(fileSystem);
 
     const runExport = Effect.fn("TeacherDataExporter.export")(function* (input: ExportInput) {
       const tasksById = new Map<string, EvalTask>();
@@ -443,11 +478,13 @@ export class TeacherDataExporter extends ServiceMap.Service<
 
       const granularity: ExportGranularity = input.options.granularity ?? "per-trajectory";
       const shouldRollTrajectory = input.options.rollTrajectory ?? false;
+      const strict = input.options.strict ?? false;
       yield* Effect.annotateCurrentSpan({
         traceCount: input.tracePaths.length,
         taskCount: input.tasks.length,
         granularity,
         rollTrajectory: shouldRollTrajectory,
+        strict,
       });
 
       const samples: TrainingSample[] = [];
@@ -456,11 +493,44 @@ export class TeacherDataExporter extends ServiceMap.Service<
       let tracesAccepted = 0;
       let tracesRejected = 0;
       let duplicatesSkipped = 0;
+      let strictRejectedNoSidecar = 0;
+      let strictRejectedFinalState = 0;
+      let strictRejectedStepCoverage = 0;
 
       for (const tracePath of input.tracePaths) {
         tracesScanned += 1;
         const events = yield* parseTraceFile(tracePath);
-        if (!isTraceSuccessful(events)) {
+        if (strict) {
+          const sidecarPath = sidecarPathForTrace(tracePath);
+          const sidecar = yield* readSidecarScore(sidecarPath);
+          if (!isTraceStrictlyClean(events, sidecar)) {
+            tracesRejected += 1;
+            if (sidecar === undefined) {
+              strictRejectedNoSidecar += 1;
+              yield* Effect.logDebug("Strict reject: sidecar missing", { tracePath, sidecarPath });
+            } else if (sidecar.finalState !== 1) {
+              strictRejectedFinalState += 1;
+              yield* Effect.logDebug("Strict reject: finalState !== 1", {
+                tracePath,
+                finalState: sidecar.finalState,
+                status: sidecar.status,
+              });
+            } else if (sidecar.stepCoverage !== 1) {
+              strictRejectedStepCoverage += 1;
+              yield* Effect.logDebug("Strict reject: stepCoverage !== 1", {
+                tracePath,
+                stepCoverage: sidecar.stepCoverage,
+                status: sidecar.status,
+              });
+            } else {
+              yield* Effect.logDebug("Strict reject: status not passed or aborted", {
+                tracePath,
+                status: sidecar.status,
+              });
+            }
+            continue;
+          }
+        } else if (!isTraceSuccessful(events)) {
           tracesRejected += 1;
           yield* Effect.logDebug("Trace rejected (not successful)", { tracePath });
           continue;
@@ -525,6 +595,10 @@ export class TeacherDataExporter extends ServiceMap.Service<
         tracesRejected,
         samplesWritten: samples.length,
         duplicatesSkipped,
+        strict,
+        strictRejectedNoSidecar,
+        strictRejectedFinalState,
+        strictRejectedStepCoverage,
       });
 
       return {

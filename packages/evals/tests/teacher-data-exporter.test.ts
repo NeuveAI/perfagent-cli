@@ -10,9 +10,11 @@ import { writeSamplesToJsonl, renderSamplesToJsonl } from "../src/distill/jsonl-
 import { ExportOptions } from "../src/distill/types";
 import {
   containsSensitiveData,
+  isTraceStrictlyClean,
   isTraceSuccessful,
   redactSensitiveKeys,
 } from "../src/distill/filters";
+import { SidecarScore, sidecarPathForTrace } from "../src/distill/sidecar-score";
 import {
   parseAgentTurnFromString,
   PlanUpdate as PlanUpdateTurn,
@@ -126,6 +128,56 @@ describe("filters", () => {
       ] as never),
     );
     assert.isFalse(isTraceSuccessful([]));
+  });
+
+  it("isTraceStrictlyClean accepts passed + finalState=1 + stepCoverage=1 (R11 P2 strict gate, R10 calibration-1 / trivial-1 shape)", () => {
+    // The exemplar: R10 traces that survived the strict filter.
+    // RUN_COMPLETED:passed AND no abort marker AND sidecar reports
+    // perfect finalState + stepCoverage. This is the only shape that
+    // earns its way into browsing-gemma's training data.
+    const events = [
+      { type: "status_marker", ts: 1, marker: "RUN_COMPLETED", payload: ["passed", "done"] },
+    ] as never;
+    const sidecar = new SidecarScore({ status: "passed", finalState: 1, stepCoverage: 1 });
+    assert.isTrue(isTraceStrictlyClean(events, sidecar));
+  });
+
+  it("isTraceStrictlyClean rejects passed + finalState=0.5 + stepCoverage=1 (premature pattern — R10 Pro 3 gemini-react 13/20 case)", () => {
+    // Pro declares RUN_COMPLETED:passed (or :failed) before satisfying
+    // the final-state assertion. status looks fine, stepCoverage is
+    // saturated, but finalState is partial — meaning Pro stopped before
+    // landing on the expected page/DOM. Status-only filtering would
+    // accept this; strict tri-criterion correctly rejects.
+    const events = [
+      { type: "status_marker", ts: 1, marker: "RUN_COMPLETED", payload: ["passed", "done"] },
+    ] as never;
+    const sidecar = new SidecarScore({ status: "passed", finalState: 0.5, stepCoverage: 1 });
+    assert.isFalse(isTraceStrictlyClean(events, sidecar));
+  });
+
+  it("isTraceStrictlyClean rejects passed + finalState=1 + stepCoverage=0.5 (over-execution / under-coverage pattern)", () => {
+    // The mirror failure mode: Pro hit some KeyNodes + landed on the
+    // expected final state, but did not visit every step in the
+    // canonical key-node sequence. stepCoverage falls below 1.0. The
+    // trajectory is ambiguously shaped (could be a shortcut, could be
+    // an over-execution path that bypassed steps) — neither is clean
+    // teacher data.
+    const events = [
+      { type: "status_marker", ts: 1, marker: "RUN_COMPLETED", payload: ["passed", "done"] },
+    ] as never;
+    const sidecar = new SidecarScore({ status: "passed", finalState: 1, stepCoverage: 0.5 });
+    assert.isFalse(isTraceStrictlyClean(events, sidecar));
+  });
+
+  it("isTraceStrictlyClean rejects when sidecar is missing (fail-closed; legacy traces without sidecar are not status-only-fallbacked)", () => {
+    // Per R11 plan §P2 intra-phase decision: gate on missing sidecar.
+    // Old traces without sidecars get rejected. This avoids silently
+    // falling back to status-only filtering on R10 archives where
+    // build-report hasn't yet emitted sidecars.
+    const events = [
+      { type: "status_marker", ts: 1, marker: "RUN_COMPLETED", payload: ["passed", "done"] },
+    ] as never;
+    assert.isFalse(isTraceStrictlyClean(events, undefined));
   });
 
   it("isTraceSuccessful rejects aborted traces even when followed by RUN_COMPLETED passed", () => {
@@ -428,7 +480,12 @@ describe("TeacherDataExporter", () => {
       marker: "RUN_COMPLETED",
       payload: ["passed", "done"],
     });
-    events.push({ type: "stream_terminated", ts: 10000, reason: "run_finished:passed", remainingSteps: 0 });
+    events.push({
+      type: "stream_terminated",
+      ts: 10000,
+      reason: "run_finished:passed",
+      remainingSteps: 0,
+    });
     writeNdjson(tracePath, events);
     const task = buildTask("rolling-test", "Click 14 times.");
 
@@ -622,6 +679,115 @@ describe("TeacherDataExporter", () => {
 
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
+
+  it("strict mode admits a trace with a clean sidecar (passed/finalState=1/stepCoverage=1)", async () => {
+    // End-to-end: build-report emits a sidecar, exporter reads it, the
+    // trace clears the strict tri-criterion gate, sample lands in the
+    // output JSONL. Mirrors the R10 calibration-1 / trivial-1 path.
+    const tempDir = makeTempDir();
+    const tracePath = path.join(tempDir, "real__example-task.ndjson");
+    writeNdjson(tracePath, successfulTraceEvents);
+    const sidecarPath = sidecarPathForTrace(tracePath);
+    fs.writeFileSync(
+      sidecarPath,
+      JSON.stringify(new SidecarScore({ status: "passed", finalState: 1, stepCoverage: 1 })) + "\n",
+      "utf8",
+    );
+    const task = buildTask("example-task", "Go to example.com");
+    const effect = Effect.gen(function* () {
+      const exporter = yield* TeacherDataExporter;
+      return yield* exporter.export({
+        tracePaths: [tracePath],
+        tasks: [task],
+        options: new ExportOptions({
+          teacherModel: SAMPLE_TEACHER,
+          systemPrompt: SAMPLE_SYSTEM_PROMPT,
+          strict: true,
+        }),
+      });
+    });
+    const exit = await runExportEffect(effect);
+    assert.strictEqual(exit._tag, "Success", JSON.stringify(exit));
+    const result =
+      exit._tag === "Success"
+        ? (exit.value as { summary: { samplesWritten: number; tracesAccepted: number } })
+        : undefined;
+    assert.strictEqual(result?.summary.samplesWritten, 1);
+    assert.strictEqual(result?.summary.tracesAccepted, 1);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("strict mode rejects a trace whose sidecar reports finalState < 1 (Pro 3 premature-completion pattern)", async () => {
+    // The premature shape: status is passed, sidecar exists, but
+    // finalState scored 0.5 (partial). Strict gate rejects so the LoRA
+    // doesn't learn to commit "done" before reaching the terminal page.
+    const tempDir = makeTempDir();
+    const tracePath = path.join(tempDir, "real__premature.ndjson");
+    writeNdjson(tracePath, successfulTraceEvents);
+    const sidecarPath = sidecarPathForTrace(tracePath);
+    fs.writeFileSync(
+      sidecarPath,
+      JSON.stringify(new SidecarScore({ status: "passed", finalState: 0.5, stepCoverage: 1 })) +
+        "\n",
+      "utf8",
+    );
+    const task = buildTask("premature", "Go to example.com");
+    const effect = Effect.gen(function* () {
+      const exporter = yield* TeacherDataExporter;
+      return yield* exporter.export({
+        tracePaths: [tracePath],
+        tasks: [task],
+        options: new ExportOptions({
+          teacherModel: SAMPLE_TEACHER,
+          systemPrompt: SAMPLE_SYSTEM_PROMPT,
+          strict: true,
+        }),
+      });
+    });
+    const exit = await runExportEffect(effect);
+    assert.strictEqual(exit._tag, "Success");
+    const result =
+      exit._tag === "Success"
+        ? (exit.value as { summary: { samplesWritten: number; tracesRejected: number } })
+        : undefined;
+    assert.strictEqual(result?.summary.samplesWritten, 0);
+    assert.strictEqual(result?.summary.tracesRejected, 1);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("strict mode rejects a trace whose sidecar is missing (fail-closed; not status-only-fallbacked)", async () => {
+    // No sidecar next to the trace (legacy archive that hasn't been
+    // re-built-report'd). Strict mode rejects rather than silently
+    // falling back to status-only filtering. The retroactive backfill
+    // path is to run `pnpm wave-r5-ab:report` over the archive once.
+    const tempDir = makeTempDir();
+    const tracePath = path.join(tempDir, "real__no-sidecar.ndjson");
+    writeNdjson(tracePath, successfulTraceEvents);
+    // intentionally do NOT write a sidecar
+    const task = buildTask("no-sidecar", "Go to example.com");
+    const effect = Effect.gen(function* () {
+      const exporter = yield* TeacherDataExporter;
+      return yield* exporter.export({
+        tracePaths: [tracePath],
+        tasks: [task],
+        options: new ExportOptions({
+          teacherModel: SAMPLE_TEACHER,
+          systemPrompt: SAMPLE_SYSTEM_PROMPT,
+          strict: true,
+        }),
+      });
+    });
+    const exit = await runExportEffect(effect);
+    assert.strictEqual(exit._tag, "Success");
+    const result =
+      exit._tag === "Success"
+        ? (exit.value as { summary: { samplesWritten: number; tracesRejected: number } })
+        : undefined;
+    assert.strictEqual(result?.summary.samplesWritten, 0);
+    assert.strictEqual(result?.summary.tracesRejected, 1);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
 
   it("serializes samples to valid JSONL via renderSamplesToJsonl", async () => {
     const tempDir = makeTempDir();

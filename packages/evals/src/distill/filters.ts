@@ -1,5 +1,6 @@
 import type { StatusMarkerEvent, TraceEvent } from "../runners/trace-recorder";
 import { REDACTED_KEY_PATTERN } from "../redaction";
+import type { SidecarScore } from "./sidecar-score";
 
 export { REDACTED_KEY_PATTERN };
 
@@ -48,6 +49,57 @@ export const isTraceSuccessful = (events: ReadonlyArray<TraceEvent>): boolean =>
   if (!Array.isArray(payload)) return false;
   const status = payload[0];
   return status === "passed";
+};
+
+/**
+ * isTraceStrictlyClean — R11 P2 strict filter (R10 closure note).
+ *
+ * Returns true iff:
+ *   1. The base `isTraceSuccessful` check passes (RUN_COMPLETED:passed,
+ *      no ASSERTION_FAILED category=abort anywhere).
+ *   2. A sidecar score record was written next to the trace by
+ *      `scripts/wave-r5-ab/build-report.ts` (fail-closed when missing —
+ *      legacy traces without sidecars are rejected, not status-only-fallback).
+ *   3. `sidecar.status === "passed"`.
+ *   4. `sidecar.finalState === 1.0` (full final-state assertion match).
+ *   5. `sidecar.stepCoverage === 1.0` (every key-node hit).
+ *
+ * Why three criteria, not just status: gemini-3-pro-preview's
+ * stopping-criterion has two distinct failure shapes (per
+ * `docs/handover/teacher-viability/diary/r10-2026-04-30.md`):
+ *   - **Premature**: declares RUN_COMPLETED:failed before satisfying
+ *     finalState (13/20 R10 gemini-react runs). Status-only filter
+ *     correctly rejects these — but then we drop traces where Pro
+ *     reached more KeyNodes than gemma; throwing away signal.
+ *   - **Over-execution**: hits every STEP_DONE then keeps tooling past
+ *     the success state, often to MAX_TOOL_ROUNDS. Exemplar:
+ *     `calibration-2`. Status-only filter PASSES this case
+ *     (RUN_COMPLETED:passed) — but the trajectory teaches the LoRA to
+ *     emit envelopes past completion.
+ *
+ * The three-way conjunction isolates cleanly-shaped teacher data: status
+ * eliminates premature, finalState=1.0 blocks any partial-state pass,
+ * stepCoverage=1.0 catches over-execution into key-node-overshoot
+ * territory (when a clean run would saturate at 1.0, an over-execution
+ * still saturates — which is fine; the filter cuts off the long tail
+ * but accepts saturated valid traces).
+ *
+ * R10 closure note's exact phrasing: "Filter for teacher-trace capture:
+ * `RUN_COMPLETED:passed AND finalState == 1.0 AND step-coverage == 1.0`,
+ * NOT just `passed`." Yields 2/20 traces under R10's gemini-react sweep
+ * (calibration-1, trivial-1) — accepted data-scarcity constraint per
+ * R11 plan §"Data scarcity dominates".
+ */
+export const isTraceStrictlyClean = (
+  events: ReadonlyArray<TraceEvent>,
+  sidecar: SidecarScore | undefined,
+): boolean => {
+  if (!isTraceSuccessful(events)) return false;
+  if (sidecar === undefined) return false;
+  if (sidecar.status !== "passed") return false;
+  if (sidecar.finalState !== 1) return false;
+  if (sidecar.stepCoverage !== 1) return false;
+  return true;
 };
 
 const includesRedactedKey = (value: unknown, depth: number): boolean => {

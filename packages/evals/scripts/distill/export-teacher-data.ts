@@ -32,12 +32,14 @@ const teacherModelConfig = Config.string("EVAL_DISTILL_TEACHER").pipe(
 const granularityConfig = Config.schema(ExportGranularity, "EVAL_DISTILL_GRANULARITY").pipe(
   Config.withDefault(Schema.decodeUnknownSync(ExportGranularity)("per-trajectory")),
 );
+const strictConfig = Config.boolean("EVAL_DISTILL_STRICT").pipe(Config.withDefault(true));
 
 const program = Effect.gen(function* () {
   const traceDir = yield* traceDirectoryConfig;
   const outputPath = yield* outputPathConfig;
   const teacherModel = yield* teacherModelConfig;
   const granularity = yield* granularityConfig;
+  const strict = yield* strictConfig;
 
   const tracePaths = listTraceFiles(traceDir);
   yield* Effect.logInfo("Teacher-data export starting", {
@@ -46,6 +48,7 @@ const program = Effect.gen(function* () {
     outputPath,
     teacherModel,
     granularity,
+    strict,
   });
 
   const exporter = yield* TeacherDataExporter;
@@ -56,6 +59,7 @@ const program = Effect.gen(function* () {
       granularity,
       teacherModel,
       systemPrompt: buildLocalAgentSystemPrompt(),
+      strict,
     }),
   });
 
