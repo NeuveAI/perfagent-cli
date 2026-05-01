@@ -56,7 +56,12 @@ import { Config, Effect, Layer, Schema, Scope, ServiceMap } from "effect";
  * health check passes.
  */
 
-const DEFAULT_LISTEN_PORT = 11464;
+// `0` lets the OS pick a free ephemeral port. The adapter then reads
+// the actual bound port off `server.address()` and exposes it to
+// callers as the `url` field. This avoids EADDRINUSE collisions when
+// evalite runs tasks in parallel and each per-task scope spins its own
+// adapter — production sweep flag (R11 P6).
+const DEFAULT_LISTEN_PORT = 0;
 const DEFAULT_LISTEN_HOST = "127.0.0.1";
 const HTTP_REQUEST_TIMEOUT_MS = 600_000;
 
@@ -85,6 +90,13 @@ const portConfig = Config.int("EVAL_OLLAMA_ADAPTER_PORT").pipe(
 );
 const hostConfig = Config.string("EVAL_OLLAMA_ADAPTER_HOST").pipe(
   Config.withDefault(DEFAULT_LISTEN_HOST),
+);
+// The configured model name for `/api/tags`. Defaults to `browsing-gemma`
+// per `project_lora_name.md`. The runner's ConfigProvider overlay sets
+// this via `PERF_AGENT_LOCAL_MODEL` for the local-agent's preflight; the
+// adapter advertises the same name so the preflight finds it.
+const modelNameConfig = Config.string("EVAL_OLLAMA_ADAPTER_MODEL_NAME").pipe(
+  Config.withDefault("browsing-gemma"),
 );
 interface OllamaChatMessage {
   readonly role: string;
@@ -185,6 +197,28 @@ const handleApiVersion = (response: http.ServerResponse): void => {
   response.end(JSON.stringify({ version: "adapter-0.1.0" }));
 };
 
+/**
+ * `/api/tags` — Ollama-shape model listing. Required by `@neuve/agent`'s
+ * AcpAdapter.layerLocal preflight (`packages/agent/src/acp-client.ts:600`)
+ * which lists Ollama models and verifies the configured model name is
+ * present. The adapter advertises a single virtual model per the
+ * `EVAL_OLLAMA_ADAPTER_MODEL_NAME` env (default "browsing-gemma") so the
+ * preflight passes without a real Ollama instance running. The actual
+ * model served by llama-server is whatever `--model` / `--lora` it was
+ * launched with — the preflight is name-only validation.
+ */
+const handleApiTags = (modelName: string, response: http.ServerResponse): void => {
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(
+    JSON.stringify({
+      models: [
+        { name: modelName },
+        { name: `${modelName}:latest` },
+      ],
+    }),
+  );
+};
+
 const handleHealthCheck = (response: http.ServerResponse): void => {
   response.writeHead(200, { "content-type": "text/plain" });
   response.end("Ollama is running");
@@ -228,6 +262,7 @@ const handleApiChat = async (
 
 const startServer = (
   resolveUpstream: () => string,
+  modelName: string,
   port: number,
   host: string,
 ): Effect.Effect<
@@ -246,6 +281,10 @@ const startServer = (
       }
       if (request.method === "GET" && url.startsWith("/api/version")) {
         handleApiVersion(response);
+        return;
+      }
+      if (request.method === "GET" && url.startsWith("/api/tags")) {
+        handleApiTags(modelName, response);
         return;
       }
       if (request.method === "POST" && url.startsWith("/api/chat")) {
@@ -277,7 +316,9 @@ const startServer = (
       );
     });
     server.listen(port, host, () => {
-      resume(Effect.succeed({ url: `http://${host}:${port}`, server }));
+      const address = server.address();
+      const boundPort = typeof address === "object" && address !== null ? address.port : port;
+      resume(Effect.succeed({ url: `http://${host}:${boundPort}`, server }));
     });
   });
 
@@ -294,6 +335,9 @@ export class OllamaApiAdapter extends ServiceMap.Service<
     const host = yield* Effect.gen(function* () {
       return yield* hostConfig;
     }).pipe(Effect.catchTags({ ConfigError: Effect.die }));
+    const modelName = yield* Effect.gen(function* () {
+      return yield* modelNameConfig;
+    }).pipe(Effect.catchTags({ ConfigError: Effect.die }));
 
     // Lazy-resolve upstream URL on every chat request — Layer-init time
     // may be before the upstream env is set (e.g. when the test boots
@@ -309,10 +353,10 @@ export class OllamaApiAdapter extends ServiceMap.Service<
       return url;
     };
 
-    yield* Effect.logInfo("Starting OllamaApiAdapter", { port, host });
+    yield* Effect.logInfo("Starting OllamaApiAdapter", { port, host, modelName });
 
     const handle = yield* Effect.acquireRelease(
-      startServer(resolveUpstream, port, host),
+      startServer(resolveUpstream, modelName, port, host),
       (resource) =>
         Effect.callback<void>((resume) => {
           resource.server.close(() => resume(Effect.void));
