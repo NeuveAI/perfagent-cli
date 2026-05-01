@@ -2,7 +2,12 @@ import { Config, Effect, Schema } from "effect";
 
 const DEFAULT_BASE_URL = "http://localhost:11434";
 const DEFAULT_MODEL = "gemma4:e4b";
-const DEFAULT_TEMPERATURE = 0.1;
+// Pinned to 0 (deterministic-greedy) per harness-r2 P1 variance pin (see
+// `docs/research/harness-r2/plan.md` §P1 + `project_baseline_eval_strategy.md`).
+// Pre-pin: 0.1 — small enough to look "near-deterministic" but enough sampling
+// noise to keep zero-code-change run-to-run step-cov drifting in a 0.07 band
+// (R10 closure documented 0.307-0.372 across 3 runs at the old default).
+const DEFAULT_TEMPERATURE = 0;
 // Gemma 4 E4B's native context window is 131072 tokens (verified via
 // `ollama show gemma4:e4b`). We were previously capped at 32768 — 25% of
 // the real window — which left no headroom once the system prompt + 8

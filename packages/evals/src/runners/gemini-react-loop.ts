@@ -318,6 +318,12 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
           schemaDescription:
             "One ReAct envelope: THOUGHT, ACTION, PLAN_UPDATE, STEP_DONE, ASSERTION_FAILED, or RUN_COMPLETED.",
           messages: aiMessages,
+          // Pinned to 0 (deterministic-greedy) per harness-r2 P1 variance pin —
+          // pre-pin this call had no `temperature` field, falling back to the
+          // Google provider default (~1.0) which produced wide step-cov drift
+          // on the gemini-react lane sweep-to-sweep. See
+          // `docs/research/harness-r2/plan.md` §P1.
+          temperature: 0,
         }),
       catch: (cause) =>
         new GeminiReactCallError({

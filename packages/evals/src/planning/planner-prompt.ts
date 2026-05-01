@@ -1,5 +1,10 @@
 export const PLAN_DECOMPOSER_MODEL_ID = "gemini-3-flash-preview";
-export const PLAN_DECOMPOSER_TEMPERATURE = 0.1;
+// Pinned to 0 (deterministic-greedy) across all runners exercised by
+// `wave-r5-ab.eval.ts` to shrink the run-to-run variance band below the
+// 0.07 step-cov noise floor R10 documented (see
+// `docs/research/harness-r2/plan.md` §P1 + `project_baseline_eval_strategy.md`
+// distribution-form gate guidance). Pre-pin: `PLAN_DECOMPOSER_TEMPERATURE = 0.1`.
+export const PLAN_DECOMPOSER_TEMPERATURE = 0;
 export const PLAN_DECOMPOSER_MIN_STEPS = 1;
 export const PLAN_DECOMPOSER_MAX_STEPS = 12;
 
