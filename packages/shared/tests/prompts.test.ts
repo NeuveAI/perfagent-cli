@@ -196,11 +196,15 @@ describe("buildExecutionSystemPrompt — shape & invariants", () => {
     expect(prompt).toContain("at most 5 PLAN_UPDATE markers per run");
   });
 
-  it("includes the REFLECT trigger guidance", () => {
+  it("includes the REFLECT directive guidance", () => {
     const prompt = buildExecutionSystemPrompt();
-    expect(prompt).toContain("<reflect_trigger>");
-    expect(prompt).toContain("2 consecutive ASSERTION_FAILED markers");
-    expect(prompt).toContain("REFLECT directive");
+    // harness-r3 P1: prompt block reframed from <reflect_trigger> (signal-
+    // source = ASSERTION_FAILED) to <reflect_directive> (signal-source =
+    // structural shape detection in the harness). The model only needs to
+    // know how to PARSE the directive when it arrives, not how to emit it.
+    expect(prompt).toContain("<reflect_directive>");
+    expect(prompt).toContain("REFLECT");
+    expect(prompt).toContain("PLAN_UPDATE");
   });
 
   it("golden snapshot — output is stable across invocations", () => {
@@ -447,11 +451,11 @@ describe("buildLocalAgentSystemPrompt", () => {
     expect(prompt).toContain("replace_step");
   });
 
-  it("includes the REFLECT trigger guidance", () => {
+  it("includes the REFLECT directive guidance", () => {
     const prompt = buildLocalAgentSystemPrompt();
-    expect(prompt).toContain("<reflect_trigger>");
-    expect(prompt).toContain("2 consecutive ASSERTION_FAILED envelopes");
+    expect(prompt).toContain("<reflect_directive>");
     expect(prompt).toContain("REFLECT");
+    expect(prompt).toContain("PLAN_UPDATE");
   });
 
   it("lists every failure category", () => {
@@ -511,13 +515,18 @@ describe("buildLocalAgentSystemPrompt + buildExecutionSystemPrompt — protocol 
     }
   });
 
-  it("both prompts document the REFLECT trigger after 2 consecutive same-step failures", () => {
+  it("both prompts document the REFLECT directive parse rule", () => {
+    // harness-r3 P1: the directive is INJECTED by the harness on shape
+    // signals (parse-fail / tool-error / 2-consecutive-AF). Both prompts
+    // must teach the parse rule (REFLECT in observation -> next envelope
+    // is PLAN_UPDATE) so the model handles the directive identically
+    // regardless of which runner produced it.
     const localPrompt = buildLocalAgentSystemPrompt();
     const executorPrompt = buildExecutionSystemPrompt();
     expect(localPrompt).toContain("REFLECT");
-    expect(localPrompt).toContain("2 consecutive ASSERTION_FAILED");
+    expect(localPrompt).toContain("<reflect_directive>");
     expect(executorPrompt).toContain("REFLECT");
-    expect(executorPrompt).toContain("2 consecutive ASSERTION_FAILED");
+    expect(executorPrompt).toContain("<reflect_directive>");
   });
 
   it("both prompts list the same five failure categories", () => {
