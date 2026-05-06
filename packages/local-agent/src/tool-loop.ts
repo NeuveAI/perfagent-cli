@@ -23,6 +23,16 @@ import { log } from "./log.js";
 
 const MAX_TOOL_ROUNDS = 15;
 const DOOM_LOOP_THRESHOLD = 3;
+// harness-r3 P1: structural REFLECT-injection. Strictly less than
+// DOOM_LOOP_THRESHOLD so injection precedes abort. When 2 consecutive
+// rejections (parse-fail or tool-error) match on stepId+shape, the harness
+// prepends a REFLECT directive to the next observation to prompt a
+// PLAN_UPDATE before the doom-loop detector's 3rd-strike abort. See
+// `docs/research/harness-r3/plan.md` §P1 + the BMW canonical fixture at
+// `evals/traces/wave-harness-r2-plan-update/gemma-react__journey-1-car-configurator-bmw.ndjson`.
+const REFLECT_INJECTION_THRESHOLD = 2;
+const REFLECT_DIRECTIVE_TEXT =
+  "REFLECT: This step is failing in the same shape twice in a row. The next envelope MUST be PLAN_UPDATE with action=insert (missing prerequisite step), action=replace (corrected step), or action=remove (now-redundant step). Do not retry the same ACTION.";
 const TRACE_STOPPED_SENTINEL = "The performance trace has been stopped.";
 
 // R6 multi-modal: after a successful ACTION on one of these tools we capture
@@ -95,6 +105,27 @@ interface ToolCallFingerprint {
   argsHash: string;
 }
 
+// harness-r3 P1 — rejection-shape tracker for structural REFLECT-injection.
+// `kind="parse-fail"` triggered by SchemaError on the AgentTurn envelope;
+// `kind="tool-error"` triggered by `isError=true` from the MCP bridge on a
+// successfully-parsed ACTION. `shapeHash` is a stable string over the
+// rejection signal (envelope content for parse-fail; tool+argsHash for
+// tool-error) so two consecutive identical rejections collapse into the
+// REFLECT trigger.
+interface RejectionFingerprint {
+  readonly stepId: string;
+  readonly shapeHash: string;
+  readonly kind: "parse-fail" | "tool-error";
+}
+
+const PARSE_FAIL_STEP_ID_FALLBACK = "__pre_first_envelope__";
+
+const buildParseFailShape = (content: string): string => {
+  // Normalize whitespace and truncate to keep the hash stable across
+  // identical-content emissions while ignoring incidental differences.
+  return content.replace(/\s+/g, " ").slice(0, 200);
+};
+
 interface ParseFailure {
   readonly _tag: "__parse_failure__";
   readonly cause: string;
@@ -117,6 +148,36 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
 
   const recentCalls: ToolCallFingerprint[] = [];
   let lastToolError: string | undefined;
+
+  // harness-r3 P1 — rejection-shape tracking for structural REFLECT-injection.
+  // The list resets when the rejection shape changes, when a successful
+  // tool call lands, or when the model emits a PLAN_UPDATE / STEP_DONE
+  // (forward progress). `lastSeenStepId` tracks the most-recent envelope's
+  // stepId so a parse-fail (with no extractable stepId of its own) attributes
+  // the rejection to the step that was being worked on.
+  const recentRejections: RejectionFingerprint[] = [];
+  let lastSeenStepId: string = PARSE_FAIL_STEP_ID_FALLBACK;
+  let reflectInjectedThisStreak = false;
+
+  const trackRejection = (entry: RejectionFingerprint): boolean => {
+    const last = recentRejections[recentRejections.length - 1];
+    const matches =
+      last !== undefined && last.stepId === entry.stepId && last.shapeHash === entry.shapeHash;
+    if (!matches) {
+      recentRejections.length = 0;
+      reflectInjectedThisStreak = false;
+    }
+    recentRejections.push(entry);
+    if (recentRejections.length > DOOM_LOOP_THRESHOLD) {
+      recentRejections.shift();
+    }
+    return recentRejections.length >= REFLECT_INJECTION_THRESHOLD && !reflectInjectedThisStreak;
+  };
+
+  const resetRejectionStreak = (): void => {
+    recentRejections.length = 0;
+    reflectInjectedThisStreak = false;
+  };
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     if (signal.aborted) return;
@@ -207,17 +268,59 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
 
     if (envelope._tag === "__parse_failure__") {
       log("schema-invalid envelope", { cause: envelope.cause });
-      await connection.sessionUpdate({
-        sessionId,
-        update: {
-          sessionUpdate: "agent_message_chunk",
-          content: {
-            type: "text",
-            text: `[Local agent: non-schema-valid agent output. Aborting run. Cause: ${envelope.cause}]`,
-          },
-        },
+
+      // harness-r3 P1: feed the parse failure back as an observation and
+      // track it as a rejection. If the same shape repeats
+      // REFLECT_INJECTION_THRESHOLD times the next observation is prefixed
+      // with a REFLECT directive (per `<reflect_directive>` in the system
+      // prompt). Hard-abort on DOOM_LOOP_THRESHOLD consecutive same-shape
+      // parse failures so the streak still terminates if the model can't
+      // recover. A fresh shape resets the counter (avoids merging unrelated
+      // failure modes into the same streak).
+      const shouldInject = trackRejection({
+        stepId: lastSeenStepId,
+        shapeHash: buildParseFailShape(coerced.content),
+        kind: "parse-fail",
       });
-      return;
+
+      if (recentRejections.length >= DOOM_LOOP_THRESHOLD) {
+        await connection.sessionUpdate({
+          sessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: {
+              type: "text",
+              text: `[Local agent: non-schema-valid agent output ${DOOM_LOOP_THRESHOLD}× in a row. Aborting run. Last cause: ${envelope.cause}]`,
+            },
+          },
+        });
+        return;
+      }
+
+      if (shouldInject) {
+        log("reflect injection (parse-fail)", {
+          stepId: lastSeenStepId,
+          streakLength: recentRejections.length,
+        });
+        reflectInjectedThisStreak = true;
+        await connection.sessionUpdate({
+          sessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: {
+              type: "text",
+              text: `[Local agent: ${REFLECT_DIRECTIVE_TEXT}]`,
+            },
+          },
+        });
+      }
+
+      const reflectPrefix = shouldInject ? `<observation>${REFLECT_DIRECTIVE_TEXT}</observation>\n` : "";
+      messages.push({
+        role: "user",
+        content: `${reflectPrefix}<observation>(parse failure: ${envelope.cause.slice(0, 500)} — re-emit one valid envelope per <envelopes>.)</observation>`,
+      });
+      continue;
     }
 
     // Emit the structured AgentTurn FIRST per R3 wire contract — supervisor's
@@ -242,6 +345,7 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
     );
 
     if (envelope instanceof Thought) {
+      lastSeenStepId = envelope.stepId;
       await connection.sessionUpdate({
         sessionId,
         update: {
@@ -257,6 +361,11 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
     }
 
     if (envelope instanceof PlanUpdate) {
+      lastSeenStepId = envelope.stepId;
+      // harness-r3 P1: PLAN_UPDATE is the desired response to a REFLECT
+      // injection — clear the rejection streak so a future repeat starts
+      // fresh.
+      resetRejectionStreak();
       await connection.sessionUpdate({
         sessionId,
         update: {
@@ -275,6 +384,9 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
     }
 
     if (envelope instanceof StepDone) {
+      lastSeenStepId = envelope.stepId;
+      // harness-r3 P1: forward progress — reset the rejection streak.
+      resetRejectionStreak();
       await connection.sessionUpdate({
         sessionId,
         update: {
@@ -293,6 +405,7 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
     }
 
     if (envelope instanceof AssertionFailed) {
+      lastSeenStepId = envelope.stepId;
       await connection.sessionUpdate({
         sessionId,
         update: {
@@ -326,6 +439,7 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
     }
 
     if (envelope instanceof Action) {
+      lastSeenStepId = envelope.stepId;
       const functionName = envelope.toolName;
       const args = toRecord(envelope.args);
       const argsHash = JSON.stringify(args);
@@ -382,8 +496,39 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
       });
 
       const { text, isError } = await mcpBridge.callTool(functionName, args);
+      // harness-r3 P1: track tool-error rejections so 2 consecutive same-shape
+      // arg-rejections on the same stepId trigger a REFLECT injection on the
+      // next observation. A successful (non-error) tool call resets the
+      // streak — we're past the rejection-shape signal.
+      let injectReflectOnObservation = false;
       if (isError) {
         lastToolError = text;
+        const shouldInject = trackRejection({
+          stepId: envelope.stepId,
+          shapeHash: `tool:${functionName}:${argsHash}`,
+          kind: "tool-error",
+        });
+        if (shouldInject) {
+          log("reflect injection (tool-error)", {
+            stepId: envelope.stepId,
+            tool: functionName,
+            streakLength: recentRejections.length,
+          });
+          reflectInjectedThisStreak = true;
+          injectReflectOnObservation = true;
+          await connection.sessionUpdate({
+            sessionId,
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: {
+                type: "text",
+                text: `[Local agent: ${REFLECT_DIRECTIVE_TEXT}]`,
+              },
+            },
+          });
+        }
+      } else {
+        resetRejectionStreak();
       }
       const baseMessageText = isError
         ? `${text}\n\nHint: Check the tool's call shape in its description. Wrap your arguments under the wrapper key shown in the example.`
@@ -535,15 +680,18 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
         }
       }
 
+      const reflectPrefix = injectReflectOnObservation
+        ? `<observation>${REFLECT_DIRECTIVE_TEXT}</observation>\n`
+        : "";
       const observationMessage = observationImages
         ? {
             role: "user" as const,
-            content: `<observation>${combinedLlmText}</observation>`,
+            content: `${reflectPrefix}<observation>${combinedLlmText}</observation>`,
             images: observationImages,
           }
         : {
             role: "user" as const,
-            content: `<observation>${combinedLlmText}</observation>`,
+            content: `${reflectPrefix}<observation>${combinedLlmText}</observation>`,
           };
       messages.push(observationMessage);
       continue;
