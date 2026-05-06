@@ -190,14 +190,18 @@ Each phase is a prompt change + 1 A:B sweep against the variance-pinned baseline
 
 ## Out of scope (harness-r3 hooks)
 
-harness-r2 does NOT solve, harness-r3 (or parallel diagnostic mini-wave) owns:
-- `AnalysisStep` schema typing (`PlanUpdate.payload` from `Schema.Unknown` to typed). Only meaningful AFTER P3 raises emission rate above 0/60.
-- Tool catalog deduplication — investigation probe whether `interact.command="click"` AND flat `click` tool are both used at runtime; if not, drop one to reduce schema branches.
-- Oracle-plan capability autopsy — gemma-oracle-plan at 0.000 final-state with Pro 3's plans; trace inspection to identify why a perfect plan doesn't help gemma execute.
-- Alternate teacher exploration (Sonnet 4.6 / GPT-5 / Llama 4 70B) — only after stopping-criterion + PLAN_UPDATE wins are quantified; cost-benefit math depends on what harness-r2 leaves on the table.
-- Bigger base model exploration (Gemma 4 12B locally) — separate strategic wave if harness-r2 + R12 don't deliver sufficient lift.
-- PLAN_UPDATE-driven distillation — once emission rate rises (P3), the trajectories become useful as teacher data for browsing-gemma. Folds into R12 if R12 dispatches after harness-r2.
-- Continued schema tightening — `args` field schemas could be tightened further (e.g. `wait_for{text:[]}` non-empty constraint). Defer until current 2-5/20 schema-invalid floor is understood.
+harness-r2 does NOT solve, harness-r3 (or parallel diagnostic mini-wave) owns. **PRIMARY harness-r3 P1 candidates surfaced from harness-r2 P3 + P1 evidence (post-wave update 2026-05-02):**
+
+- **PRIMARY P1 candidate — structural REFLECT-injection probe.** harness-r2 P3 surfaced 0 ASSERTION_FAILED envelopes across all 240 traces (4 sweeps × 60), proving the prompt-side PLAN_UPDATE pathway is dead at every upstream gate. Harness should detect SchemaError-loops (N consecutive identical-shape SchemaErrors on same stepId) or arg-rejection-after-N-retries (the explicit-trigger pattern P3 tried to elicit) → inject synthetic REFLECT directive into next observation. Bypasses the "model doesn't emit ASSERTION_FAILED" gate entirely. Adjacent to existing doom-loop detector in `tool-loop.ts` (3-identical-ACTION pattern). Canonical input fixture: `evals/traces/wave-harness-r2-plan-update/gemma-react__journey-1-car-configurator-bmw.ndjson` (R3 BMW shape persisted with explicit prompt teaching). Direct empirical evidence from harness-r2 P3 (0/240 AF) supports this is the only viable PLAN_UPDATE elicitation path.
+- **Deterministic-stuck divergence investigation** — harness-r2 P1 surfaced that temp=0 widens the gemma stack variance via env/DOM input deltas producing divergent paths between sweeps. Trace-diff investigation candidate: pull 2-3 task pairs (trivial-1, journey-6, journey-3) between P1 sweep 1 and sweep 2 → identify whether the divergence source is fixable (e.g. `wait_for` timing, `take_snapshot` ordering, DOM settling) upstream of the model. Could push variance band tighter than pinning alone, materially improving A:B sensitivity for future waves. Trace evidence at `evals/traces/wave-harness-r2-pin-{1,2}/`.
+- **Original deferred hooks** (still relevant):
+  - `AnalysisStep` schema typing (`PlanUpdate.payload` from `Schema.Unknown` to typed). Only meaningful AFTER PLAN_UPDATE rate moves above 0/60 — gated on the structural REFLECT-injection probe landing first.
+  - Tool catalog deduplication — investigation probe whether `interact.command="click"` AND flat `click` tool are both used at runtime; if not, drop one to reduce schema branches.
+  - Oracle-plan capability autopsy — gemma-oracle-plan at 0.000 final-state with Pro 3's plans across all harness-r2 sweeps; trace inspection to identify why a perfect plan doesn't help gemma execute.
+  - Alternate teacher exploration (Sonnet 4.6 / GPT-5 / Llama 4 70B) — harness-r2 reframed the cost-benefit: pin alone moved Pro 3 strict-pass 2/20 → 4/20, doubling R11's anchor. Alternate teachers may add less marginal lift than previously estimated.
+  - Bigger base model exploration (Gemma 4 12B locally) — separate strategic wave if harness-r2 + R12 don't deliver sufficient lift. R3 BMW pattern persistence at P3 supports a capacity-gap hypothesis.
+  - PLAN_UPDATE-driven distillation — once emission rate rises (gated on structural REFLECT-injection), the trajectories become useful as teacher data for browsing-gemma. Folds into R12 if R12 dispatches after harness-r3.
+  - Continued schema tightening — `args` field schemas could be tightened further (e.g. `wait_for{text:[]}` non-empty constraint). Defer until current 2-5/20 schema-invalid floor is understood.
 
 ## Process invariants
 
