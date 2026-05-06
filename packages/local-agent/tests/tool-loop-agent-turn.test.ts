@@ -252,8 +252,14 @@ describe("runToolLoop — AgentTurn envelope dispatch", () => {
     );
   });
 
-  it("aborts cleanly when the model emits non-schema-valid output", async () => {
-    const scripted = [okResult("this is not a JSON envelope, sorry")];
+  it("aborts cleanly after DOOM_LOOP_THRESHOLD same-shape parse failures", async () => {
+    // harness-r3 P1: parse failures no longer abort on the first occurrence —
+    // they're fed back as observations and tracked. After 3 same-shape
+    // failures in a row the existing doom-loop seam aborts. The 2nd repeat
+    // additionally triggers a REFLECT injection (asserted in a separate
+    // test below).
+    const malformed = "this is not a JSON envelope, sorry";
+    const scripted = [okResult(malformed), okResult(malformed), okResult(malformed)];
     const { client } = makeScriptedClient(scripted);
     const { connection, updates } = makeRecordingConnection();
     const { bridge, calls } = makeRecordingBridge(new Map());
@@ -277,7 +283,183 @@ describe("runToolLoop — AgentTurn envelope dispatch", () => {
         : undefined;
     assert.match(
       finalContent && finalContent.type === "text" ? finalContent.text : "",
-      /non-schema-valid agent output/,
+      /non-schema-valid agent output 3× in a row\. Aborting run/,
+    );
+  });
+
+  it("injects a REFLECT directive after 2 consecutive same-shape parse failures (BMW pattern)", async () => {
+    // harness-r3 P1 — fixture-shaped after the canonical journey-1-bmw trace
+    // at evals/traces/wave-harness-r2-plan-update/gemma-react__journey-1-car-configurator-bmw.ndjson.
+    // The model recognizes the cookie-banner gap in <thought>, then emits an
+    // ACTION envelope with `args:{uid:"1_182"}` missing the `command`
+    // discriminator, which fails the per-tool union parse. Pre-r3 the loop
+    // aborted on the first SchemaError; post-r3 the loop feeds it back as an
+    // observation, and on the second identical emission injects a REFLECT
+    // directive into the next observation (and surfaces a chunk to the UI).
+    const cookieBannerThought = envelope({
+      _tag: "THOUGHT",
+      stepId: "step-2",
+      thought: "The page has a cookie banner that needs to be dismissed.",
+    });
+    // Malformed envelope: `_tag:"ACTION"`, `args.uid` only, no `command`.
+    // The strict per-tool union (in @neuve/shared/react-envelope) rejects this.
+    const malformedAction = envelope({
+      _tag: "ACTION",
+      stepId: "step-2",
+      toolName: "interact",
+      args: { uid: "1_182" },
+    });
+    const scripted = [
+      okResult(cookieBannerThought),
+      okResult(malformedAction),
+      okResult(malformedAction),
+      okResult(
+        envelope({
+          _tag: "RUN_COMPLETED",
+          status: "passed",
+          summary: "Trajectory complete after REFLECT recovery.",
+        }),
+      ),
+    ];
+    const { client } = makeScriptedClient(scripted);
+    const { connection, updates } = makeRecordingConnection();
+    const { bridge, calls } = makeRecordingBridge(new Map());
+    const messages = [{ role: "system" as const, content: "(system)" }];
+
+    await runToolLoop({
+      sessionId: "test-session",
+      messages,
+      tools: [],
+      ollamaClient: client,
+      mcpBridge: bridge,
+      connection,
+      signal: new AbortController().signal,
+    });
+
+    assert.strictEqual(calls.length, 0, "no tool call expected on parse failure path");
+
+    // After the second same-shape parse failure the harness must emit an
+    // agent_message_chunk containing the REFLECT directive marker.
+    const reflectMessage = updates
+      .filter((entry) => entry.update.sessionUpdate === "agent_message_chunk")
+      .find((entry) => {
+        if (entry.update.sessionUpdate !== "agent_message_chunk") return false;
+        const text = entry.update.content.type === "text" ? entry.update.content.text : "";
+        return text.includes("REFLECT:") && text.includes("PLAN_UPDATE");
+      });
+    assert.isDefined(reflectMessage, "expected an agent_message_chunk announcing REFLECT");
+
+    // The user-role observation message that follows the second parse fail
+    // must carry the <observation>REFLECT: ...</observation> prefix so the
+    // model sees it on the next round.
+    const observationMessages = messages.filter((message) => message.role === "user");
+    const reflectObservation = observationMessages.find((message) =>
+      message.content.includes("<observation>REFLECT:"),
+    );
+    assert.isDefined(reflectObservation, "expected REFLECT observation prefix in message history");
+  });
+
+  it("does not inject REFLECT on healthy trajectories (specificity)", async () => {
+    // harness-r3 P1 — Gate 1.4 specificity check. THOUGHT -> ACTION -> success
+    // -> RUN_COMPLETED has zero rejection signals; no REFLECT directive
+    // should fire.
+    const scripted = [
+      okResult(envelope({ _tag: "THOUGHT", stepId: "step-1", thought: "Navigate first." })),
+      okResult(
+        envelope({
+          _tag: "ACTION",
+          stepId: "step-1",
+          toolName: "interact",
+          args: { command: "navigate", url: "https://example.com" },
+        }),
+      ),
+      okResult(envelope({ _tag: "RUN_COMPLETED", status: "passed", summary: "Done." })),
+    ];
+    const { client } = makeScriptedClient(scripted);
+    const { connection, updates } = makeRecordingConnection();
+    const { bridge } = makeRecordingBridge(
+      new Map<string, { text: string; isError: boolean }>([
+        ["interact", { text: "navigated", isError: false }],
+        ["observe", { text: "screenshot stub", isError: false }],
+      ]),
+    );
+    const messages = [{ role: "system" as const, content: "(system)" }];
+
+    await runToolLoop({
+      sessionId: "test-session",
+      messages,
+      tools: [],
+      ollamaClient: client,
+      mcpBridge: bridge,
+      connection,
+      signal: new AbortController().signal,
+    });
+
+    const anyReflect = updates.some((entry) => {
+      if (entry.update.sessionUpdate !== "agent_message_chunk") return false;
+      const text = entry.update.content.type === "text" ? entry.update.content.text : "";
+      return text.includes("REFLECT:");
+    });
+    assert.isFalse(anyReflect, "REFLECT must not fire on a healthy trajectory");
+
+    const anyReflectInHistory = messages.some(
+      (message) => message.role === "user" && message.content.includes("REFLECT:"),
+    );
+    assert.isFalse(
+      anyReflectInHistory,
+      "REFLECT must not be injected into observation history on healthy trajectories",
+    );
+  });
+
+  it("injects a REFLECT directive after 2 consecutive same-shape tool-error rejections", async () => {
+    // harness-r3 P1 — second trigger path: ACTION parses cleanly, but the
+    // MCP bridge returns isError=true on the same stepId+tool+args twice in
+    // a row (e.g. wait_for{text:[]} not finding the text). Inject REFLECT
+    // before the doom-loop's 3rd-strike abort.
+    const stuckAction = envelope({
+      _tag: "ACTION",
+      stepId: "step-2",
+      toolName: "interact",
+      args: { command: "click", uid: "stale-uid" },
+    });
+    const scripted = [
+      okResult(stuckAction),
+      okResult(stuckAction),
+      okResult(envelope({ _tag: "RUN_COMPLETED", status: "passed", summary: "Recovered." })),
+    ];
+    const { client } = makeScriptedClient(scripted);
+    const { connection, updates } = makeRecordingConnection();
+    const { bridge } = makeRecordingBridge(
+      new Map<string, { text: string; isError: boolean }>([
+        ["interact", { text: "Element not found for uid='stale-uid'", isError: true }],
+      ]),
+    );
+    const messages = [{ role: "system" as const, content: "(system)" }];
+
+    await runToolLoop({
+      sessionId: "test-session",
+      messages,
+      tools: [],
+      ollamaClient: client,
+      mcpBridge: bridge,
+      connection,
+      signal: new AbortController().signal,
+    });
+
+    const reflectChunk = updates.some((entry) => {
+      if (entry.update.sessionUpdate !== "agent_message_chunk") return false;
+      const text = entry.update.content.type === "text" ? entry.update.content.text : "";
+      return text.includes("REFLECT:") && text.includes("PLAN_UPDATE");
+    });
+    assert.isTrue(reflectChunk, "expected REFLECT chunk after 2 same-shape tool errors");
+
+    const reflectInHistory = messages.some(
+      (message) =>
+        message.role === "user" && message.content.includes("<observation>REFLECT:"),
+    );
+    assert.isTrue(
+      reflectInHistory,
+      "expected REFLECT prefix in next observation after tool-error streak",
     );
   });
 
