@@ -7,7 +7,7 @@ _Generated 2026-05-06 from `evals/traces/wave-harness-r2-pin-2` (the post-pin st
 **The prompt-level ceiling is documented.** harness-r2 ran three surgical prompt interventions:
 - **P1 (variance pin) — SHIPPED.** Pinning all runners to `temperature=0` collapsed Pro 3's premature-completion 13/20 → 3/20 and uplifted gemini-react strict-pass count 2/20 → 4/20. Single substantive change of the wave; all observed gains attributable here.
 - **P2 (completion_check block) — REVERTED.** Over-verification regression: 4/20 strict-pass → 2/20. Pin had already solved 70% of the documented "Pro 3 stopping-criterion problem" — the remaining 3 premature cases are tasks the model genuinely thinks it's done, not a prompt-fixable shape.
-- **P3 (PLAN_UPDATE elicitation) — REVERTED (no-op).** 0/60 PLAN_UPDATE emissions across all runners. **0 ASSERTION_FAILED envelopes across all 240 traces (4 sweeps × 60)** — the REFLECT path is dead at every upstream gate. PLAN_UPDATE is structural-not-prompt-elicitable; the harness must do work the model won't do.
+- **P3 (PLAN_UPDATE elicitation) — REVERTED (no-op).** 0/60 PLAN_UPDATE emissions across all runners. **0/240 non-abort ASSERTION_FAILED + 16/240 abort-category, all gemini-react, all single-shot run-terminations rather than retry signals; gemma-react emits 0 AF across all 80 traces** — the AF→REFLECT→PLAN_UPDATE retry-signal pathway is dead. Models emit AF only for unrecoverable aborts (CAPTCHA, WAF, anti-bot, HTTP2 protocol error), not as a recoverable-error trigger. PLAN_UPDATE is structural-not-prompt-elicitable; harness-r3's structural REFLECT-injection probe must trigger on **shape signals** (SchemaError-loops, arg-rejection-after-N retries), NOT on AF emission counts.
 
 **R10/R11 narrative correction (the highest-leverage finding)**: the "Pro 3 stopping-criterion problem" was overstated as a capability gap. The data shows it was 70% temperature, not prompt — pre-pin gemini-react was at AI SDK / Google provider default (~1.0), not the 0.1 the gemma stack used. R10's 13/20 premature shape was a temp=1.0 artifact. Post-pin gemini-react strict-pass yield is **double R11's anchor** (4/20 vs 2/20) — materially reframes R12's distillation data-quality premise.
 
@@ -49,12 +49,12 @@ The gemma stack widening surfaced the **deterministic-stuck divergence pattern**
 |---|---|---|
 | Empty-content | 0/20 | **0/20** across all 4 sweeps × 3 runners (R8 intact) |
 | Schema-invalid | ≤5/20 (R10 envelope) | gemma 3-7/20 (P3 high at 5; P2 high at 7), gemini 0/20, oracle-plan 3/20 — within R10 band |
-| ASSERTION_FAILED emission | n/a (informational) | **0/240 across all 4 sweeps × 3 runners** (structural finding) |
+| ASSERTION_FAILED emission | n/a (informational) | **0/240 non-abort + 16/240 abort-category** (all gemini-react, all unrecoverable infrastructure conditions; gemma-react 0/80 across all 4 sweeps; structural finding) |
 | PLAN_UPDATE emission | n/a (informational) | 0/240 across all 4 sweeps × 3 runners (structural finding) |
 
 ## harness-r3 recommendations (per plan §"Out of scope" updates)
 
-1. **PRIMARY P1 candidate**: structural REFLECT-injection probe — harness detects SchemaError-loops or arg-rejection-after-N-retries → injects synthetic REFLECT directive into next observation. Bypasses the dead ASSERTION_FAILED gate. Adjacent to existing doom-loop detector. Direct empirical support: 0/240 ASSERTION_FAILED across harness-r2.
+1. **PRIMARY P1 candidate**: structural REFLECT-injection probe — harness detects SchemaError-loops or arg-rejection-after-N-retries → injects synthetic REFLECT directive into next observation. Bypasses the dead AF→REFLECT retry-signal gate. Adjacent to existing doom-loop detector. Direct empirical support: 0/240 non-abort AF + 16/240 abort-only-as-single-shot-terminations across harness-r2 (models emit AF only for unrecoverable conditions, never as retry signals — detection signals must come from shape patterns, not AF counts).
 2. **Deterministic-stuck divergence investigation** — trace-diff P1 sweep pairs to identify env/DOM-level variance sources (`wait_for` timing, `take_snapshot` ordering, DOM settling) potentially fixable upstream of the model.
 3. Original deferred hooks (AnalysisStep typing gated on emission rate, tool catalog dedup, oracle-plan autopsy, alternate teachers, bigger model) — see `docs/research/harness-r2/plan.md` §"Out of scope" for current details.
 
