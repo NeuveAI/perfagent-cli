@@ -196,10 +196,10 @@ describe("buildExecutionSystemPrompt — shape & invariants", () => {
     expect(prompt).toContain("at most 5 PLAN_UPDATE markers per run");
   });
 
-  it("includes the REFLECT trigger guidance with the tightened 1-fail threshold", () => {
+  it("includes the REFLECT trigger guidance", () => {
     const prompt = buildExecutionSystemPrompt();
     expect(prompt).toContain("<reflect_trigger>");
-    expect(prompt).toContain("1 ASSERTION_FAILED");
+    expect(prompt).toContain("2 consecutive ASSERTION_FAILED markers");
     expect(prompt).toContain("REFLECT directive");
   });
 
@@ -447,10 +447,10 @@ describe("buildLocalAgentSystemPrompt", () => {
     expect(prompt).toContain("replace_step");
   });
 
-  it("includes the REFLECT trigger guidance with the tightened 1-fail threshold", () => {
+  it("includes the REFLECT trigger guidance", () => {
     const prompt = buildLocalAgentSystemPrompt();
     expect(prompt).toContain("<reflect_trigger>");
-    expect(prompt).toContain("1 ASSERTION_FAILED");
+    expect(prompt).toContain("2 consecutive ASSERTION_FAILED envelopes");
     expect(prompt).toContain("REFLECT");
   });
 
@@ -511,13 +511,13 @@ describe("buildLocalAgentSystemPrompt + buildExecutionSystemPrompt — protocol 
     }
   });
 
-  it("both prompts document the REFLECT trigger with the tightened 1-fail threshold (harness-r2 P3)", () => {
+  it("both prompts document the REFLECT trigger after 2 consecutive same-step failures", () => {
     const localPrompt = buildLocalAgentSystemPrompt();
     const executorPrompt = buildExecutionSystemPrompt();
     expect(localPrompt).toContain("REFLECT");
-    expect(localPrompt).toContain("1 ASSERTION_FAILED");
+    expect(localPrompt).toContain("2 consecutive ASSERTION_FAILED");
     expect(executorPrompt).toContain("REFLECT");
-    expect(executorPrompt).toContain("1 ASSERTION_FAILED");
+    expect(executorPrompt).toContain("2 consecutive ASSERTION_FAILED");
   });
 
   it("both prompts list the same five failure categories", () => {
