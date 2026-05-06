@@ -25,6 +25,8 @@ import type { McpBridge, McpToolCallResult } from "@neuve/local-agent/mcp-bridge
 import {
   GEMINI_REACT_DOOM_LOOP_THRESHOLD,
   GEMINI_REACT_MAX_TOOL_ROUNDS,
+  GEMINI_REACT_REFLECT_DIRECTIVE_TEXT,
+  GEMINI_REACT_REFLECT_INJECTION_THRESHOLD,
 } from "./gemini-react-constants";
 
 export class GeminiReactCallError extends Schema.ErrorClass<GeminiReactCallError>(
@@ -66,6 +68,19 @@ const STATE_CHANGING_TOOL_NAMES = new Set([
 interface ToolCallFingerprint {
   readonly toolName: string;
   readonly argsHash: string;
+}
+
+// harness-r3 P1 — rejection-shape tracker mirroring
+// `@neuve/local-agent/tool-loop.ts`. The Gemini path enforces the AgentTurn
+// schema server-side via `responseSchema`, so parse failures are vanishingly
+// rare (0/20 across the harness-r2 sweep matrix). The dominant rejection
+// signal is `isError=true` from the MCP bridge on a successfully-parsed
+// ACTION (e.g. `wait_for{text:[...]}` not finding the text, click on a
+// stale UID). Two consecutive same-stepId+same-shape tool errors trigger a
+// REFLECT directive prefix on the next observation.
+interface RejectionFingerprint {
+  readonly stepId: string;
+  readonly shapeHash: string;
 }
 
 interface RunLoopOptions {
@@ -300,6 +315,35 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
   const recentCalls: ToolCallFingerprint[] = [];
   let lastToolError: string | undefined;
 
+  // harness-r3 P1: tool-error rejection tracking for structural
+  // REFLECT-injection. Resets when shape changes, on a successful tool
+  // call, or on PLAN_UPDATE / STEP_DONE (forward progress).
+  const recentRejections: RejectionFingerprint[] = [];
+  let reflectInjectedThisStreak = false;
+
+  const trackRejection = (entry: RejectionFingerprint): boolean => {
+    const last = recentRejections[recentRejections.length - 1];
+    const matches =
+      last !== undefined && last.stepId === entry.stepId && last.shapeHash === entry.shapeHash;
+    if (!matches) {
+      recentRejections.length = 0;
+      reflectInjectedThisStreak = false;
+    }
+    recentRejections.push(entry);
+    if (recentRejections.length > GEMINI_REACT_DOOM_LOOP_THRESHOLD) {
+      recentRejections.shift();
+    }
+    return (
+      recentRejections.length >= GEMINI_REACT_REFLECT_INJECTION_THRESHOLD &&
+      !reflectInjectedThisStreak
+    );
+  };
+
+  const resetRejectionStreak = (): void => {
+    recentRejections.length = 0;
+    reflectInjectedThisStreak = false;
+  };
+
   for (let round = 0; round < GEMINI_REACT_MAX_TOOL_ROUNDS; round++) {
     const aiMessages = buildAiMessagesFromHistory(systemPrompt, history);
 
@@ -367,6 +411,10 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
     }
 
     if (envelope instanceof PlanUpdateTurn) {
+      // harness-r3 P1: PLAN_UPDATE is the desired response to a REFLECT
+      // injection — clear the rejection streak so a future repeat starts
+      // fresh.
+      resetRejectionStreak();
       emitThoughtChunk(emit, `[PLAN_UPDATE action=${envelope.action} step=${envelope.stepId}]`);
       history.push({
         role: "user",
@@ -376,6 +424,8 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
     }
 
     if (envelope instanceof StepDone) {
+      // harness-r3 P1: forward progress — reset the rejection streak.
+      resetRejectionStreak();
       emitMessageChunk(emit, `[STEP_DONE ${envelope.stepId}] ${envelope.summary}`);
       history.push({
         role: "user",
@@ -460,8 +510,30 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
         ),
       );
 
+      // harness-r3 P1: track tool-error rejections; 2 same-shape consecutive
+      // failures on the same stepId trigger a REFLECT directive prefix on the
+      // next observation.
+      let injectReflectOnObservation = false;
       if (toolResult.isError) {
         lastToolError = toolResult.text;
+        const shouldInject = trackRejection({
+          stepId: envelope.stepId,
+          shapeHash: `tool:${toolName}:${argsHash}`,
+        });
+        if (shouldInject) {
+          yield* Effect.logInfo("Gemini-react REFLECT injection (tool-error)", {
+            sessionId,
+            round,
+            stepId: envelope.stepId,
+            tool: toolName,
+            streakLength: recentRejections.length,
+          });
+          reflectInjectedThisStreak = true;
+          injectReflectOnObservation = true;
+          emitMessageChunk(emit, `[Gemini-react: ${GEMINI_REACT_REFLECT_DIRECTIVE_TEXT}]`);
+        }
+      } else {
+        resetRejectionStreak();
       }
 
       emitToolCallCompleted(emit, toolCallId, toolName, toolResult);
@@ -522,15 +594,18 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
         }
       }
 
+      const reflectPrefix = injectReflectOnObservation
+        ? `<observation>${GEMINI_REACT_REFLECT_DIRECTIVE_TEXT}</observation>\n`
+        : "";
       const observationMessage: ChatMessage = observationImages
         ? {
             role: "user",
-            content: `<observation>${observationText}</observation>`,
+            content: `${reflectPrefix}<observation>${observationText}</observation>`,
             images: observationImages,
           }
         : {
             role: "user",
-            content: `<observation>${observationText}</observation>`,
+            content: `${reflectPrefix}<observation>${observationText}</observation>`,
           };
       history.push(observationMessage);
       continue;

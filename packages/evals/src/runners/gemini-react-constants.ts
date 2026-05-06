@@ -14,6 +14,17 @@ export const GEMINI_REACT_MAX_TOOL_ROUNDS = 15;
 // model. Matches DOOM_LOOP_THRESHOLD in `@neuve/local-agent/tool-loop.ts`.
 export const GEMINI_REACT_DOOM_LOOP_THRESHOLD = 3;
 
+// harness-r3 P1: structural REFLECT-injection threshold. Strictly less than
+// the doom-loop abort threshold so injection precedes abort by one step.
+// When 2 consecutive tool-error rejections share `stepId + tool + argsHash`
+// the next observation gains a REFLECT directive prefix to prompt a
+// PLAN_UPDATE. Mirrors `REFLECT_INJECTION_THRESHOLD` in
+// `@neuve/local-agent/tool-loop.ts`. See `docs/research/harness-r3/plan.md`
+// §P1.
+export const GEMINI_REACT_REFLECT_INJECTION_THRESHOLD = 2;
+export const GEMINI_REACT_REFLECT_DIRECTIVE_TEXT =
+  "REFLECT: This step is failing in the same shape twice in a row. The next envelope MUST be PLAN_UPDATE with action=insert (missing prerequisite step), action=replace (corrected step), or action=remove (now-redundant step). Do not retry the same ACTION.";
+
 // Display name for the runner — drives trace filenames, log annotations, and
 // the eval scoreboard column. Re-exported from the canonical
 // `runner-names.ts` so the constants stay single-sourced for the
