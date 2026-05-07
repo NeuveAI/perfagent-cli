@@ -254,7 +254,7 @@ variance band (pin-1 vs pin-2):
 
 ### journey-1-bmw canonical-fixture before/after excerpts
 
-Pre-r3 (harness-r2 pin-2) — `gemma-react__journey-1-car-configurator-bmw.ndjson`:
+Pre-r3 source: `evals/traces/wave-harness-r2-plan-update/gemma-react__journey-1-car-configurator-bmw.ndjson` (the canonical BMW abort trace cited in plan §"Prior work" line 45 — NOT pin-2, which ran 8 tool_calls + MAX_TOOL_ROUNDS for the same task without exhibiting the no-command BMW pattern):
 
 ```
 turn 1: tool_call interact{navigate, https://www.bmw.com}
