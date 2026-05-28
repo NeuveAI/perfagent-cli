@@ -1,0 +1,23 @@
+{
+  "model": "gemma4:e4b",
+  "created_at": "2026-04-24T18:04:24.330006Z",
+  "message": {
+    "role": "assistant",
+    "content": "",
+    "thinking": "The user wants to click a submit button on the page.\nThe user has provided the CSS selector for the button: `#submit-btn`.\nI need to use the `click` tool with this selector.",
+    "tool_calls": [
+      {
+        "id": "call_ekf8gmj5",
+        "function": { "index": 0, "name": "click", "arguments": { "selector": "#submit-btn" } }
+      }
+    ]
+  },
+  "done": true,
+  "done_reason": "stop",
+  "total_duration": 1281831875,
+  "load_duration": 116813000,
+  "prompt_eval_count": 111,
+  "prompt_eval_duration": 18894375,
+  "eval_count": 63,
+  "eval_duration": 1129150457
+}

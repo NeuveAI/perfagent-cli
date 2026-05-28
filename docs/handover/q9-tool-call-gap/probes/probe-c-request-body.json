@@ -1,0 +1,61 @@
+{
+  "model": "gemma4:e4b",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a performance analysis agent backed by Chrome DevTools.\n\nYou MUST use the provided tools. Never describe plans, steps, or intentions in prose — always call a tool.\n\nWorkflow:\n1. Use `interact` to navigate to URLs (command: \"navigate\") and perform user interactions (click, type, fill).\n\nRules:\n- Always start by calling `interact` with command=\"navigate\" to reach the target URL.\n\nCall tools. Do not narrate."
+    },
+    {
+      "role": "user",
+      "content": "Start by navigating to the MDN Web Docs page for JavaScript."
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "interact",
+        "description": "Perform a user interaction or navigation in the browser. Provide `command` and the fields relevant to that command.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string",
+              "enum": ["navigate", "click", "fill", "hover", "select", "wait_for"],
+              "description": "Which interaction to perform"
+            },
+            "url": {
+              "type": "string",
+              "description": "Target URL for navigate"
+            },
+            "direction": {
+              "type": "string",
+              "enum": ["url", "back", "forward", "reload"],
+              "description": "Navigation direction (navigate only)"
+            },
+            "uid": {
+              "type": "string",
+              "description": "Element UID from a prior snapshot"
+            },
+            "text": {
+              "type": "string",
+              "description": "Text to type (fill only)"
+            },
+            "option": {
+              "type": "string",
+              "description": "Option to pick (select only)"
+            },
+            "timeout": {
+              "type": "integer",
+              "description": "Timeout in ms"
+            }
+          },
+          "required": ["command"]
+        }
+      }
+    }
+  ],
+  "stream": false,
+  "temperature": 0.1,
+  "num_ctx": 32768
+}

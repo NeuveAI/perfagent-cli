@@ -1,0 +1,27 @@
+{
+  "id": "chatcmpl-853",
+  "object": "chat.completion",
+  "created": 1777053863,
+  "model": "gemma4:e4b",
+  "system_fingerprint": "fp_ollama",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "",
+        "reasoning": "The user wants to click a submit button with the CSS selector '#submit-btn'.\nI have a tool `click` that takes a `selector` argument.\nI should use the `click` tool with the provided selector.",
+        "tool_calls": [
+          {
+            "id": "call_ds33jqt5",
+            "index": 0,
+            "type": "function",
+            "function": { "name": "click", "arguments": "{\"selector\":\"#submit-btn\"}" }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": { "prompt_tokens": 111, "completion_tokens": 67, "total_tokens": 178 }
+}

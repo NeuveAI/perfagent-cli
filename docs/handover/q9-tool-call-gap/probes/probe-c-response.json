@@ -1,0 +1,34 @@
+{
+  "id": "chatcmpl-805",
+  "object": "chat.completion",
+  "created": 1777054155,
+  "model": "gemma4:e4b",
+  "system_fingerprint": "fp_ollama",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "",
+        "reasoning": "The user wants to navigate to the MDN Web Docs page for JavaScript. I must use the `interact` tool with the `navigate` command and the appropriate URL.",
+        "tool_calls": [
+          {
+            "id": "call_cbvd0rfy",
+            "index": 0,
+            "type": "function",
+            "function": {
+              "name": "interact",
+              "arguments": "{\"command\":\"navigate\",\"direction\":\"url\",\"url\":\"https://developer.mozilla.org/en-US/docs/Web/JavaScript\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 354,
+    "completion_tokens": 81,
+    "total_tokens": 435
+  }
+}

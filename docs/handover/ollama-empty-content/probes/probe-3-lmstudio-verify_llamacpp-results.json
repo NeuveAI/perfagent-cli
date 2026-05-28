@@ -1,0 +1,41 @@
+{
+  "runtime": "verify-llamacpp",
+  "summary": {
+    "full": {
+      "reps": 0,
+      "emptyCount": 0,
+      "emptyRate": 0,
+      "contentLengths": [],
+      "finishReasons": [],
+      "promptTokens": [],
+      "completionTokens": [],
+      "elapsedMs": []
+    }
+  },
+  "results": [
+    {
+      "mode": "full",
+      "iteration": 0,
+      "ok": false,
+      "status": 400,
+      "body": "{\"error\":\"Cannot combine structured output constraints with lazy grammar\"}",
+      "elapsedMs": 672
+    },
+    {
+      "mode": "full",
+      "iteration": 1,
+      "ok": false,
+      "status": 400,
+      "body": "{\"error\":\"Cannot combine structured output constraints with lazy grammar\"}",
+      "elapsedMs": 234
+    },
+    {
+      "mode": "full",
+      "iteration": 2,
+      "ok": false,
+      "status": 400,
+      "body": "{\"error\":\"Cannot combine structured output constraints with lazy grammar\"}",
+      "elapsedMs": 127
+    }
+  ]
+}
