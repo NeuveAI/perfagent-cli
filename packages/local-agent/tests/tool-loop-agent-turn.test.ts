@@ -454,8 +454,7 @@ describe("runToolLoop — AgentTurn envelope dispatch", () => {
     assert.isTrue(reflectChunk, "expected REFLECT chunk after 2 same-shape tool errors");
 
     const reflectInHistory = messages.some(
-      (message) =>
-        message.role === "user" && message.content.includes("<observation>REFLECT:"),
+      (message) => message.role === "user" && message.content.includes("<observation>REFLECT:"),
     );
     assert.isTrue(
       reflectInHistory,
@@ -596,5 +595,158 @@ describe("runToolLoop — AgentTurn envelope dispatch", () => {
         "assistant", // RUN_COMPLETED
       ],
     );
+  });
+});
+
+describe("runToolLoop — harness-r4 detectors", () => {
+  it("injects REFLECT on 2 consecutive parse-fails on same stepId regardless of shape (vary-each-attempt)", async () => {
+    // harness-r4: different parse-fail shapes on same stepId should still trigger
+    // REFLECT injection. Previously different shapes would reset the streak.
+    const cookieBannerThought = envelope({
+      _tag: "THOUGHT",
+      stepId: "step-02",
+      thought: "The page has a cookie banner that needs to be dismissed.",
+    });
+    const malformed1 = envelope({
+      _tag: "ACTION",
+      stepId: "step-02",
+      toolName: "interact",
+      args: { uid: "1_182" }, // missing "command"
+    });
+    const malformed2 = envelope({
+      _tag: "ACTION",
+      stepId: "step-02",
+      toolName: "click",
+      args: { uid: "bad-uid" }, // different tool, different args
+    });
+    const scripted = [
+      okResult(cookieBannerThought),
+      okResult(malformed1),
+      okResult(malformed2),
+      okResult(
+        envelope({
+          _tag: "RUN_COMPLETED",
+          status: "passed",
+          summary: "Recovered via vary-each-attempt detector.",
+        }),
+      ),
+    ];
+    const { client } = makeScriptedClient(scripted);
+    const { connection, updates } = makeRecordingConnection();
+    const { bridge, calls } = makeRecordingBridge(new Map());
+    const messages = [{ role: "system" as const, content: "(system)" }];
+
+    await runToolLoop({
+      sessionId: "test-session-vary-each",
+      messages,
+      tools: [],
+      ollamaClient: client,
+      mcpBridge: bridge,
+      connection,
+      signal: new AbortController().signal,
+    });
+
+    assert.strictEqual(calls.length, 0, "no tool call expected on parse failure path");
+
+    // After the 2nd consecutive parse-fail on same stepId, REFLECT should fire
+    // regardless of shape mismatch
+    const reflectChunk = updates.some((entry) => {
+      if (entry.update.sessionUpdate !== "agent_message_chunk") return false;
+      const text = entry.update.content.type === "text" ? entry.update.content.text : "";
+      return text.includes("REFLECT:");
+    });
+    assert.isTrue(
+      reflectChunk,
+      "expected REFLECT on vary-each-attempt (different shapes, same stepId)",
+    );
+  });
+
+  it("aborts after 6 consecutive THOUGHTs without progress (THOUGHT-only loop detector)", async () => {
+    // harness-r4: 6 consecutive THOUGHTs should trigger abort at threshold+1
+    const thoughtScripted = Array.from({ length: 6 }, (_, i) =>
+      okResult(
+        envelope({
+          _tag: "THOUGHT",
+          stepId: "step-01",
+          thought: `Stuck in THOUGHT loop - iteration ${i + 1}`,
+        }),
+      ),
+    );
+    const { client } = makeScriptedClient(thoughtScripted);
+    const { connection, updates } = makeRecordingConnection();
+    const { bridge, calls } = makeRecordingBridge(new Map());
+    const messages = [{ role: "system" as const, content: "(system)" }];
+
+    await runToolLoop({
+      sessionId: "test-session-thought-loop",
+      messages,
+      tools: [],
+      ollamaClient: client,
+      mcpBridge: bridge,
+      connection,
+      signal: new AbortController().signal,
+    });
+
+    // Should have 6 THOUGHT chat calls
+    assert.strictEqual(calls.length, 0, "no tool calls expected during THOUGHT-only loop");
+
+    // After 6 THOUGHTs, should see abort message
+    const abortMessage = updates
+      .filter((entry) => entry.update.sessionUpdate === "agent_message_chunk")
+      .find((entry) => {
+        if (entry.update.sessionUpdate !== "agent_message_chunk") return false;
+        const text = entry.update.content.type === "text" ? entry.update.content.text : "";
+        return text.includes("consecutive THOUGHTs") && text.includes("Aborting");
+      });
+    assert.isDefined(abortMessage, "expected abort message after 6 THOUGHTs");
+  });
+
+  it("injects REFLECT at 5 THOUGHTs, then aborts at 6 THOUGHT-only detector", async () => {
+    // harness-r4: REFLECT fires at 5, abort at 6
+    const thoughtScripted = Array.from({ length: 6 }, (_, i) =>
+      okResult(
+        envelope({
+          _tag: "THOUGHT",
+          stepId: "step-01",
+          thought: `THOUGHT iteration ${i + 1}`,
+        }),
+      ),
+    );
+    const { client } = makeScriptedClient(thoughtScripted);
+    const { connection, updates } = makeRecordingConnection();
+    const { bridge } = makeRecordingBridge(new Map());
+    const messages = [{ role: "system" as const, content: "(system)" }];
+
+    await runToolLoop({
+      sessionId: "test-session-thought-reflect-abort",
+      messages,
+      tools: [],
+      ollamaClient: client,
+      mcpBridge: bridge,
+      connection,
+      signal: new AbortController().signal,
+    });
+
+    // Should see REFLECT at 5 THOUGHTs
+    const reflectMessage = updates
+      .filter((entry) => entry.update.sessionUpdate === "agent_message_chunk")
+      .find((entry) => {
+        if (entry.update.sessionUpdate !== "agent_message_chunk") return false;
+        const text = entry.update.content.type === "text" ? entry.update.content.text : "";
+        return (
+          text.includes("REFLECT:") && text.includes("THOUGHTs detected") && text.includes("5")
+        );
+      });
+    assert.isDefined(reflectMessage, "expected REFLECT injection at 5 THOUGHTs");
+
+    // Should also see abort at 6 THOUGHTs
+    const abortMessage = updates
+      .filter((entry) => entry.update.sessionUpdate === "agent_message_chunk")
+      .find((entry) => {
+        if (entry.update.sessionUpdate !== "agent_message_chunk") return false;
+        const text = entry.update.content.type === "text" ? entry.update.content.text : "";
+        return text.includes("consecutive THOUGHTs") && text.includes("Aborting");
+      });
+    assert.isDefined(abortMessage, "expected abort message at 6 THOUGHTs");
   });
 });

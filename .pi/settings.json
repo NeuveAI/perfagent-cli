@@ -1,0 +1,11 @@
+{
+  "enableSkillCommands": true,
+  "skills": [
+    ".agents/skills",
+    ".pi/skills"
+  ],
+  "env": {
+    "PI_DEVCONTAINER_MODE": "1",
+    "PI_YOLO": "1"
+  }
+}

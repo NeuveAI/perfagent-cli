@@ -8,10 +8,7 @@ import type { PlannerMode } from "../planning/errors";
 import { runRealTask, type RealRunContext } from "./real";
 import { TraceRecorderFactory } from "./trace-recorder";
 import { EvalRunError, type EvalRunner } from "./types";
-import {
-  GEMINI_REACT_DEFAULT_MODEL_ID,
-  GEMINI_REACT_RUNNER_NAME,
-} from "./gemini-react-constants";
+import { GEMINI_REACT_DEFAULT_MODEL_ID, GEMINI_REACT_RUNNER_NAME } from "./gemini-react-constants";
 import { makeGeminiAgentLayer } from "./gemini-agent";
 
 export class GeminiReactConfigError extends Schema.ErrorClass<GeminiReactConfigError>(

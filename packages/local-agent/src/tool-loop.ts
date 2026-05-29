@@ -33,6 +33,11 @@ const DOOM_LOOP_THRESHOLD = 3;
 const REFLECT_INJECTION_THRESHOLD = 2;
 const REFLECT_DIRECTIVE_TEXT =
   "REFLECT: This step is failing in the same shape twice in a row. The next envelope MUST be PLAN_UPDATE with action=insert (missing prerequisite step), action=replace (corrected step), or action=remove (now-redundant step). Do not retry the same ACTION.";
+
+// harness-r4 THOUGHT-only loop: Fire REFLECT after N consecutive THOUGHTs
+// without progress, then abort after threshold+1. Mirrors rejection ladder.
+const THOUGHT_ONLY_THRESHOLD = 5;
+const THOUGHT_LOOP_ABORT_THRESHOLD = 6;
 const TRACE_STOPPED_SENTINEL = "The performance trace has been stopped.";
 
 // R6 multi-modal: after a successful ACTION on one of these tools we capture
@@ -149,34 +154,56 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
   const recentCalls: ToolCallFingerprint[] = [];
   let lastToolError: string | undefined;
 
+  // harness-r4 THOUGHT-only loop tracking
+  const thoughtOnlyStreak = new Map<string, number>();
+  let reflectInjectedThoughtLoop = false;
+
   // harness-r3 P1 — rejection-shape tracking for structural REFLECT-injection.
-  // The list resets when the rejection shape changes, when a successful
-  // tool call lands, or when the model emits a PLAN_UPDATE / STEP_DONE
-  // (forward progress). `lastSeenStepId` tracks the most-recent envelope's
-  // stepId so a parse-fail (with no extractable stepId of its own) attributes
-  // the rejection to the step that was being worked on.
-  const recentRejections: RejectionFingerprint[] = [];
+  // harness-r4 vary-each-attempt: Fire REFLECT on N consecutive parse-fails on same
+  // stepId regardless of shapeHash match (closes P3 autopsy finding where varying
+  // shapes reset the streak). Track separate streaks per stepId.
+  const stepIdStreaks = new Map<
+    string,
+    { rejections: RejectionFingerprint[]; injected: boolean }
+  >();
   let lastSeenStepId: string = PARSE_FAIL_STEP_ID_FALLBACK;
-  let reflectInjectedThisStreak = false;
 
   const trackRejection = (entry: RejectionFingerprint): boolean => {
-    const last = recentRejections[recentRejections.length - 1];
-    const matches =
-      last !== undefined && last.stepId === entry.stepId && last.shapeHash === entry.shapeHash;
-    if (!matches) {
-      recentRejections.length = 0;
-      reflectInjectedThisStreak = false;
+    const existing = stepIdStreaks.get(entry.stepId);
+
+    if (existing && existing.rejections.length > 0) {
+      // Same stepId — continue streak (shape may vary per r4)
+      existing.rejections.push(entry);
+    } else {
+      // New stepId — clear other streaks and start fresh
+      stepIdStreaks.forEach((streak, id) => {
+        if (id !== entry.stepId) {
+          streak.rejections.length = 0;
+          streak.injected = false;
+        }
+      });
+      stepIdStreaks.set(entry.stepId, {
+        rejections: [entry],
+        injected: false,
+      });
     }
-    recentRejections.push(entry);
-    if (recentRejections.length > DOOM_LOOP_THRESHOLD) {
-      recentRejections.shift();
+
+    const currentStreak = stepIdStreaks.get(entry.stepId)!;
+    if (currentStreak.rejections.length > DOOM_LOOP_THRESHOLD) {
+      currentStreak.rejections.shift();
     }
-    return recentRejections.length >= REFLECT_INJECTION_THRESHOLD && !reflectInjectedThisStreak;
+
+    const shouldInject: boolean =
+      currentStreak.rejections.length >= REFLECT_INJECTION_THRESHOLD && !currentStreak.injected;
+    return shouldInject;
   };
 
-  const resetRejectionStreak = (): void => {
-    recentRejections.length = 0;
-    reflectInjectedThisStreak = false;
+  const resetRejectionStreak = (stepId: string): void => {
+    const streak = stepIdStreaks.get(stepId);
+    if (streak) {
+      streak.rejections.length = 0;
+      streak.injected = false;
+    }
   };
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -283,7 +310,8 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
         kind: "parse-fail",
       });
 
-      if (recentRejections.length >= DOOM_LOOP_THRESHOLD) {
+      const streakLength = stepIdStreaks.get(lastSeenStepId)?.rejections.length ?? 0;
+      if (streakLength >= DOOM_LOOP_THRESHOLD) {
         await connection.sessionUpdate({
           sessionId,
           update: {
@@ -300,9 +328,10 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
       if (shouldInject) {
         log("reflect injection (parse-fail)", {
           stepId: lastSeenStepId,
-          streakLength: recentRejections.length,
+          streakLength,
         });
-        reflectInjectedThisStreak = true;
+        const streak = stepIdStreaks.get(lastSeenStepId)!;
+        streak.injected = true;
         await connection.sessionUpdate({
           sessionId,
           update: {
@@ -315,7 +344,9 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
         });
       }
 
-      const reflectPrefix = shouldInject ? `<observation>${REFLECT_DIRECTIVE_TEXT}</observation>\n` : "";
+      const reflectPrefix = shouldInject
+        ? `<observation>${REFLECT_DIRECTIVE_TEXT}</observation>\n`
+        : "";
       messages.push({
         role: "user",
         content: `${reflectPrefix}<observation>(parse failure: ${envelope.cause.slice(0, 500)} — re-emit one valid envelope per <envelopes>.)</observation>`,
@@ -346,6 +377,56 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
 
     if (envelope instanceof Thought) {
       lastSeenStepId = envelope.stepId;
+
+      // harness-r4 THOUGHT-only loop detection
+      const currentThoughtCount = thoughtOnlyStreak.get(envelope.stepId) ?? 0;
+      thoughtOnlyStreak.set(envelope.stepId, currentThoughtCount + 1);
+
+      const thoughtCount = currentThoughtCount + 1;
+      if (thoughtCount >= THOUGHT_LOOP_ABORT_THRESHOLD) {
+        log("THOUGHT-only loop detected", {
+          sessionId,
+          round,
+          stepId: envelope.stepId,
+          thoughtCount,
+        });
+        await connection.sessionUpdate({
+          sessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: {
+              type: "text",
+              text: `[Local agent: ${THOUGHT_LOOP_ABORT_THRESHOLD} consecutive THOUGHTs without progress. Aborting.]`,
+            },
+          },
+        });
+        thoughtOnlyStreak.set(envelope.stepId, 0);
+        reflectInjectedThoughtLoop = false;
+        return;
+      }
+
+      const shouldInjectThoughtReflect =
+        thoughtCount >= THOUGHT_ONLY_THRESHOLD && !reflectInjectedThoughtLoop;
+      if (shouldInjectThoughtReflect) {
+        log("reflect injection (thought-only)", {
+          sessionId,
+          round,
+          stepId: envelope.stepId,
+          thoughtCount,
+        });
+        reflectInjectedThoughtLoop = true;
+        await connection.sessionUpdate({
+          sessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: {
+              type: "text",
+              text: `[Local agent: REFLECT: ${THOUGHT_ONLY_THRESHOLD} consecutive THOUGHTs detected. Consider taking action or updating the plan.]`,
+            },
+          },
+        });
+      }
+
       await connection.sessionUpdate({
         sessionId,
         update: {
@@ -365,7 +446,10 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
       // harness-r3 P1: PLAN_UPDATE is the desired response to a REFLECT
       // injection — clear the rejection streak so a future repeat starts
       // fresh.
-      resetRejectionStreak();
+      // harness-r4: Clear THOUGHT streak on forward progress.
+      resetRejectionStreak(lastSeenStepId);
+      thoughtOnlyStreak.clear();
+      reflectInjectedThoughtLoop = false;
       await connection.sessionUpdate({
         sessionId,
         update: {
@@ -386,7 +470,10 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
     if (envelope instanceof StepDone) {
       lastSeenStepId = envelope.stepId;
       // harness-r3 P1: forward progress — reset the rejection streak.
-      resetRejectionStreak();
+      // harness-r4: Clear THOUGHT streak on forward progress.
+      resetRejectionStreak(lastSeenStepId);
+      thoughtOnlyStreak.clear();
+      reflectInjectedThoughtLoop = false;
       await connection.sessionUpdate({
         sessionId,
         update: {
@@ -509,12 +596,14 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
           kind: "tool-error",
         });
         if (shouldInject) {
+          const streakLength = stepIdStreaks.get(envelope.stepId)?.rejections.length ?? 0;
           log("reflect injection (tool-error)", {
             stepId: envelope.stepId,
             tool: functionName,
-            streakLength: recentRejections.length,
+            streakLength,
           });
-          reflectInjectedThisStreak = true;
+          const streak = stepIdStreaks.get(envelope.stepId)!;
+          streak.injected = true;
           injectReflectOnObservation = true;
           await connection.sessionUpdate({
             sessionId,
@@ -528,7 +617,7 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
           });
         }
       } else {
-        resetRejectionStreak();
+        resetRejectionStreak(envelope.stepId);
       }
       const baseMessageText = isError
         ? `${text}\n\nHint: Check the tool's call shape in its description. Wrap your arguments under the wrapper key shown in the example.`

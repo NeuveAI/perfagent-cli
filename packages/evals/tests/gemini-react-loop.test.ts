@@ -19,10 +19,7 @@ import {
   type AcpSessionUpdate,
 } from "@neuve/shared/models";
 import type { McpBridge, McpToolCallResult } from "@neuve/local-agent/mcp-bridge";
-import {
-  GeminiReactCallError,
-  runGeminiReactLoop,
-} from "../src/runners/gemini-react-loop";
+import { GeminiReactCallError, runGeminiReactLoop } from "../src/runners/gemini-react-loop";
 import { GEMINI_REACT_DOOM_LOOP_THRESHOLD } from "../src/runners/gemini-react-constants";
 
 const dummyResponseBase = {
@@ -82,7 +79,9 @@ interface FakeMcpBridgeOptions {
   readonly defaultResult?: McpToolCallResult;
 }
 
-const buildFakeMcpBridge = (options: FakeMcpBridgeOptions = {}): McpBridge & {
+const buildFakeMcpBridge = (
+  options: FakeMcpBridgeOptions = {},
+): McpBridge & {
   readonly calls: ReadonlyArray<{ readonly name: string; readonly args: Record<string, unknown> }>;
 } => {
   const calls: Array<{ readonly name: string; readonly args: Record<string, unknown> }> = [];
@@ -257,12 +256,7 @@ describe("runGeminiReactLoop doom loop detection", () => {
       toolName: "interact",
       args: { command: "click", uid: "uid-5" },
     };
-    const envelopes = [
-      repeatedAction,
-      repeatedAction,
-      repeatedAction,
-      repeatedAction,
-    ];
+    const envelopes = [repeatedAction, repeatedAction, repeatedAction, repeatedAction];
     const model = buildModelReturningSequence(envelopes);
     const mcpBridge = buildFakeMcpBridge({
       defaultResult: { text: "click failed", isError: true },
@@ -403,6 +397,158 @@ describe("runGeminiReactLoop error propagation", () => {
 });
 
 void GeminiReactCallError;
+
+describe("runGeminiReactLoop — harness-r4 detectors", () => {
+  it("injects REFLECT on 2 consecutive tool-errors on same stepId regardless of errorShape (vary-each-attempt)", async () => {
+    // harness-r4: different tool-error shapes on same stepId should still trigger
+    // REFLECT injection. Previously different shapes would reset the streak.
+    const envelopes = [
+      {
+        _tag: "THOUGHT",
+        stepId: "step-02",
+        thought: "The page has a cookie banner that needs to be dismissed.",
+      },
+      {
+        _tag: "ACTION",
+        stepId: "step-02",
+        toolName: "interact",
+        args: { command: "click", uid: "1_182" },
+      },
+      {
+        _tag: "ACTION",
+        stepId: "step-02",
+        toolName: "interact",
+        args: { command: "click", uid: "different-uid" },
+      },
+      {
+        _tag: "RUN_COMPLETED",
+        status: "passed",
+        summary: "Recovered via vary-each-attempt detector.",
+      },
+    ];
+    const model = buildModelReturningSequence(envelopes);
+    const mcpBridge = buildFakeMcpBridge({
+      results: [
+        { text: "Element not found for uid='1_182'", isError: true },
+        { text: "Element not found for uid='different-uid'", isError: true },
+      ],
+    });
+    const { updates, emit } = collectEmits();
+
+    await Effect.runPromise(
+      runGeminiReactLoop({
+        sessionId: "test-session-vary-each",
+        model,
+        mcpBridge,
+        systemPrompt: "system",
+        userPrompt: "vary-each-attempt",
+        modelId: "test-gemini",
+        emit,
+      }),
+    );
+
+    // After the 2nd consecutive tool-error on same stepId, REFLECT should fire
+    // regardless of shape mismatch
+    const reflectMessage = updates.some((update) => {
+      if (update.sessionUpdate !== "agent_message_chunk") return false;
+      if (update.content.type !== "text" || typeof update.content.text !== "string") {
+        return false;
+      }
+      return update.content.text.includes("REFLECT:");
+    });
+    assert.isTrue(
+      reflectMessage,
+      "expected REFLECT on vary-each-attempt (different errors, same stepId)",
+    );
+  });
+
+  it("injects REFLECT at 5 THOUGHTs, then aborts at 6 (THOUGHT-only loop detector)", async () => {
+    // harness-r4: REFLECT fires at 5, abort at 6
+    const envelopes = Array.from({ length: 6 }, (_, i) => ({
+      _tag: "THOUGHT",
+      stepId: "step-01",
+      thought: `THOUGHT iteration ${i + 1}`,
+    }));
+    const model = buildModelReturningSequence(envelopes);
+    const mcpBridge = buildFakeMcpBridge();
+    const { updates, emit } = collectEmits();
+
+    await Effect.runPromise(
+      runGeminiReactLoop({
+        sessionId: "test-session-thought-reflect-abort",
+        model,
+        mcpBridge,
+        systemPrompt: "system",
+        userPrompt: "THOUGHT loop",
+        modelId: "test-gemini",
+        emit,
+      }),
+    );
+
+    // Should see REFLECT at 5 THOUGHTs
+    const reflectMessage = updates.some((update) => {
+      if (update.sessionUpdate !== "agent_message_chunk") return false;
+      if (update.content.type !== "text" || typeof update.content.text !== "string") {
+        return false;
+      }
+      return (
+        update.content.text.includes("REFLECT:") &&
+        update.content.text.includes("THOUGHTs detected")
+      );
+    });
+    assert.isTrue(reflectMessage, "expected REFLECT injection at 5 THOUGHTs");
+
+    // Should also see abort at 6 THOUGHTs
+    const abortMessage = updates.some((update) => {
+      if (update.sessionUpdate !== "agent_message_chunk") return false;
+      if (update.content.type !== "text" || typeof update.content.text !== "string") {
+        return false;
+      }
+      return (
+        update.content.text.includes("consecutive THOUGHTs") &&
+        update.content.text.includes("Aborting")
+      );
+    });
+    assert.isTrue(abortMessage, "expected abort message at 6 THOUGHTs");
+  });
+
+  it("aborts after 6 consecutive THOUGHTs without progress (THOUGHT-only loop detector)", async () => {
+    // harness-r4: 6 consecutive THOUGHTs should trigger abort at threshold+1
+    const envelopes = Array.from({ length: 6 }, (_, i) => ({
+      _tag: "THOUGHT",
+      stepId: "step-01",
+      thought: `Stuck in THOUGHT loop - iteration ${i + 1}`,
+    }));
+    const model = buildModelReturningSequence(envelopes);
+    const mcpBridge = buildFakeMcpBridge();
+    const { updates, emit } = collectEmits();
+
+    await Effect.runPromise(
+      runGeminiReactLoop({
+        sessionId: "test-session-thought-loop",
+        model,
+        mcpBridge,
+        systemPrompt: "system",
+        userPrompt: "THOUGHT loop",
+        modelId: "test-gemini",
+        emit,
+      }),
+    );
+
+    // After 6 THOUGHTs, should see abort message
+    const abortMessage = updates.some((update) => {
+      if (update.sessionUpdate !== "agent_message_chunk") return false;
+      if (update.content.type !== "text" || typeof update.content.text !== "string") {
+        return false;
+      }
+      return (
+        update.content.text.includes("consecutive THOUGHTs") &&
+        update.content.text.includes("Aborting")
+      );
+    });
+    assert.isTrue(abortMessage, "expected abort message after 6 THOUGHTs");
+  });
+});
 
 describe("runGeminiReactLoop schema-violation guard", () => {
   it("re-validates AgentTurn output via Effect Schema and fails loud on a non-conforming envelope", async () => {

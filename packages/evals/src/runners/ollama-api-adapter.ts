@@ -211,10 +211,7 @@ const handleApiTags = (modelName: string, response: http.ServerResponse): void =
   response.writeHead(200, { "content-type": "application/json" });
   response.end(
     JSON.stringify({
-      models: [
-        { name: modelName },
-        { name: `${modelName}:latest` },
-      ],
+      models: [{ name: modelName }, { name: `${modelName}:latest` }],
     }),
   );
 };

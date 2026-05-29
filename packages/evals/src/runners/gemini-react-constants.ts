@@ -25,6 +25,16 @@ export const GEMINI_REACT_REFLECT_INJECTION_THRESHOLD = 2;
 export const GEMINI_REACT_REFLECT_DIRECTIVE_TEXT =
   "REFLECT: This step is failing in the same shape twice in a row. The next envelope MUST be PLAN_UPDATE with action=insert (missing prerequisite step), action=replace (corrected step), or action=remove (now-redundant step). Do not retry the same ACTION.";
 
+// harness-r4 vary-each-attempt: Generalize REFLECT-injection to fire on N
+// consecutive parse-fails on same stepId regardless of shapeHash match.
+// Closes P3 autopsy finding where varying rejection shapes reset the streak.
+export const GEMINI_REACT_VARY_EACH_ATTEMPT_THRESHOLD = 2;
+
+// harness-r4 THOUGHT-only loop: Fire REFLECT after N consecutive THOUGHTs
+// without progress, then abort after threshold+1. Mirrors rejection ladder.
+export const GEMINI_REACT_THOUGHT_ONLY_THRESHOLD = 5;
+export const GEMINI_REACT_THOUGHT_LOOP_ABORT_THRESHOLD = 6;
+
 // Display name for the runner — drives trace filenames, log annotations, and
 // the eval scoreboard column. Re-exported from the canonical
 // `runner-names.ts` so the constants stay single-sourced for the

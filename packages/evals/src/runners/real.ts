@@ -275,8 +275,7 @@ export const runRealTask = Effect.fn("RealRunner.run")(function* (
   // Distinct literals because `gemma-react` carries explicit semantics for
   // the eval harness ("ReAct mode") while `none` is the legacy escape
   // hatch that pre-dates the ReAct migration.
-  const skipDecomposition =
-    context.plannerMode === "none" || context.plannerMode === "gemma-react";
+  const skipDecomposition = context.plannerMode === "none" || context.plannerMode === "gemma-react";
   const decomposedPlan = skipDecomposition
     ? undefined
     : yield* planDecomposer.decompose(task.prompt, context.plannerMode, {

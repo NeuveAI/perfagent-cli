@@ -27,6 +27,8 @@ import {
   GEMINI_REACT_MAX_TOOL_ROUNDS,
   GEMINI_REACT_REFLECT_DIRECTIVE_TEXT,
   GEMINI_REACT_REFLECT_INJECTION_THRESHOLD,
+  GEMINI_REACT_THOUGHT_ONLY_THRESHOLD,
+  GEMINI_REACT_THOUGHT_LOOP_ABORT_THRESHOLD,
 } from "./gemini-react-constants";
 
 export class GeminiReactCallError extends Schema.ErrorClass<GeminiReactCallError>(
@@ -57,13 +59,7 @@ interface ChatMessage {
   readonly images?: ReadonlyArray<ChatImage>;
 }
 
-const STATE_CHANGING_TOOL_NAMES = new Set([
-  "interact",
-  "click",
-  "fill",
-  "hover",
-  "select",
-]);
+const STATE_CHANGING_TOOL_NAMES = new Set(["interact", "click", "fill", "hover", "select"]);
 
 interface ToolCallFingerprint {
   readonly toolName: string;
@@ -115,10 +111,7 @@ interface RunLoopOptions {
 // baselines confirmed `anyOf` works for the top-level union; R7 adds
 // discriminated args underneath via the same combinator with the same
 // `anyOf` rendering and the same live behavior.
-const inlineJsonSchemaRefs = (
-  schema: unknown,
-  definitions: Record<string, unknown>,
-): unknown => {
+const inlineJsonSchemaRefs = (schema: unknown, definitions: Record<string, unknown>): unknown => {
   if (Array.isArray(schema)) {
     return schema.map((entry) => inlineJsonSchemaRefs(entry, definitions));
   }
@@ -143,20 +136,23 @@ const AGENT_TURN_JSON_SCHEMA = (() => {
   return flattened as JSONSchema7;
 })();
 
-export const AGENT_TURN_RESPONSE_SCHEMA = jsonSchema<typeof AgentTurn.Type>(AGENT_TURN_JSON_SCHEMA, {
-  validate: (value) => {
-    // R7: parse-options `onExcessProperty: "error"` mirrors `parseAgentTurn`
-    // so the AI SDK validate gate rejects gemini's malformed shapes (flat-
-    // action with extra keys, hallucinated tool names) at the same boundary
-    // the runtime gate uses. See `packages/shared/src/react-envelope.ts`
-    // for the strict-parse rationale.
-    const decoded = Schema.decodeUnknownExit(AgentTurn)(value, { onExcessProperty: "error" });
-    if (decoded._tag === "Success") {
-      return { success: true, value: decoded.value };
-    }
-    return { success: false, error: new Error(String(decoded.cause)) };
+export const AGENT_TURN_RESPONSE_SCHEMA = jsonSchema<typeof AgentTurn.Type>(
+  AGENT_TURN_JSON_SCHEMA,
+  {
+    validate: (value) => {
+      // R7: parse-options `onExcessProperty: "error"` mirrors `parseAgentTurn`
+      // so the AI SDK validate gate rejects gemini's malformed shapes (flat-
+      // action with extra keys, hallucinated tool names) at the same boundary
+      // the runtime gate uses. See `packages/shared/src/react-envelope.ts`
+      // for the strict-parse rationale.
+      const decoded = Schema.decodeUnknownExit(AgentTurn)(value, { onExcessProperty: "error" });
+      if (decoded._tag === "Success") {
+        return { success: true, value: decoded.value };
+      }
+      return { success: false, error: new Error(String(decoded.cause)) };
+    },
   },
-});
+);
 
 const toRecord = (value: unknown): Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
@@ -168,9 +164,7 @@ const buildAiMessagesFromHistory = (
   history: ReadonlyArray<ChatMessage>,
 ): Array<ModelMessage> => {
   const trajectoryView = rollTrajectory(history);
-  const messages: Array<ModelMessage> = [
-    { role: "system", content: systemPrompt },
-  ];
+  const messages: Array<ModelMessage> = [{ role: "system", content: systemPrompt }];
   for (const message of trajectoryView.messages) {
     const role = message.role as "system" | "user" | "assistant";
     const images = message.images;
@@ -315,33 +309,56 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
   const recentCalls: ToolCallFingerprint[] = [];
   let lastToolError: string | undefined;
 
+  // harness-r4 THOUGHT-only loop tracking
+  const thoughtOnlyStreak = new Map<string, number>();
+  let reflectInjectedThoughtLoop = false;
+
   // harness-r3 P1: tool-error rejection tracking for structural
-  // REFLECT-injection. Resets when shape changes, on a successful tool
-  // call, or on PLAN_UPDATE / STEP_DONE (forward progress).
-  const recentRejections: RejectionFingerprint[] = [];
-  let reflectInjectedThisStreak = false;
+  // REFLECT-injection.
+  // harness-r4 vary-each-attempt: Fire REFLECT on N consecutive parse-fails
+  // on same stepId regardless of shapeHash match (closes P3 autopsy finding).
+  const stepIdStreaks = new Map<
+    string,
+    { rejections: RejectionFingerprint[]; injected: boolean }
+  >();
 
   const trackRejection = (entry: RejectionFingerprint): boolean => {
-    const last = recentRejections[recentRejections.length - 1];
-    const matches =
-      last !== undefined && last.stepId === entry.stepId && last.shapeHash === entry.shapeHash;
-    if (!matches) {
-      recentRejections.length = 0;
-      reflectInjectedThisStreak = false;
+    const existing = stepIdStreaks.get(entry.stepId);
+
+    if (existing && existing.rejections.length > 0) {
+      // Same stepId — continue streak (shape may vary per r4)
+      existing.rejections.push(entry);
+    } else {
+      // New stepId — clear other streaks and start fresh
+      stepIdStreaks.forEach((streak, id) => {
+        if (id !== entry.stepId) {
+          streak.rejections.length = 0;
+          streak.injected = false;
+        }
+      });
+      stepIdStreaks.set(entry.stepId, {
+        rejections: [entry],
+        injected: false,
+      });
     }
-    recentRejections.push(entry);
-    if (recentRejections.length > GEMINI_REACT_DOOM_LOOP_THRESHOLD) {
-      recentRejections.shift();
+
+    const currentStreak = stepIdStreaks.get(entry.stepId)!;
+    if (currentStreak.rejections.length > GEMINI_REACT_DOOM_LOOP_THRESHOLD) {
+      currentStreak.rejections.shift();
     }
+
     return (
-      recentRejections.length >= GEMINI_REACT_REFLECT_INJECTION_THRESHOLD &&
-      !reflectInjectedThisStreak
+      currentStreak.rejections.length >= GEMINI_REACT_REFLECT_INJECTION_THRESHOLD &&
+      !currentStreak.injected
     );
   };
 
-  const resetRejectionStreak = (): void => {
-    recentRejections.length = 0;
-    reflectInjectedThisStreak = false;
+  const resetRejectionStreak = (stepId: string): void => {
+    const streak = stepIdStreaks.get(stepId);
+    if (streak) {
+      streak.rejections.length = 0;
+      streak.injected = false;
+    }
   };
 
   for (let round = 0; round < GEMINI_REACT_MAX_TOOL_ROUNDS; round++) {
@@ -402,6 +419,51 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
     emitAgentTurn(emit, envelope);
 
     if (envelope instanceof Thought) {
+      // harness-r4 THOUGHT-only loop detection
+      const currentThoughtCount = thoughtOnlyStreak.get(envelope.stepId) ?? 0;
+      thoughtOnlyStreak.set(envelope.stepId, currentThoughtCount + 1);
+
+      const thoughtCount = currentThoughtCount + 1;
+      if (thoughtCount >= GEMINI_REACT_THOUGHT_LOOP_ABORT_THRESHOLD) {
+        yield* Effect.logWarning("Gemini-react THOUGHT-only loop detected", {
+          sessionId,
+          round,
+          stepId: envelope.stepId,
+          thoughtCount,
+        });
+        emitMessageChunk(
+          emit,
+          `[Gemini-react: ${GEMINI_REACT_THOUGHT_LOOP_ABORT_THRESHOLD} consecutive THOUGHTs without progress. Aborting.]`,
+        );
+        thoughtOnlyStreak.set(envelope.stepId, 0);
+        reflectInjectedThoughtLoop = false;
+        emitAgentTurn(
+          emit,
+          new RunCompleted({
+            status: "failed",
+            summary: `THOUGHT-only loop: ${GEMINI_REACT_THOUGHT_LOOP_ABORT_THRESHOLD} consecutive THOUGHTs at round ${round}.`,
+            abort: { reason: "thought-only-loop" },
+          }),
+        );
+        return;
+      }
+
+      const shouldInjectThoughtReflect =
+        thoughtCount >= GEMINI_REACT_THOUGHT_ONLY_THRESHOLD && !reflectInjectedThoughtLoop;
+      if (shouldInjectThoughtReflect) {
+        yield* Effect.logInfo("Gemini-react REFLECT injection (thought-only)", {
+          sessionId,
+          round,
+          stepId: envelope.stepId,
+          thoughtCount,
+        });
+        reflectInjectedThoughtLoop = true;
+        emitMessageChunk(
+          emit,
+          `[Gemini-react: REFLECT: ${GEMINI_REACT_THOUGHT_ONLY_THRESHOLD} consecutive THOUGHTs detected. Consider taking action or updating the plan.]`,
+        );
+      }
+
       emitThoughtChunk(emit, envelope.thought);
       history.push({
         role: "user",
@@ -414,7 +476,10 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
       // harness-r3 P1: PLAN_UPDATE is the desired response to a REFLECT
       // injection — clear the rejection streak so a future repeat starts
       // fresh.
-      resetRejectionStreak();
+      // harness-r4: Clear THOUGHT streak on forward progress.
+      resetRejectionStreak(envelope.stepId);
+      thoughtOnlyStreak.clear();
+      reflectInjectedThoughtLoop = false;
       emitThoughtChunk(emit, `[PLAN_UPDATE action=${envelope.action} step=${envelope.stepId}]`);
       history.push({
         role: "user",
@@ -425,7 +490,10 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
 
     if (envelope instanceof StepDone) {
       // harness-r3 P1: forward progress — reset the rejection streak.
-      resetRejectionStreak();
+      // harness-r4: Clear THOUGHT streak on forward progress.
+      resetRejectionStreak(envelope.stepId);
+      thoughtOnlyStreak.clear();
+      reflectInjectedThoughtLoop = false;
       emitMessageChunk(emit, `[STEP_DONE ${envelope.stepId}] ${envelope.summary}`);
       history.push({
         role: "user",
@@ -513,6 +581,8 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
       // harness-r3 P1: track tool-error rejections; 2 same-shape consecutive
       // failures on the same stepId trigger a REFLECT directive prefix on the
       // next observation.
+      // harness-r4 vary-each-attempt: Fire REFLECT on N consecutive failures
+      // regardless of shapeHash match.
       let injectReflectOnObservation = false;
       if (toolResult.isError) {
         lastToolError = toolResult.text;
@@ -521,19 +591,21 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
           shapeHash: `tool:${toolName}:${argsHash}`,
         });
         if (shouldInject) {
+          const streakLength = stepIdStreaks.get(envelope.stepId)?.rejections.length ?? 0;
           yield* Effect.logInfo("Gemini-react REFLECT injection (tool-error)", {
             sessionId,
             round,
             stepId: envelope.stepId,
             tool: toolName,
-            streakLength: recentRejections.length,
+            streakLength,
           });
-          reflectInjectedThisStreak = true;
+          const streak = stepIdStreaks.get(envelope.stepId)!;
+          streak.injected = true;
           injectReflectOnObservation = true;
           emitMessageChunk(emit, `[Gemini-react: ${GEMINI_REACT_REFLECT_DIRECTIVE_TEXT}]`);
         }
       } else {
-        resetRejectionStreak();
+        resetRejectionStreak(envelope.stepId);
       }
 
       emitToolCallCompleted(emit, toolCallId, toolName, toolResult);
@@ -548,8 +620,7 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
       // didn't actually change). The capture runs through the same MCP
       // bridge as any other tool call so token accounting + retry semantics
       // stay consistent.
-      const captureScreenshot =
-        !toolResult.isError && STATE_CHANGING_TOOL_NAMES.has(toolName);
+      const captureScreenshot = !toolResult.isError && STATE_CHANGING_TOOL_NAMES.has(toolName);
       let observationImages: ReadonlyArray<ChatImage> | undefined;
       if (captureScreenshot) {
         const screenshotResult: McpToolCallResult = yield* Effect.promise(() =>
@@ -617,10 +688,7 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
       round,
       tag: unexpectedTag,
     });
-    emitMessageChunk(
-      emit,
-      `[Gemini-react: unexpected envelope tag at round ${round}. Aborting.]`,
-    );
+    emitMessageChunk(emit, `[Gemini-react: unexpected envelope tag at round ${round}. Aborting.]`);
     emitAgentTurn(
       emit,
       new RunCompleted({

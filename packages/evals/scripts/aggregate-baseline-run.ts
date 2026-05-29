@@ -93,7 +93,10 @@ const processTrace = (tracePath: string): TaskRollup => {
   const taskIdMatch = /^[^_]+__(.+)\.ndjson$/.exec(fileName);
   const taskId = taskIdMatch ? taskIdMatch[1] : fileName;
 
-  const lines = fs.readFileSync(tracePath, "utf8").split("\n").filter((line) => line.length > 0);
+  const lines = fs
+    .readFileSync(tracePath, "utf8")
+    .split("\n")
+    .filter((line) => line.length > 0);
   const events = lines.map((line) => decodeLine(JSON.parse(line)));
 
   const counts = {

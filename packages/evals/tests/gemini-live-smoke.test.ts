@@ -65,8 +65,7 @@ describe("gemini-react live smoke", () => {
                 },
                 {
                   role: "user",
-                  content:
-                    "Navigate to https://wikipedia.org. Emit a THOUGHT envelope first.",
+                  content: "Navigate to https://wikipedia.org. Emit a THOUGHT envelope first.",
                 },
               ],
             }),
@@ -84,11 +83,7 @@ describe("gemini-react live smoke", () => {
           Thought,
           `expected THOUGHT envelope from prompt that requests one; got ${envelope._tag}`,
         );
-        assert.isBelow(
-          elapsedMs,
-          30_000,
-          `live call should finish under 30s; took ${elapsedMs}ms`,
-        );
+        assert.isBelow(elapsedMs, 30_000, `live call should finish under 30s; took ${elapsedMs}ms`);
       }).pipe(Effect.runPromise),
   );
 

@@ -1,0 +1,5 @@
+{
+  "permissions": {
+    "allow": ["mcp__browser__interact", "mcp__browser__observe", "mcp__browser__trace"]
+  }
+}

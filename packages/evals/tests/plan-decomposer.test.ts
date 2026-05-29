@@ -165,7 +165,11 @@ describe("PlanDecomposer oracle-plan mode (structured output)", () => {
     const plan = await runWithLayer(
       Effect.gen(function* () {
         const decomposer = yield* PlanDecomposer;
-        return yield* decomposer.decompose(CATALOG_CHECKOUT_PROMPT, "oracle-plan", decomposeContext);
+        return yield* decomposer.decompose(
+          CATALOG_CHECKOUT_PROMPT,
+          "oracle-plan",
+          decomposeContext,
+        );
       }),
       decomposerLayerFromModel(buildModelReturning(catalogCheckoutPlan)),
     );
@@ -242,7 +246,11 @@ describe("PlanDecomposer oracle-plan mode (structured output)", () => {
     const exit = await runExitWithLayer(
       Effect.gen(function* () {
         const decomposer = yield* PlanDecomposer;
-        return yield* decomposer.decompose(CATALOG_CHECKOUT_PROMPT, "oracle-plan", decomposeContext);
+        return yield* decomposer.decompose(
+          CATALOG_CHECKOUT_PROMPT,
+          "oracle-plan",
+          decomposeContext,
+        );
       }),
       decomposerLayerFromModel(buildModelReturningRawText(reachedPreambleResponse)),
     );
@@ -315,7 +323,11 @@ describe("PlanDecomposer oracle-plan mode (structured output)", () => {
     const exit = await runExitWithLayer(
       Effect.gen(function* () {
         const decomposer = yield* PlanDecomposer;
-        return yield* decomposer.decompose(CATALOG_CHECKOUT_PROMPT, "oracle-plan", decomposeContext);
+        return yield* decomposer.decompose(
+          CATALOG_CHECKOUT_PROMPT,
+          "oracle-plan",
+          decomposeContext,
+        );
       }),
       decomposerLayerFromModel(buildModelReturningRawText(preambleResponse)),
     );
@@ -428,7 +440,11 @@ describe("PlanDecomposer no-API-key path (CRITICAL-1 regression)", () => {
     const exit = await runExitWithLayer(
       Effect.gen(function* () {
         const decomposer = yield* PlanDecomposer;
-        return yield* decomposer.decompose(CATALOG_CHECKOUT_PROMPT, "oracle-plan", decomposeContext);
+        return yield* decomposer.decompose(
+          CATALOG_CHECKOUT_PROMPT,
+          "oracle-plan",
+          decomposeContext,
+        );
       }),
       decomposerLayerNoKey,
     );

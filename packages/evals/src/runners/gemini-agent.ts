@@ -10,10 +10,7 @@ import {
   type AgentStreamOptions,
   type SessionId,
 } from "@neuve/agent";
-import {
-  type AcpConfigOption,
-  type AcpSessionUpdate,
-} from "@neuve/shared/models";
+import { type AcpConfigOption, type AcpSessionUpdate } from "@neuve/shared/models";
 import { buildLocalAgentSystemPrompt } from "@neuve/shared/prompts";
 import { createMcpBridge } from "@neuve/local-agent/mcp-bridge";
 import { runGeminiReactLoop, GeminiReactCallError } from "./gemini-react-loop";
@@ -27,8 +24,7 @@ export class GeminiBrowserMcpResolutionError extends Schema.ErrorClass<GeminiBro
   message = `Cannot locate browser-mcp.js bundle for the gemini-react runner: ${this.reason}. Build the CLI first with \`pnpm --filter perf-agent-cli build\` so apps/cli/dist/browser-mcp.js exists.`;
 }
 
-const BROWSER_MCP_RELATIVE_FROM_AGENT_PACKAGE =
-  "../../../apps/cli/dist/browser-mcp.js";
+const BROWSER_MCP_RELATIVE_FROM_AGENT_PACKAGE = "../../../apps/cli/dist/browser-mcp.js";
 const BROWSER_MCP_WORKSPACE_WALKUP_LIMIT = 8;
 
 const resolveBrowserMcpBin = Effect.fn("GeminiAgent.resolveBrowserMcpBin")(function* () {
