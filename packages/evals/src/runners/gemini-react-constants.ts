@@ -41,9 +41,11 @@ export const GEMINI_REACT_THOUGHT_LOOP_ABORT_THRESHOLD = 6;
 // aggregator / report builder.
 export { GEMINI_REACT_RUNNER_NAME } from "./runner-names";
 
-// Default model id for the Gemini Pro 3 teacher / frontier baseline. Pro 3
-// (`gemini-3-pro-preview`, server-resolved to `gemini-3.1-pro-preview` per
-// the response `modelVersion` field) replaces Flash 3 as of R10 — see
+// Default model id for the Gemini Pro 3 teacher / frontier baseline.
+// `gemini-3-pro-preview` was the alias that auto-resolved server-side to
+// `gemini-3.1-pro-preview`; Google retired the alias on 2026-03-26 and
+// requires the explicit `gemini-3.1-pro-preview` id (no GA text-reasoning
+// model exists as of 2026-06). Pro 3 replaces Flash 3 as of R10 — see
 // `docs/handover/harness-evals/baselines/wave-r10-pro-preview.md`. Flash 3
 // sat at gemma's noise floor on the wave-r5-ab sweep (R7 phase-7 evidence)
 // and was not a viable teacher; Pro 3 lifts step-coverage by +0.166 and
@@ -52,4 +54,4 @@ export { GEMINI_REACT_RUNNER_NAME } from "./runner-names";
 // preview SKU. Pro 3 emits `thoughtSignature` + ~140 reasoning tokens per
 // round transparently — relevant for token accounting on the gemini-react
 // lane.
-export const GEMINI_REACT_DEFAULT_MODEL_ID = "gemini-3-pro-preview";
+export const GEMINI_REACT_DEFAULT_MODEL_ID = "gemini-3.1-pro-preview";
