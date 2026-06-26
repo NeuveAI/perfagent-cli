@@ -32,7 +32,10 @@
     "BUN_INSTALL": "/home/vscode/.bun",
     "ANTHROPIC_BASE_URL": "https://vllm.local",
     "ANTHROPIC_API_KEY": "sk-dummy-key",
-    "CLAUDE_CODE_MODEL": "Qwen3.5-122B-A10B-NVFP4",
+    "CLAUDE_CODE_MODEL": "primary",
+    "PI_VLLM_PROVIDER": "vllm.local",
+    "PI_VLLM_MODEL": "primary",
+    "PI_VLLM_BASE_URL": "https://vllm.local",
     "CLAUDE_CODE_ENABLE_TELEMETRY": "0",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
@@ -48,6 +51,8 @@
   },
   "mounts": [
     "source=${localEnv:HOME}/code/pi-devcontainer-yolo,target=/home/vscode/code/pi-devcontainer-yolo,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/code/neuve-harness,target=/home/vscode/code/neuve-harness,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/code/neuve-git,target=/home/vscode/code/neuve-git,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached",
     "source=${localEnv:HOME}/Downloads,target=/mnt/host-downloads,type=bind,readonly"
   ],
