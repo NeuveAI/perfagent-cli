@@ -157,6 +157,10 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
   // harness-r4 THOUGHT-only loop tracking
   const thoughtOnlyStreak = new Map<string, number>();
   let reflectInjectedThoughtLoop = false;
+  const resetThoughtOnlyStreak = (): void => {
+    thoughtOnlyStreak.clear();
+    reflectInjectedThoughtLoop = false;
+  };
 
   // harness-r3 P1 — rejection-shape tracking for structural REFLECT-injection.
   // harness-r4 vary-each-attempt: Fire REFLECT on N consecutive parse-fails on same
@@ -448,8 +452,7 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
       // fresh.
       // harness-r4: Clear THOUGHT streak on forward progress.
       resetRejectionStreak(lastSeenStepId);
-      thoughtOnlyStreak.clear();
-      reflectInjectedThoughtLoop = false;
+      resetThoughtOnlyStreak();
       await connection.sessionUpdate({
         sessionId,
         update: {
@@ -472,8 +475,7 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
       // harness-r3 P1: forward progress — reset the rejection streak.
       // harness-r4: Clear THOUGHT streak on forward progress.
       resetRejectionStreak(lastSeenStepId);
-      thoughtOnlyStreak.clear();
-      reflectInjectedThoughtLoop = false;
+      resetThoughtOnlyStreak();
       await connection.sessionUpdate({
         sessionId,
         update: {
@@ -527,6 +529,7 @@ export const runToolLoop = async (options: ToolLoopOptions): Promise<void> => {
 
     if (envelope instanceof Action) {
       lastSeenStepId = envelope.stepId;
+      resetThoughtOnlyStreak();
       const functionName = envelope.toolName;
       const args = toRecord(envelope.args);
       const argsHash = JSON.stringify(args);

@@ -749,4 +749,85 @@ describe("runToolLoop — harness-r4 detectors", () => {
       });
     assert.isDefined(abortMessage, "expected abort message at 6 THOUGHTs");
   });
+
+  it("does not count THOUGHTs across an ACTION as a THOUGHT-only streak", async () => {
+    const scripted = [
+      ...Array.from({ length: 4 }, (_, index) =>
+        okResult(
+          envelope({
+            _tag: "THOUGHT",
+            stepId: "step-01",
+            thought: `Prepare before action ${index + 1}`,
+          }),
+        ),
+      ),
+      okResult(
+        envelope({
+          _tag: "ACTION",
+          stepId: "step-01",
+          toolName: "interact",
+          args: { command: "navigate", url: "https://example.com" },
+        }),
+      ),
+      okResult(
+        envelope({
+          _tag: "THOUGHT",
+          stepId: "step-01",
+          thought: "Inspect post-action state.",
+        }),
+      ),
+      okResult(
+        envelope({
+          _tag: "THOUGHT",
+          stepId: "step-01",
+          thought: "Decide final status.",
+        }),
+      ),
+      okResult(envelope({ _tag: "RUN_COMPLETED", status: "passed", summary: "Done." })),
+    ];
+    const { client } = makeScriptedClient(scripted);
+    const { connection, updates } = makeRecordingConnection();
+    const { bridge, calls } = makeRecordingBridge(
+      new Map<string, { text: string; isError: boolean }>([
+        ["interact", { text: "navigated", isError: false }],
+        ["observe", { text: "screenshot stub", isError: false }],
+      ]),
+    );
+    const messages = [{ role: "system" as const, content: "(system)" }];
+
+    await runToolLoop({
+      sessionId: "test-session-thought-action-reset",
+      messages,
+      tools: [],
+      ollamaClient: client,
+      mcpBridge: bridge,
+      connection,
+      signal: new AbortController().signal,
+    });
+
+    assert.strictEqual(calls.length, 2, "expected ACTION + screenshot capture");
+
+    const thoughtOnlyReflectOrAbort = updates.some((entry) => {
+      if (entry.update.sessionUpdate !== "agent_message_chunk") return false;
+      const text = entry.update.content.type === "text" ? entry.update.content.text : "";
+      return (
+        (text.includes("REFLECT:") && text.includes("THOUGHTs detected")) ||
+        (text.includes("consecutive THOUGHTs") && text.includes("Aborting"))
+      );
+    });
+    assert.isFalse(
+      thoughtOnlyReflectOrAbort,
+      "ACTION must reset the THOUGHT-only streak before later THOUGHTs",
+    );
+
+    const finalMessage = updates
+      .filter((entry) => entry.update.sessionUpdate === "agent_message_chunk")
+      .at(-1);
+    const finalText =
+      finalMessage?.update.sessionUpdate === "agent_message_chunk" &&
+      finalMessage.update.content.type === "text"
+        ? finalMessage.update.content.text
+        : "";
+    assert.match(finalText, /RUN_COMPLETED\|passed/);
+  });
 });

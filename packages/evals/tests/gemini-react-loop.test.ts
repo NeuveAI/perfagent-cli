@@ -548,6 +548,81 @@ describe("runGeminiReactLoop — harness-r4 detectors", () => {
     });
     assert.isTrue(abortMessage, "expected abort message after 6 THOUGHTs");
   });
+
+  it("does not count THOUGHTs across an ACTION as a THOUGHT-only streak", async () => {
+    const envelopes = [
+      ...Array.from({ length: 4 }, (_, index) => ({
+        _tag: "THOUGHT",
+        stepId: "step-01",
+        thought: `Prepare before action ${index + 1}`,
+      })),
+      {
+        _tag: "ACTION",
+        stepId: "step-01",
+        toolName: "interact",
+        args: { command: "navigate", url: "https://example.com/" },
+      },
+      {
+        _tag: "THOUGHT",
+        stepId: "step-01",
+        thought: "Inspect post-action state.",
+      },
+      {
+        _tag: "THOUGHT",
+        stepId: "step-01",
+        thought: "Decide final status.",
+      },
+      {
+        _tag: "RUN_COMPLETED",
+        status: "passed",
+        summary: "Done.",
+      },
+    ];
+    const model = buildModelReturningSequence(envelopes);
+    const mcpBridge = buildFakeMcpBridge({
+      defaultResult: { text: "navigated", isError: false },
+    });
+    const { updates, emit } = collectEmits();
+
+    await Effect.runPromise(
+      runGeminiReactLoop({
+        sessionId: "test-session-thought-action-reset",
+        model,
+        mcpBridge,
+        systemPrompt: "system",
+        userPrompt: "THOUGHT then ACTION then THOUGHT",
+        modelId: "test-gemini",
+        emit,
+      }),
+    );
+
+    assert.strictEqual(mcpBridge.calls.length, 2, "expected ACTION + screenshot capture");
+
+    const thoughtOnlyReflectOrAbort = updates.some((update) => {
+      if (update.sessionUpdate !== "agent_message_chunk") return false;
+      if (update.content.type !== "text" || typeof update.content.text !== "string") {
+        return false;
+      }
+      return (
+        (update.content.text.includes("REFLECT:") &&
+          update.content.text.includes("THOUGHTs detected")) ||
+        (update.content.text.includes("consecutive THOUGHTs") &&
+          update.content.text.includes("Aborting"))
+      );
+    });
+    assert.isFalse(
+      thoughtOnlyReflectOrAbort,
+      "ACTION must reset the THOUGHT-only streak before later THOUGHTs",
+    );
+
+    const agentTurns = updates.filter(
+      (update): update is AcpAgentTurnUpdate => update.sessionUpdate === "agent_turn",
+    );
+    const terminal = agentTurns[agentTurns.length - 1];
+    assert.instanceOf(terminal.agentTurn, RunCompleted);
+    const completed = terminal.agentTurn as RunCompleted;
+    assert.strictEqual(completed.status, "passed");
+  });
 });
 
 describe("runGeminiReactLoop schema-violation guard", () => {

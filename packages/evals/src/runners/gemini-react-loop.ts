@@ -312,6 +312,10 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
   // harness-r4 THOUGHT-only loop tracking
   const thoughtOnlyStreak = new Map<string, number>();
   let reflectInjectedThoughtLoop = false;
+  const resetThoughtOnlyStreak = (): void => {
+    thoughtOnlyStreak.clear();
+    reflectInjectedThoughtLoop = false;
+  };
 
   // harness-r3 P1: tool-error rejection tracking for structural
   // REFLECT-injection.
@@ -478,8 +482,7 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
       // fresh.
       // harness-r4: Clear THOUGHT streak on forward progress.
       resetRejectionStreak(envelope.stepId);
-      thoughtOnlyStreak.clear();
-      reflectInjectedThoughtLoop = false;
+      resetThoughtOnlyStreak();
       emitThoughtChunk(emit, `[PLAN_UPDATE action=${envelope.action} step=${envelope.stepId}]`);
       history.push({
         role: "user",
@@ -492,8 +495,7 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
       // harness-r3 P1: forward progress — reset the rejection streak.
       // harness-r4: Clear THOUGHT streak on forward progress.
       resetRejectionStreak(envelope.stepId);
-      thoughtOnlyStreak.clear();
-      reflectInjectedThoughtLoop = false;
+      resetThoughtOnlyStreak();
       emitMessageChunk(emit, `[STEP_DONE ${envelope.stepId}] ${envelope.summary}`);
       history.push({
         role: "user",
@@ -525,6 +527,7 @@ export const runGeminiReactLoop = Effect.fn("GeminiReactLoop.run")(function* (
     }
 
     if (envelope instanceof Action) {
+      resetThoughtOnlyStreak();
       const toolName = envelope.toolName;
       const args = toRecord(envelope.args);
       const argsHash = JSON.stringify(args);
